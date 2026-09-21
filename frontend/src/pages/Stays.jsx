@@ -4,14 +4,16 @@ import { Link, Navigate } from "react-router-dom";
 import { Area, AreaChart, Bar, BarChart, Cell, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { useTrip } from "../state/TripContext.jsx";
 import { TAG_LABEL } from "../lib/constants";
-import { km, money } from "../lib/format";
+import { km, money, metres } from "../lib/format";
+import { PRICE_SOURCE, qualityLabel, qualityValue, stayPhotos } from "../lib/stay";
 import MapView from "../components/MapView.jsx";
 import Photo from "../components/Photo.jsx";
+import SourceBadge from "../components/SourceBadge.jsx";
 
 const SORTS = {
   best: ["Best match", (a, b) => b.score - a.score],
   price: ["Lowest price", (a, b) => a.price_per_night - b.price_per_night],
-  rating: ["Highest rated", (a, b) => b.rating - a.rating],
+  rating: ["Highest rated", (a, b) => qualityValue(b) - qualityValue(a)],
   distance: ["Closest to centre", (a, b) => a.distance_to_center_km - b.distance_to_center_km],
 };
 
@@ -27,11 +29,21 @@ function Meter({ label, value }) {
 
 function HotelCard({ h, best, selected, hovered, interests, nights, onSelect, onHover }) {
   const [shot, setShot] = useState(0);
+  const photos = stayPhotos(h);
   const matched = interests.filter((t) => h.tags.includes(t));
   const gid = `g-${h.id}`;
-  // Skip amenities that just repeat an interest tag already shown above ("Beachfront", "Nightlife nearby"...).
+  const quality = qualityLabel(h);
+  const price = PRICE_SOURCE[h.price_source] || PRICE_SOURCE.demo;
+  const sig = h.signals || {};
+  // Skip amenities that just repeat an interest tag already shown ("Beachfront", "Nightlife nearby"...).
   const shownWords = matched.map((t) => (TAG_LABEL[t] || t).toLowerCase().split(" ")[0]);
-  const amenities = h.amenities.filter((a) => !shownWords.some((w) => a.toLowerCase().startsWith(w)));
+  const amenities = (h.amenities || []).filter((a) => !shownWords.some((w) => a.toLowerCase().startsWith(w)));
+  const facts = [
+    sig.bars_300m != null && sig.bars_300m > 0 && `${sig.bars_300m} bars within 300 m`,
+    sig.restaurants_300m > 0 && `${sig.restaurants_300m} restaurants within 300 m`,
+    sig.beach_m != null && `Beach ${metres(sig.beach_m)} away`,
+  ].filter(Boolean);
+
   return (
     <motion.article
       layout
@@ -43,13 +55,13 @@ function HotelCard({ h, best, selected, hovered, interests, nights, onSelect, on
       transition={{ duration: 0.4 }}
     >
       <div className="gallery">
-        <Photo k={h.photos[shot]} className="gallery-main" />
+        <Photo k={photos[shot]} className="gallery-main" />
         <div className="badges">
           {best && <span className="badge gold">★ Agent's pick</span>}
           {h.deal && <span className="badge deal">−{h.deal.pct}%</span>}
         </div>
         <div className="thumbs">
-          {h.photos.map((p, i) => (
+          {photos.map((p, i) => (
             <button key={p} className={i === shot ? "on" : ""} onClick={() => setShot(i)} aria-label={`Photo ${i + 1}`}>
               <Photo k={p} />
             </button>
@@ -62,9 +74,11 @@ function HotelCard({ h, best, selected, hovered, interests, nights, onSelect, on
         <div className="hotel-top">
           <div>
             <h3>{h.name}</h3>
-            <p className="muted">{km(h.distance_to_center_km)} from the centre · {h.reviews.toLocaleString()} reviews</p>
+            <p className="muted">
+              {[h.kind && h.kind[0].toUpperCase() + h.kind.slice(1), `${km(h.distance_to_center_km)} from the centre`, h.address, h.reviews && `${h.reviews.toLocaleString()} reviews`].filter(Boolean).join(" · ")}
+            </p>
           </div>
-          <div className="score-pill"><b>{h.rating.toFixed(1)}</b><span>/ 5</span></div>
+          {quality && <div className="score-pill"><b>{quality}</b></div>}
         </div>
 
         <div className="price-row">
@@ -73,7 +87,10 @@ function HotelCard({ h, best, selected, hovered, interests, nights, onSelect, on
             <span className="muted"> / night</span>
             {h.deal && <s className="was">{money(h.deal.typical_price)}</s>}
           </div>
-          <div className="stay-total">{money(h.price_per_night * nights)} for {nights} nights</div>
+          <div className="stay-total">
+            {money(h.price_per_night * nights)} for {nights} nights{" "}
+            <SourceBadge mode={h.price_source === "amadeus" ? "amadeus" : h.price_source || "demo"} label={price.label} />
+          </div>
         </div>
         {h.deal && (
           <div className="saving">
@@ -81,30 +98,47 @@ function HotelCard({ h, best, selected, hovered, interests, nights, onSelect, on
           </div>
         )}
 
-        <div className="spark">
-          <ResponsiveContainer width="100%" height={56}>
-            <AreaChart data={h.price_history.map((v, i) => ({ i, v }))} margin={{ top: 4, right: 0, left: 0, bottom: 0 }}>
-              <defs>
-                <linearGradient id={gid} x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="#2dd4bf" stopOpacity={0.45} />
-                  <stop offset="100%" stopColor="#2dd4bf" stopOpacity={0} />
-                </linearGradient>
-              </defs>
-              <YAxis hide domain={["dataMin - 8", "dataMax + 8"]} />
-              <Area type="monotone" dataKey="v" stroke="#2dd4bf" strokeWidth={2} fill={`url(#${gid})`} dot={false} isAnimationActive={false} />
-            </AreaChart>
-          </ResponsiveContainer>
-          <span>Price over the last 30 days</span>
-        </div>
+        {h.price_history && (
+          <div className="spark">
+            <ResponsiveContainer width="100%" height={56}>
+              <AreaChart data={h.price_history.map((v, i) => ({ i, v }))} margin={{ top: 4, right: 0, left: 0, bottom: 0 }}>
+                <defs>
+                  <linearGradient id={gid} x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="#2dd4bf" stopOpacity={0.45} />
+                    <stop offset="100%" stopColor="#2dd4bf" stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <YAxis hide domain={["dataMin - 8", "dataMax + 8"]} />
+                <Area type="monotone" dataKey="v" stroke="#2dd4bf" strokeWidth={2} fill={`url(#${gid})`} dot={false} isAnimationActive={false} />
+              </AreaChart>
+            </ResponsiveContainer>
+            <span>Price over the last 30 days (demo)</span>
+          </div>
+        )}
 
-        <div className="rates">
-          {Object.entries(h.rating_breakdown).map(([k, v]) => <Meter key={k} label={k} value={v} />)}
-        </div>
+        {h.rating_breakdown && (
+          <div className="rates">
+            {Object.entries(h.rating_breakdown).map(([k, v]) => <Meter key={k} label={k} value={v} />)}
+          </div>
+        )}
+
+        {facts.length > 0 && (
+          <ul className="facts-list">
+            {facts.map((f) => <li key={f}>{f}</li>)}
+          </ul>
+        )}
 
         <div className="tags">
           {matched.map((t) => <span key={t} className="tag hit">★ {TAG_LABEL[t] || t}</span>)}
           {amenities.slice(0, 5).map((a) => <span key={a} className="tag">{a}</span>)}
         </div>
+
+        {(h.website || h.osm_url) && (
+          <div className="links">
+            {h.website && <a href={h.website} target="_blank" rel="noreferrer">Hotel website ↗</a>}
+            {h.osm_url && <a href={h.osm_url} target="_blank" rel="noreferrer">On OpenStreetMap ↗</a>}
+          </div>
+        )}
 
         <button className={`btn ${selected ? "ghost" : "primary"} full`} onClick={() => onSelect(h.id)} disabled={selected}>
           {selected ? "✓ Selected for your trip" : "Select this stay"}
@@ -128,9 +162,16 @@ function StaysView({ trip, hotelId, setHotelId }) {
   const { it, req } = trip;
   const stats = it.hotel_price_stats;
   const bestId = it.hotel.id;
+  const anyDeals = it.hotel_options.some((h) => h.deal);
+  const estimated = it.hotel_options.some((h) => h.price_source === "estimate");
 
-  const list = useMemoList(it.hotel_options, sort, dealsOnly);
-  const hasMap = it.guide?.center && it.hotel_options.some((h) => h.lat);
+  const list = useMemo(() => {
+    const filtered = dealsOnly ? it.hotel_options.filter((h) => h.deal) : it.hotel_options;
+    return [...filtered].sort(SORTS[sort][1]);
+  }, [it.hotel_options, sort, dealsOnly]);
+
+  const located = useMemo(() => it.hotel_options.filter((h) => h.lat != null), [it.hotel_options]);
+  const center = it.guide?.center || (located[0] && [located[0].lat, located[0].lng]);
 
   const chartData = useMemo(() => {
     const seen = {};
@@ -138,13 +179,14 @@ function StaysView({ trip, hotelId, setHotelId }) {
       .sort((a, b) => a.price_per_night - b.price_per_night)
       .map((h) => {
         seen[h.name] = (seen[h.name] || 0) + 1;
-        return { id: h.id, label: seen[h.name] > 1 ? `${h.name} (${seen[h.name]})` : h.name, price: h.price_per_night, deal: !!h.deal };
+        const name = h.name.length > 22 ? h.name.slice(0, 21) + "…" : h.name;
+        return { id: h.id, label: seen[h.name] > 1 ? `${name} (${seen[h.name]})` : name, price: h.price_per_night, deal: !!h.deal };
       });
   }, [it.hotel_options]);
 
   const pins = useMemo(
-    () => it.hotel_options.filter((h) => h.lat).map((h) => ({ id: h.id, lat: h.lat, lng: h.lng, kind: "hotel", label: money(h.price_per_night), title: h.name, color: h.deal ? "#f5c76a" : "#2dd4bf" })),
-    [it.hotel_options],
+    () => located.map((h) => ({ id: h.id, lat: h.lat, lng: h.lng, kind: "hotel", label: money(h.price_per_night), title: h.name, color: h.deal ? "#f5c76a" : "#2dd4bf" })),
+    [located],
   );
   const cheapest = chartData[0];
   const below = it.hotel_options.filter((h) => h.price_per_night < stats.avg).length;
@@ -156,7 +198,7 @@ function StaysView({ trip, hotelId, setHotelId }) {
           <div className="eyebrow">Stays</div>
           <h1 className="h2">{it.hotel_options.length} places to stay, compared</h1>
           <p className="muted">
-            Average nightly rate here is <b>{money(stats.avg)}</b>. {below} of {it.hotel_options.length} are below it.
+            Average nightly rate here is <b>{money(stats.avg)}</b>{estimated && " (estimated)"}. {below} of {it.hotel_options.length} are below it.
             Cheapest: {cheapest.label} at {money(cheapest.price)}.
           </p>
         </div>
@@ -167,9 +209,16 @@ function StaysView({ trip, hotelId, setHotelId }) {
               {Object.entries(SORTS).map(([k, [label]]) => <option key={k} value={k}>{label}</option>)}
             </select>
           </label>
-          <button className="chip" aria-pressed={dealsOnly} onClick={() => setDealsOnly((v) => !v)}>Deals only</button>
+          {anyDeals && <button className="chip" aria-pressed={dealsOnly} onClick={() => setDealsOnly((v) => !v)}>Deals only</button>}
         </div>
       </div>
+
+      {estimated && (
+        <div className="notice">
+          <b>Real hotels, estimated prices.</b> Names, locations, star class and amenities come from OpenStreetMap. Nightly prices are
+          modelled from star class, the city's price level and the season. Free data has no live hotel prices or guest reviews.
+        </div>
+      )}
 
       <div className="two-col even">
         <section className="card pad">
@@ -177,7 +226,7 @@ function StaysView({ trip, hotelId, setHotelId }) {
           <ResponsiveContainer width="100%" height={Math.max(230, chartData.length * 38 + 24)}>
             <BarChart data={chartData} layout="vertical" margin={{ top: 26, right: 28, left: 0, bottom: 0 }}>
               <XAxis type="number" tickLine={false} axisLine={false} tick={{ fill: "#8ea2b9", fontSize: 12 }} tickFormatter={(v) => `£${v}`} />
-              <YAxis type="category" dataKey="label" width={128} tickLine={false} axisLine={false} tick={{ fill: "#c4d1e0", fontSize: 12 }} />
+              <YAxis type="category" dataKey="label" width={140} tickLine={false} axisLine={false} tick={{ fill: "#c4d1e0", fontSize: 12 }} />
               <Tooltip cursor={{ fill: "rgba(255,255,255,.04)" }} formatter={(v) => [money(v), "Per night"]} contentStyle={{ background: "#0d1826", border: "1px solid #24364d", borderRadius: 10 }} itemStyle={{ color: "#e8eef6" }} />
               <ReferenceLine x={stats.avg} stroke="#f5c76a" strokeDasharray="5 4" label={{ value: `area avg ${money(stats.avg)}`, fill: "#f5c76a", fontSize: 12, position: "top", offset: 8 }} />
               <Bar dataKey="price" radius={[0, 8, 8, 0]} barSize={20}>
@@ -185,14 +234,14 @@ function StaysView({ trip, hotelId, setHotelId }) {
               </Bar>
             </BarChart>
           </ResponsiveContainer>
-          <div className="scale"><i className="teal" /> Selected <i className="gold" /> Has a deal <i className="slate" /> Standard rate</div>
+          <div className="scale"><i className="teal" /> Selected {anyDeals && <><i className="gold" /> Has a deal</>} <i className="slate" /> Standard rate</div>
         </section>
 
         <section className="card mapcard">
-          {hasMap ? (
-            <MapView center={it.guide.center} pins={pins} selectedId={hotelId} highlightId={hover} onSelect={setHotelId} height={Math.max(300, chartData.length * 38 + 84)} />
+          {center && located.length > 0 ? (
+            <MapView center={center} pins={pins} selectedId={hotelId} highlightId={hover} onSelect={setHotelId} height={Math.max(300, chartData.length * 38 + 84)} />
           ) : (
-            <div className="nomap"><b>Map coming soon for this destination</b><span>Maps are available for Naples, Lisbon, Tokyo and Dubai.</span></div>
+            <div className="nomap"><b>No map for this destination</b><span>Hotel coordinates were not available.</span></div>
           )}
         </section>
       </div>
@@ -211,20 +260,13 @@ function StaysView({ trip, hotelId, setHotelId }) {
             onHover={setHover}
           />
         ))}
-        {list.length === 0 && <p className="muted">No deals in this search. Try again, prices change on every refresh.</p>}
+        {list.length === 0 && <p className="muted">No deals in this search. Try again later.</p>}
       </div>
 
       <div className="cta-row">
         <Link to="/trip" className="btn primary">Back to your trip · {money(trip.total)}</Link>
-        <Link to="/explore" className="btn ghost">Explore places and deals</Link>
+        <Link to="/explore" className="btn ghost">Explore places and food</Link>
       </div>
     </div>
   );
-}
-
-function useMemoList(options, sort, dealsOnly) {
-  return useMemo(() => {
-    const filtered = dealsOnly ? options.filter((h) => h.deal) : options;
-    return [...filtered].sort(SORTS[sort][1]);
-  }, [options, sort, dealsOnly]);
 }

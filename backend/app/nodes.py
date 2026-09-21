@@ -1,5 +1,9 @@
+import asyncio
 import logging
+from datetime import date
 
+from . import config
+from .live import llm
 from .mcp_tools.client import MCPToolClient
 from .ranking.combine import rank_and_combine
 from .ranking.score import score_hotels
@@ -22,7 +26,7 @@ def make_search_flights_node(client: MCPToolClient):
             "return_date": req["end_date"],
             "travelers": req["travelers"],
         })
-        return {"flights": result["options"]}
+        return {"flights": result["options"], "flights_source": {"mode": result.get("source", "demo"), "detail": result.get("detail", "")}}
 
     return node
 
@@ -37,7 +41,7 @@ def make_search_hotels_node(client: MCPToolClient):
             "travelers": req["travelers"],
             "interests": req["interests"],
         })
-        return {"hotels": result["options"]}
+        return {"hotels": result["options"], "hotels_source": {"mode": result.get("source", "demo"), "detail": result.get("detail", "")}}
 
     return node
 
@@ -51,6 +55,7 @@ def make_destination_guide_node(client: MCPToolClient):
                 "start_date": req["start_date"],
                 "end_date": req["end_date"],
                 "interests": req["interests"],
+                "place_types": req.get("place_types", []),
             })
         except Exception:
             # The guide is supplementary: a failure here must not sink the whole plan.
@@ -115,4 +120,83 @@ async def build_itinerary_node(state: TripState) -> dict:
             "max": max(prices),
         },
     }
+
+    guide = state.get("guide")
+    guide_sources = "; ".join(v for v in (guide or {}).get("sources", {}).values() if v)
+    itinerary["data_sources"] = [
+        {"key": "flights", "label": "Flights", **state.get("flights_source", {"mode": "demo", "detail": ""})},
+        {"key": "stays", "label": "Stays", **state.get("hotels_source", {"mode": "demo", "detail": ""})},
+        {
+            "key": "guide", "label": "Season, sights and dining",
+            "mode": (guide or {}).get("source", "none") if guide else "none",
+            "detail": guide_sources or ("Curated demo content" if guide else "No guide available for this destination"),
+        },
+    ]
+    itinerary["packages"] = _packages(ranking["combos"], chosen)
+    itinerary["ai"] = await _ai_summary(itinerary, state)
     return {"itinerary": itinerary}
+
+
+def _quality(combo: dict) -> float:
+    h = combo["hotel"]
+    return h["rating"] if h.get("rating") is not None else (h.get("stars") or 0)
+
+
+def _packages(combos: list[dict], chosen: dict) -> list[dict]:
+    """Three priced options to compare side by side: the cheapest, the agent's best match, and the
+    highest-quality stay. When one combination wins several roles it appears once with several labels."""
+    picks = [
+        ("Cheapest", "Lowest total among the options we scored", min(combos, key=lambda c: c["total_cost"])),
+        ("Best match", "The agent's pick for your interests and budget", chosen),
+        ("Comfort", "The highest-quality stay we found", max(combos, key=lambda c: (_quality(c), c["total_cost"]))),
+    ]
+    merged: dict[tuple, dict] = {}
+    for label, blurb, c in picks:
+        key = (c["flight"]["id"], c["hotel"]["id"])
+        if key in merged:
+            merged[key]["labels"].append(label)
+            continue
+        merged[key] = {
+            "labels": [label], "blurb": blurb, "flight": c["flight"], "hotel": c["hotel"],
+            "total_cost": round(c["total_cost"], 2),
+            "vs_best": round(c["total_cost"] - chosen["total_cost"], 2),
+            "price_sources": {"flight": c["flight"].get("price_source", "demo"), "hotel": c["hotel"].get("price_source", "demo")},
+        }
+    return list(merged.values())
+
+
+def _human_date(iso: str) -> str:
+    """'2026-12-05' -> '5 December 2026', so the model can copy it without reformatting digits."""
+    d = date.fromisoformat(iso)
+    return f"{d.day} {d.strftime('%B %Y')}"
+
+
+async def _ai_summary(itinerary: dict, state: TripState) -> dict | None:
+    """Optional OpenAI-written summary, grounded in the facts below. Any failure just means no summary."""
+    if not llm.enabled():
+        return None
+    req, guide, flight, hotel = state["request"], itinerary.get("guide"), itinerary["flight"], itinerary["hotel"]
+    facts = {
+        "destination": (guide or {}).get("name") or req["destination"],
+        "dates": f"{_human_date(req['start_date'])} to {_human_date(req['end_date'])}",
+        "nights": itinerary["nights"],
+        "travelers": req["travelers"],
+        "budget": req["budget"],
+        "estimated_total_flights_and_stay": itinerary["total_cost"],
+        "flight": {"stops": flight["stops"], "total": flight["total_price"], "price_source": flight.get("price_source", "demo")},
+        "hotel": {
+            "name": hotel["name"], "stars": hotel.get("stars"), "price_per_night": hotel["price_per_night"],
+            "price_source": hotel.get("price_source", "demo"), "km_from_centre": hotel.get("distance_to_center_km"),
+        },
+        "pros": itinerary["pros"][:4],
+        "cons": itinerary["cons"][:3],
+    }
+    if guide:
+        facts["season"] = {"verdict_for_these_dates": guide["timing"]["verdict"], "best_months": guide["timing"]["best_windows"]}
+        facts["top_sights"] = [p["name"] for p in guide["places"][:4]]
+    try:
+        text = await asyncio.wait_for(asyncio.to_thread(llm.summarize, facts), timeout=30)
+    except Exception:
+        logger.exception("AI summary failed; continuing without it")
+        return None
+    return {"summary": text, "model": config.openai_model()} if text else None

@@ -45,7 +45,9 @@ def score_hotels(hotels: list[dict], interests: list[str] | None = None) -> list
     scored = []
     for hotel in hotels:
         price_score = _inverse_normalize(hotel["price_per_night"], lo_price, hi_price)
-        rating_score = hotel["rating"] / 5
+        # Guest rating if a provider supplies one, else the OpenStreetMap star class, else a neutral 3.5
+        quality = hotel.get("rating") if hotel.get("rating") is not None else hotel.get("stars")
+        rating_score = (quality if quality is not None else 3.5) / 5
         if interests:
             interest_match = len(set(interests) & set(hotel["tags"])) / len(interests)
         else:

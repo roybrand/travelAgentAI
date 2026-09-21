@@ -2,15 +2,19 @@ import { useEffect, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { Link, NavLink, Route, Routes, useLocation } from "react-router-dom";
 import { checkHealth } from "./api";
+import { useNearby } from "./state/NearbyContext.jsx";
 import { useTrip } from "./state/TripContext.jsx";
 import Home from "./pages/Home.jsx";
 import Trip from "./pages/Trip.jsx";
 import Stays from "./pages/Stays.jsx";
 import Explore from "./pages/Explore.jsx";
 import Credits from "./pages/Credits.jsx";
+import Nearby from "./pages/Nearby.jsx";
 
 function Header() {
   const { trip } = useTrip();
+  const { prefs } = useNearby();
+  const live = prefs.enabled;
   const [online, setOnline] = useState(null);
   useEffect(() => {
     const run = () => checkHealth().then(setOnline);
@@ -26,18 +30,35 @@ function Header() {
         </span>
         Wayfinder <small>AI</small>
       </Link>
-      {trip && (
-        <nav className="tabs" aria-label="Trip sections">
-          <NavLink to="/trip">Your trip</NavLink>
-          <NavLink to="/stays">Stays</NavLink>
-          <NavLink to="/explore">Explore</NavLink>
-        </nav>
-      )}
+      <nav className="tabs" aria-label="Sections">
+        {trip && (
+          <>
+            <NavLink to="/trip">Your trip</NavLink>
+            <NavLink to="/stays">Stays</NavLink>
+            <NavLink to="/explore">Explore</NavLink>
+          </>
+        )}
+        <NavLink to="/nearby">Nearby{live && <i className="live-dot" title="Live recommendations are on" />}</NavLink>
+      </nav>
       <div className="pill" title="Backend status">
         <span className={`dot ${online === null ? "" : online ? "live" : "down"}`} />
         {online === null ? "Checking…" : online ? "Agents online" : "Backend unreachable"}
       </div>
     </header>
+  );
+}
+
+function Toasts() {
+  const { toasts, dismiss } = useNearby();
+  return (
+    <div className="toasts" aria-live="polite">
+      {toasts.map(({ id, rec }) => (
+        <Link key={id} to="/nearby" className="toast" onClick={() => dismiss(id)}>
+          <b>📍 {rec.title}</b>
+          <span>{rec.reason}</span>
+        </Link>
+      ))}
+    </div>
   );
 }
 
@@ -48,8 +69,8 @@ function Footer() {
         <b>Wayfinder AI</b> · LangGraph orchestration · MCP tool servers · FastAPI · React
       </div>
       <div className="footer-note">
-        Prototype. Flight and stay inventory, prices, discounts and price history are simulated demo data.
-        Destination photos are openly licensed (<Link to="/credits">see credits</Link>).
+        Prototype. Weather, sights, hotels and restaurants come from free public sources. Flight and stay prices are labelled
+        estimates unless real offers are configured. Photos are openly licensed (<Link to="/credits">see credits</Link>).
       </div>
     </footer>
   );
@@ -76,11 +97,13 @@ export default function App() {
             <Route path="/trip" element={<Trip />} />
             <Route path="/stays" element={<Stays />} />
             <Route path="/explore" element={<Explore />} />
+            <Route path="/nearby" element={<Nearby />} />
             <Route path="/credits" element={<Credits />} />
             <Route path="*" element={<Home />} />
           </Routes>
         </motion.main>
       </AnimatePresence>
+      <Toasts />
       <Footer />
     </div>
   );

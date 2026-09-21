@@ -1,6 +1,12 @@
 import random
+import sys
+from pathlib import Path
 
 from mcp.server.fastmcp import FastMCP
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))  # backend/, so `app.*` imports work when run as a script
+from app import config  # noqa: E402
+from app.live import travel  # noqa: E402
 
 mcp = FastMCP("flights")
 
@@ -20,10 +26,22 @@ def search_flights(
 ) -> dict:
     """Search round-trip flight options between an origin and destination for given dates.
 
-    Mock provider standing in for a real Amadeus/Skyscanner-style search — prices and
-    times are randomized on every call, so re-invoking the tool (the user pressing
-    "refresh") naturally yields a new plan.
+    Uses real Amadeus offers when credentials are configured, otherwise labelled price ESTIMATES from
+    distance and season. Falls back to randomised demo data when offline or for unknown airports.
+    The result's `source` says which: "amadeus", "estimate" or "demo".
     """
+    if not config.offline():
+        try:
+            live = travel.search_flights(origin, destination, depart_date, return_date, travelers)
+            if live:
+                return live
+        except Exception:
+            pass  # fall through to the demo generator
+    result = _demo_flights(origin, destination, depart_date, return_date, travelers)
+    return {**result, "source": "demo", "detail": "Simulated demo data"}
+
+
+def _demo_flights(origin: str, destination: str, depart_date: str, return_date: str, travelers: int) -> dict:
     count = random.randint(4, 6)
     options = []
     for i in range(count):

@@ -1,4 +1,5 @@
 import json
+import os
 import sys
 from contextlib import AsyncExitStack
 from pathlib import Path
@@ -28,7 +29,8 @@ class MCPToolClient:
 
     async def start(self):
         for server_name, script_path in SERVER_SCRIPTS.items():
-            params = StdioServerParameters(command=sys.executable, args=[str(script_path)])
+            # Pass the environment through so the servers see .env keys and WAYFINDER_OFFLINE
+            params = StdioServerParameters(command=sys.executable, args=[str(script_path)], env=dict(os.environ))
             read, write = await self._stack.enter_async_context(stdio_client(params))
             session = await self._stack.enter_async_context(ClientSession(read, write))
             await session.initialize()

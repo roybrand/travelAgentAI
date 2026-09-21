@@ -12,7 +12,7 @@ The **Target** diagram shows the direction from [requirement.txt](../requirement
 5. [Shared state and data flow](#5-shared-state-and-data-flow-current)
 6. [API surface](#6-api-surface-current)
 7. [Target architecture](#7-target-architecture-planned)
-8. [What is real and what is mocked](#8-what-is-real-and-what-is-mocked)
+8. [What is real, estimated and demo](#8-what-is-real-estimated-and-demo)
 9. [Roadmap](#9-roadmap)
 
 ---
@@ -28,9 +28,9 @@ flowchart LR
         direction TB
         CORE["Trip planning service"]
     end
-    P1[("Flight provider<br/>MOCK")]
-    P2[("Hotel provider<br/>MOCK")]
-    P3[("Destination guide<br/>CURATED")]
+    P1[("Flights<br/>Amadeus or ESTIMATE")]
+    P2[("Hotels + guide<br/>OpenStreetMap, Wikipedia,<br/>Open-Meteo: LIVE")]
+    P3[("Amadeus, OpenAI<br/>OPTIONAL")]
 
     U -- "trip request (HTTP/JSON)" --> CORE
     CORE -- "itinerary (HTTP/JSON)" --> U
@@ -44,7 +44,7 @@ flowchart LR
     style P3 fill:#78350f,color:#fff
 ```
 
-Orange marks the parts that are still simulated or hand-curated. Everything else is real, working code.
+Orange marks estimated or optional parts. The live free sources are detailed in [05 · Live data and AI](05-live-data-and-ai.md).
 
 ---
 
@@ -156,15 +156,16 @@ travelAgentAi/
 │   │   ├── ranking/
 │   │   │   ├── score.py         Flight, hotel, and combination scoring
 │   │   │   └── combine.py       Pairing, ranking, rationale, pros/cons
+│   │   ├── live/                Live sources: catalog (100 cities), climate, places, osm, amadeus, llm, pricing
 │   │   ├── mcp_tools/
 │   │   │   ├── client.py        MCPToolClient (spawns and calls servers)
-│   │   │   ├── flights_server.py  MCP server: search_flights (mock data)
-│   │   │   ├── hotels_server.py   MCP server: search_hotels (mock data)
+│   │   │   ├── flights_server.py  MCP server: search_flights (Amadeus / estimates, demo fallback)
+│   │   │   ├── hotels_server.py   MCP server: search_hotels (OpenStreetMap, demo fallback)
 │   │   │   ├── guides_server.py   MCP server: get_destination_guide
 │   │   │   └── guides_data.py     Curated guides + best-time scoring
 │   │   └── static/index.html    Fallback page (used if the React build is absent)
 │   ├── scripts/fetch_photos.py   Downloads licensed photos from Wikimedia Commons
-│   └── tests/                   28 tests: ranking, guides, API
+│   └── tests/                   60 tests: ranking, guides, live data, API
 ├── frontend/                    React + Vite web app (pages, charts, maps, photos)
 ├── node-slice/                  Earlier zero-dependency Node.js proof of concept
 ├── docs/                        This documentation
@@ -289,7 +290,7 @@ pgvector or Qdrant, PostgreSQL, Redis, Celery or Temporal.
 
 ---
 
-## 8. What is real and what is mocked
+## 8. What is real, estimated and demo
 
 | Area | Status | Detail |
 |---|---|---|
@@ -298,13 +299,15 @@ pgvector or Qdrant, PostgreSQL, Redis, Celery or Temporal.
 | Orchestration | Real | Actual LangGraph `StateGraph`, not a hand-rolled loop |
 | Tool protocol | Real | Actual MCP SDK; servers run as separate processes over stdio |
 | Ranking | Real | Deterministic weighted scoring, unit-tested |
-| Flight and hotel **data** | **Mocked** | Randomly generated on every call. No Amadeus, Booking.com or similar yet |
-| LLM | **Not used yet** | Ranking and rationale text are rule-based. No language model is called |
+| Weather, sights, photos, hotels, restaurants (100 cities) | **Live** | Open-Meteo, Wikipedia/Wikimedia, OpenStreetMap. Free, no keys |
+| Flight and hotel **prices** | **Estimate**, or **Live** with Amadeus keys | Modelled from distance, star class, city level and season unless Amadeus is configured. Always labelled |
+| Demo fallback | Simulated | Used only when live sources are unreachable, and labelled Demo |
+| LLM | **Optional (OpenAI)** | Plain-English requests and grounded trip summaries when a key is set. Ranking and pros/cons stay rule-based |
 | Destination guide (best time, places, adventures) | **Curated content** | Hand-written for 10 destinations, served through a real MCP tool. Not live data. This is the slot a RAG knowledge base fills later |
 | Pros and cons | Real | Computed from the numbers in each search, not written by hand or by an LLM |
 | RAG / vector store | Not built | |
 | Persistence, accounts, bookings | Not built | Nothing is stored between requests |
-| Nearby venue listings, prices and discounts | **Simulated** | Fictional venues; distances to sights are computed for real. Labelled "demo" in the UI |
+| Nearby restaurants | **Live** | Real OpenStreetMap restaurants with real distances. No prices, reviews or discounts: free data has none |
 | Destination photos | Real, licensed | Wikimedia Commons, credited in the app |
 | Rental cars, live restaurants and attractions, routes, weather | Not built | |
 | Mobile app | Not built | |

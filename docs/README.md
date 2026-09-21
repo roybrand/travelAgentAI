@@ -8,6 +8,8 @@ FastAPI, LangGraph and MCP.
 | [01 · System flows](01-system-flows.md) | How does a request move through the system? User journey, sequence, LangGraph pipeline, ranking, refresh, errors, lifecycle |
 | [02 · Architecture](02-architecture.md) | What are the pieces and how do they connect? Context, runtime, layers, code map, API, target architecture, roadmap |
 | [04 · Front end and visual experience](04-frontend-and-visual-experience.md) | What does the app look like and how is it built? Page map, components, photo licensing, maps and deals, and exactly which numbers are real, computed, curated or simulated |
+| [Feature registry](FEATURES.md) | The master list of every feature, its status, what powers it, where the code is, and the dynamic rules the app applies at runtime |
+| [05 · Live data and AI](05-live-data-and-ai.md) | Where does the real data come from, what is estimated, how does OpenAI stay honest, and what are the free-tier limits and terms? |
 | [03 · Technology and models](03-technology-and-models.md) | What does each technology do, and how do the data, scoring, pros/cons and guide models work? Includes a worked scoring example |
 
 ## The system in one picture
@@ -35,9 +37,12 @@ Orange = simulated or curated data source. Everything else is working code.
 
 ## Status at a glance
 
-- **Working:** multi-page React app with photos, maps and charts, REST API with validation, LangGraph orchestration, three MCP tool servers (flights, hotels, destination guides), weighted ranking with a plain-language rationale, computed pros and cons, best-time-to-go assessment, 28 passing tests.
-- **Simulated:** flight and hotel inventory (random data per request).
-- **Curated, not live:** the destination guide (best months, places, adventures) is hand-written for 10 destinations.
+- **Live (free sources, no keys):** 100 destinations across Europe, the Americas and Asia with real weather (Open-Meteo), sights and credited photos (Wikipedia/Wikimedia), and real hotels and restaurants (OpenStreetMap).
+- **Optional upgrades:** Amadeus keys for real flight and hotel prices; an OpenAI key for plain-English requests and grounded trip summaries.
+- **Working:** multi-page React app with photos, maps and charts, REST API with validation, LangGraph orchestration, three MCP tool servers (flights, hotels, destination guides), weighted ranking with a plain-language rationale, computed pros and cons, best-time-to-go assessment, 85 passing tests.
+- **Estimated (labelled):** flight and hotel prices when no Amadeus key is set. Free data has no live prices or guest reviews.
+- **Simulated:** only the offline demo fallback, used when the live sources are unreachable.
+- **Curated:** hand-written highlights and typical costs for Naples, Lisbon, Tokyo and Dubai.
 - **Not yet built:** live provider APIs, LLM layer, RAG, database and accounts, rental cars, restaurants, attractions, mobile app. See the [roadmap](02-architecture.md#9-roadmap).
 
 ## Run it
@@ -46,6 +51,8 @@ Orange = simulated or curated data source. Everything else is working code.
 cd backend
 .venv\Scripts\python.exe -m uvicorn app.main:app --reload
 ```
+
+Optional: copy `backend/.env.example` to `backend/.env` and add your OpenAI and/or Amadeus keys (see [05](05-live-data-and-ai.md#5-configuration)).
 
 Open http://localhost:8000. API docs at http://localhost:8000/docs.
 

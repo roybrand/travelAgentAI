@@ -2,10 +2,13 @@ import { motion } from "framer-motion";
 import { Link, Navigate } from "react-router-dom";
 import { Bar, BarChart, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis } from "recharts";
 import { useTrip } from "../state/TripContext.jsx";
-import { CITY_NAME, TAG_LABEL } from "../lib/constants";
+import { TAG_LABEL } from "../lib/constants";
 import { MONTHS, duration, longDate, money, shortDate } from "../lib/format";
+import { qualityLabel, stayPhotos } from "../lib/stay";
+import { PLACE_TYPE_LABEL } from "../lib/profile";
 import CountUp from "../components/CountUp.jsx";
 import Photo from "../components/Photo.jsx";
+import SourceBadge from "../components/SourceBadge.jsx";
 
 const C = { flight: "#818cf8", stay: "#2dd4bf", exp: "#f5c76a" };
 
@@ -17,18 +20,22 @@ function addDays(iso, n) {
 
 const rise = (i = 0) => ({ initial: { opacity: 0, y: 22 }, whileInView: { opacity: 1, y: 0 }, viewport: { once: true, margin: "-40px" }, transition: { delay: i * 0.06, duration: 0.5 } });
 
+/** Photo props for a guide item: a bundled key, or a live Wikimedia URL with its credit. */
+const itemPhoto = (i) => ({ k: i.photo, src: i.photo_url, info: i.photo_credit });
+
 export default function Trip() {
-  const { trip } = useTrip();
+  const { trip, cityName, profile, forgetProfile } = useTrip();
   if (!trip) return <Navigate to="/" replace />;
 
   const { it, req, hotel, flightCost, stayCost, expCost, total, chosenItems } = trip;
   const g = it.guide;
   const flight = it.flight;
-  const place = CITY_NAME[req.destination.toUpperCase()] || g?.name || req.destination;
+  const place = cityName(req.destination) !== req.destination ? cityName(req.destination) : g?.name || req.destination;
   const perPerson = Math.round(total / req.travelers);
   const budget = req.budget;
   const over = budget != null && total > budget;
   const budgetPct = budget ? Math.min(100, (total / budget) * 100) : 0;
+  const quality = qualityLabel(hotel);
 
   const pie = [
     { name: "Flights", value: flightCost, color: C.flight },
@@ -38,17 +45,21 @@ export default function Trip() {
 
   // Spread the chosen experiences across the free days between arrival and departure.
   const spacing = Math.max(1, Math.floor((it.nights - 2) / Math.max(1, chosenItems.length)));
+  const stopsText = flight.stops === 0 ? "Direct" : `${flight.stops} stop${flight.stops > 1 ? "s" : ""}`;
   const events = [
-    { day: 1, kind: "flight", title: `Fly ${req.origin} → ${req.destination}`, sub: `${flight.airline} · ${flight.stops === 0 ? "Direct" : `${flight.stops} stop${flight.stops > 1 ? "s" : ""}`} · ${duration(flight.duration_minutes)} · departs ${flight.depart_time}` },
-    { day: 1, kind: "stay", title: `Check in at ${hotel.name}`, sub: `${hotel.rating.toFixed(1)}★ · ${money(hotel.price_per_night)} per night`, photo: hotel.photos?.[0] },
+    {
+      day: 1, kind: "flight", title: `Fly ${cityName(req.origin)} → ${cityName(req.destination)}`,
+      sub: [flight.price_source === "estimate" ? `Typical ${stopsText.toLowerCase()} fare` : `${flight.airline} · ${stopsText}`, duration(flight.duration_minutes), flight.depart_time && `departs ${flight.depart_time}`].filter(Boolean).join(" · "),
+    },
+    { day: 1, kind: "stay", title: `Check in at ${hotel.name}`, sub: `${[quality, `${money(hotel.price_per_night)} per night`].filter(Boolean).join(" · ")}`, photo: stayPhotos(hotel)[0] },
     ...chosenItems.map((item, i) => ({
       day: Math.min(it.nights, 2 + i * spacing),
       kind: "exp",
       title: item.name,
-      sub: `${item.duration || ""}${item.cost ? ` · about ${money(item.cost)} pp` : " · free"}`,
-      photo: item.photo,
+      sub: [item.duration, item.cost ? `about ${money(item.cost)} pp` : item.cost === 0 ? "free" : null].filter(Boolean).join(" · ") || item.why,
+      photoProps: itemPhoto(item),
     })),
-    { day: it.nights + 1, kind: "flight", title: `Fly home ${req.destination} → ${req.origin}`, sub: "Return flight included in your fare" },
+    { day: it.nights + 1, kind: "flight", title: `Fly home ${cityName(req.destination)} → ${cityName(req.origin)}`, sub: "Return flight included in your fare" },
   ].sort((a, b) => a.day - b.day);
 
   const months = g
@@ -58,7 +69,7 @@ export default function Trip() {
   return (
     <>
       <section className="trip-hero">
-        <Photo k={g?.hero} className="trip-hero-bg" credit />
+        <Photo k={g?.hero} src={g?.hero_url} info={g?.hero_credit} className="trip-hero-bg" credit />
         <div className="trip-hero-scrim" />
         <div className="wrap trip-hero-inner">
           <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }}>
@@ -80,7 +91,7 @@ export default function Trip() {
             <span className="kpi-s">{money(perPerson)} per person</span>
           </div>
           <div className="kpi">
-            <span className="kpi-l">{budget ? "Budget" : "Budget"}</span>
+            <span className="kpi-l">Budget</span>
             {budget ? (
               <>
                 <span className={`kpi-v sm ${over ? "bad" : "ok"}`}>{over ? `${money(total - budget)} over` : `${money(budget - total)} left`}</span>
@@ -98,9 +109,70 @@ export default function Trip() {
           <div className="kpi">
             <span className="kpi-l">Experiences</span>
             <span className="kpi-v sm">{chosenItems.length} planned</span>
-            <span className="kpi-s">{expCost ? `${money(expCost)} est.` : "none yet"} · <Link to="/explore">edit</Link></span>
+            <span className="kpi-s">{expCost ? `${money(expCost)} est.` : "prices vary"} · <Link to="/explore">edit</Link></span>
           </div>
         </motion.section>
+
+        {it.ai?.summary && (
+          <motion.section className="card pad ai-card" {...rise()}>
+            <div className="card-head">
+              <h2 className="card-title">✨ Your AI trip summary</h2>
+              <span className="src-badge muted" title="Written by an OpenAI model using only the facts on this page. Any text containing a number not in those facts is discarded.">
+                {it.ai.model} · grounded in the data below
+              </span>
+            </div>
+            <p className="ai-text">{it.ai.summary}</p>
+          </motion.section>
+        )}
+
+        {profile && (
+          <motion.section className="card pad profile-card" {...rise()}>
+            <div className="card-head">
+              <h2 className="card-title">Your travel profile</h2>
+              <button className="link-btn plain" onClick={forgetProfile}>Forget my profile</button>
+            </div>
+            {profile.summary && <p className="ai-text">{profile.summary}</p>}
+            <div className="chips">
+              {profile.keywords.map((k) => <span key={k} className="tag hit">{k}</span>)}
+              {profile.vibe && <span className="tag">Vibe: {profile.vibe}</span>}
+              {profile.pace && <span className="tag">Pace: {profile.pace}</span>}
+              {profile.budget_style && <span className="tag">Budget: {profile.budget_style}</span>}
+              {profile.place_types.map((k) => <span key={k} className="tag">{PLACE_TYPE_LABEL[k] || k}</span>)}
+            </div>
+            <p className="fine">Built from what you wrote or showed us. It is stored only in this browser, and it shapes the places we search for.</p>
+          </motion.section>
+        )}
+
+        {it.packages?.length > 0 && (
+          <motion.section className="card pad" {...rise()}>
+            <h2 className="card-title">Compare your options</h2>
+            <div className="packages">
+              {it.packages.map((p) => (
+                <div key={p.flight.id + p.hotel.id} className={`pkg ${p.labels.includes("Best match") ? "best" : ""}`}>
+                  <div className="pkg-labels">{p.labels.map((l) => <span key={l} className="badge gold">{l}</span>)}</div>
+                  <div className="pkg-total">{money(p.total_cost)}</div>
+                  <div className="pkg-delta">
+                    {p.vs_best === 0 ? "The agent's pick" : `${money(Math.abs(p.vs_best))} ${p.vs_best < 0 ? "cheaper" : "more"} than the best match`}
+                  </div>
+                  <ul className="pkg-lines">
+                    <li>
+                      <span>Flight</span>
+                      <b>{p.flight.stops === 0 ? "Direct" : `${p.flight.stops} stop${p.flight.stops > 1 ? "s" : ""}`} · {duration(p.flight.duration_minutes)}</b>
+                      <em>{money(p.flight.total_price)} <SourceBadge mode={p.price_sources.flight} /></em>
+                    </li>
+                    <li>
+                      <span>Stay</span>
+                      <b>{p.hotel.name}{qualityLabel(p.hotel) ? ` · ${qualityLabel(p.hotel)}` : ""}</b>
+                      <em>{money(p.hotel.price_per_night)}/night <SourceBadge mode={p.price_sources.hotel} /></em>
+                    </li>
+                  </ul>
+                  <p className="muted">{p.blurb}</p>
+                </div>
+              ))}
+            </div>
+            <p className="fine">Compared across the flights and stays found for your dates. Free data has no price comparison across booking sites, so prices marked Estimate are modelled; add Amadeus keys for real offers.</p>
+          </motion.section>
+        )}
 
         <div className="two-col">
           <motion.section className="card pad" {...rise(1)}>
@@ -126,7 +198,9 @@ export default function Trip() {
                 </li>
               ))}
             </ul>
-            {expCost > 0 && <p className="fine">Experience costs are rough per-person estimates for the activities you added.</p>}
+            {(flight.price_source === "estimate" || hotel.price_source === "estimate") && (
+              <p className="fine">Flight and stay prices are estimates from distance, star class and season, not quotes. Add Amadeus keys for real offers.</p>
+            )}
           </motion.section>
 
           <motion.section className="card pad" {...rise(2)}>
@@ -141,6 +215,7 @@ export default function Trip() {
                     <small>{e.sub}</small>
                   </div>
                   {e.photo && <Photo k={e.photo} className="tl-photo" />}
+                  {e.photoProps && (e.photoProps.k || e.photoProps.src) && <Photo {...e.photoProps} className="tl-photo" />}
                 </li>
               ))}
             </ol>
@@ -179,7 +254,10 @@ export default function Trip() {
                     <XAxis dataKey="month" tickLine={false} axisLine={false} tick={{ fill: "#8ea2b9", fontSize: 12 }} />
                     <Tooltip
                       cursor={{ fill: "rgba(255,255,255,.04)" }}
-                      formatter={(v) => [`${v} of 5`, "Suitability"]}
+                      formatter={(v, _n, p) => {
+                        const c = g.climate?.[MONTHS.indexOf(p.payload.month)];
+                        return [c ? `${v} of 5 · highs ${c.tmax}°C · ${c.rain_mm} mm rain` : `${v} of 5`, "Suitability"];
+                      }}
                       contentStyle={{ background: "#0d1826", border: "1px solid #24364d", borderRadius: 10 }}
                       itemStyle={{ color: "#e8eef6" }}
                     />
@@ -207,9 +285,9 @@ export default function Trip() {
               <Link to="/explore" className="link-btn">See all on the map →</Link>
             </div>
             <div className="highlights">
-              {[...g.places, ...g.adventures].sort((a, b) => b.matches.length - a.matches.length).slice(0, 4).map((i) => (
+              {[...g.places, ...g.adventures].sort((a, b) => b.matches.length - a.matches.length).filter((i) => i.photo || i.photo_url).slice(0, 4).map((i) => (
                 <Link to="/explore" className="hl" key={i.name}>
-                  <Photo k={i.photo} className="hl-photo" />
+                  <Photo {...itemPhoto(i)} className="hl-photo" />
                   <div className="hl-scrim" />
                   <div className="hl-body">
                     <b>{i.name}</b>
@@ -221,9 +299,22 @@ export default function Trip() {
           </motion.section>
         )}
 
+        <motion.section className="card pad" {...rise()}>
+          <h2 className="card-title">Where this data comes from</h2>
+          <ul className="sources">
+            {it.data_sources.map((s) => (
+              <li key={s.key}>
+                <div className="sources-l"><b>{s.label}</b><SourceBadge mode={s.mode} /></div>
+                <p>{s.detail}</p>
+              </li>
+            ))}
+          </ul>
+          <p className="fine">Live sources are free public services (Open-Meteo, Wikipedia and Wikimedia Commons, OpenStreetMap). Prices marked Estimate are modelled, not quoted.</p>
+        </motion.section>
+
         <div className="cta-row">
           <Link to="/stays" className="btn primary">Compare all stays</Link>
-          <Link to="/explore" className="btn ghost">Explore places and deals</Link>
+          <Link to="/explore" className="btn ghost">Explore places and food</Link>
         </div>
       </div>
     </>

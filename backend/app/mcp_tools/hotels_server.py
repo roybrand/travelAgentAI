@@ -1,9 +1,14 @@
 import math
 import random
+import sys
+from pathlib import Path
 
 from mcp.server.fastmcp import FastMCP
 
-from guides_rich import CITY_CENTERS  # sibling module: this file runs as a script
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))  # backend/, so `app.*` imports work when run as a script
+from app import config  # noqa: E402
+from app.live import travel  # noqa: E402
+from app.mcp_tools.guides_rich import CITY_CENTERS  # noqa: E402
 
 mcp = FastMCP("hotels")
 
@@ -75,12 +80,25 @@ def search_hotels(
     travelers: int = 1,
     interests: list[str] | None = None,
 ) -> dict:
-    """Search hotel options in a destination for given check-in/check-out dates,
-    scored against traveler interests.
+    """Search hotel options in a destination for given check-in/check-out dates.
 
-    Mock provider standing in for a real Booking.com/Airbnb-style search — tags are
-    the mock stand-in for interest matching (beaches, nightlife, Michelin restaurants).
+    For catalog cities: REAL hotels from OpenStreetMap (names, star class, amenities, neighbourhood
+    signals), priced by Amadeus if configured, otherwise by clearly-labelled ESTIMATES. Falls back to
+    randomised demo data when offline or if the live sources fail. `source` says which:
+    "amadeus", "estimate" or "demo".
     """
+    if not config.offline():
+        try:
+            live = travel.search_hotels(destination, check_in, check_out, travelers)
+            if live:
+                return {**live, "query": {**live["query"], "interests": interests or []}}
+        except Exception:
+            pass  # fall through to the demo generator
+    result = _demo_hotels(destination, check_in, check_out, travelers, interests)
+    return {**result, "source": "demo", "detail": "Simulated demo data"}
+
+
+def _demo_hotels(destination: str, check_in: str, check_out: str, travelers: int, interests: list[str] | None) -> dict:
     interests = interests or []
     count = random.randint(5, 8)
 

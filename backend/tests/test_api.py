@@ -109,3 +109,49 @@ def test_spa_routes_serve_the_app_but_unknown_routes_still_404(client):
         res = client.get(route)
         assert res.status_code == 200 and "text/html" in res.headers["content-type"], route
     assert client.get("/nope").status_code == 404
+
+
+def test_config_and_destinations_endpoints(client):
+    cfg = client.get("/api/config").json()
+    assert cfg["offline"] is True and cfg["openai"] is False and cfg["destinations"] == 100
+    data = client.get("/api/destinations").json()
+    assert len(data["destinations"]) == 100 and data["regions"] == ["Europe", "Americas", "Asia"]
+
+
+def test_parse_request_needs_an_openai_key(client):
+    res = client.post("/api/parse-request", json={"text": "a week in Lisbon"})
+    assert res.status_code == 503 and "OPENAI_API_KEY" in res.json()["detail"]
+
+
+def test_parse_request_returns_validated_fields_when_enabled(client, monkeypatch):
+    from app import main
+
+    monkeypatch.setattr(main.llm, "enabled", lambda: True)
+    monkeypatch.setattr(main.llm, "parse_trip_request", lambda text, today: {"destination": "LIS", "assumptions": []})
+    res = client.post("/api/parse-request", json={"text": "a week in Lisbon"})
+    assert res.status_code == 200 and res.json()["destination"] == "LIS"
+
+
+def test_offline_itinerary_reports_demo_sources_and_no_ai_summary(client):
+    it = client.post("/api/plan-trip", json=VALID_REQUEST).json()["itinerary"]
+    assert [s["key"] for s in it["data_sources"]] == ["flights", "stays", "guide"]
+    assert all(s["mode"] == "demo" for s in it["data_sources"])
+    assert it["ai"] is None
+
+
+def test_build_trip_endpoint_needs_a_key_and_validates_input(client, monkeypatch):
+    from app import main
+
+    assert client.post("/api/build-trip", json={"text": "a week in Lisbon"}).status_code == 503
+    monkeypatch.setattr(main.llm, "enabled", lambda: True)
+    assert client.post("/api/build-trip", json={"text": "hi"}).status_code == 422
+    assert client.post("/api/build-trip", json={"text": "trip", "image": "http://x/y.jpg"}).status_code == 422
+    monkeypatch.setattr(main.llm, "build_trip", lambda text, image, today: {"destination": "LIS", "profile": {"place_types": ["pub"]}})
+    ok = client.post("/api/build-trip", json={"text": "pubs in Lisbon", "image": "data:image/jpeg;base64,/9j/4AAQ"})
+    assert ok.status_code == 200 and ok.json()["profile"]["place_types"] == ["pub"]
+
+
+def test_itinerary_offers_priced_packages_to_compare(client):
+    it = client.post("/api/plan-trip", json=VALID_REQUEST).json()["itinerary"]
+    assert it["packages"] and all({"labels", "total_cost", "vs_best", "price_sources"} <= set(p) for p in it["packages"])
+    assert any("Best match" in p["labels"] for p in it["packages"])

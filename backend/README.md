@@ -19,6 +19,14 @@ Python wasn't available in the original environment.
   they never import provider functions directly.
 - **FastAPI** — request validation via Pydantic (`app/schemas.py`), auto docs at `/docs`.
 
+## Live data (free, no keys) and optional upgrades
+
+For the 100 catalog destinations the backend uses free public sources: **Open-Meteo** (climate),
+**Wikipedia/Wikimedia** (sights and credited photos) and **OpenStreetMap** (hotels, restaurants). Flight and hotel
+**prices** are labelled estimates unless you add free **Amadeus** keys. An **OpenAI** key adds plain-English requests
+and grounded trip summaries. Put keys in `backend/.env` (copy `.env.example`; git-ignored). Full details:
+[../docs/05-live-data-and-ai.md](../docs/05-live-data-and-ai.md). `WAYFINDER_OFFLINE=1` uses built-in demo data only.
+
 ## What's still mocked
 
 Only the **data**: flight/hotel search results are randomly generated on every call
@@ -56,7 +64,7 @@ Interactive API docs: http://localhost:8000/docs
 .venv\Scripts\python.exe -m pytest -v
 ```
 
-28 tests: ranking/scoring math (pure, no I/O) plus a `TestClient`-driven API suite
+56 tests: ranking/scoring math (pure, no I/O) plus a `TestClient`-driven API suite
 that runs the app's real lifespan — meaning the flights/hotels MCP subprocess servers
 actually start for the API tests.
 

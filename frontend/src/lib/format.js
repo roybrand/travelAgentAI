@@ -16,3 +16,10 @@ export const metres = (m) => (m < 1000 ? `${m} m` : `${(m / 1000).toFixed(1)} 
 export const isoDate = (d) => d.toISOString().slice(0, 10);
 
 export const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+/** Great-circle distance in metres. */
+export function distanceM(a, b) {
+  const rad = (d) => (d * Math.PI) / 180;
+  const h = Math.sin(rad(b.lat - a.lat) / 2) ** 2 + Math.cos(rad(a.lat)) * Math.cos(rad(b.lat)) * Math.sin(rad(b.lng - a.lng) / 2) ** 2;
+  return 2 * 6371000 * Math.asin(Math.sqrt(h));
+}

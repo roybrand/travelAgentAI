@@ -1,5 +1,6 @@
-import { createContext, useCallback, useContext, useMemo, useState } from "react";
-import { planTrip } from "../api";
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { fetchConfig, fetchDestinations, planTrip } from "../api";
+import { clearStoredProfile, loadProfile, storeProfile } from "../lib/profile";
 import { isoDate } from "../lib/format";
 
 const Ctx = createContext(null);
@@ -17,14 +18,17 @@ function defaults() {
     end_date: isoDate(end),
     budget: 2500,
     travelers: 2,
-    interests: ["beachfront", "nightlife", "michelin-nearby"],
+    interests: ["beachfront", "nightlife", "food-scene"],
   };
 }
 
 // Pre-select a few experiences so the trip total is meaningful before the user customises it.
 function defaultPlan(guide) {
   if (!guide) return [];
-  return [guide.places[0], guide.adventures[0], guide.adventures[1]].filter(Boolean).map((i) => i.name);
+  return [guide.places[0], guide.adventures[0], guide.adventures[1], guide.places[1]]
+    .filter(Boolean)
+    .slice(0, 3)
+    .map((i) => i.name);
 }
 
 export function TripProvider({ children }) {
@@ -34,13 +38,36 @@ export function TripProvider({ children }) {
   const [error, setError] = useState("");
   const [hotelId, setHotelId] = useState(null);
   const [planned, setPlanned] = useState([]);
+  const [config, setConfig] = useState({ openai: false, amadeus: false, offline: false });
+  const [destinations, setDestinations] = useState([]);
+  const [profile, setProfileState] = useState(loadProfile);
+
+  useEffect(() => {
+    fetchConfig().then((c) => c && setConfig(c));
+    fetchDestinations().then((d) => d && setDestinations(d.destinations));
+  }, []);
+
+  const setProfile = useCallback((p) => {
+    setProfileState(p);
+    if (p) storeProfile(p);
+  }, []);
+  const forgetProfile = useCallback(() => {
+    setProfileState(null);
+    clearStoredProfile();
+  }, []);
+
+  const cityName = useCallback(
+    (code) => destinations.find((d) => d.code === String(code).toUpperCase())?.city || code,
+    [destinations],
+  );
 
   const plan = useCallback(async (payload) => {
     setLoading(true);
     setError("");
     try {
-      // Hold the overlay for a moment so the agent steps read as a sequence.
-      const [data] = await Promise.all([planTrip(payload), new Promise((r) => setTimeout(r, 2300))]);
+      // Hold the overlay briefly so the agent steps read as a sequence; live lookups may take longer.
+      const withTypes = { ...payload, place_types: payload.place_types ?? profile?.place_types ?? [] };
+      const [data] = await Promise.all([planTrip(withTypes), new Promise((r) => setTimeout(r, 2300))]);
       setResult(data);
       setHotelId(data.itinerary.hotel.id);
       setPlanned(defaultPlan(data.itinerary.guide));
@@ -51,7 +78,7 @@ export function TripProvider({ children }) {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [profile]);
 
   const toggleItem = useCallback(
     (name) => setPlanned((p) => (p.includes(name) ? p.filter((n) => n !== name) : [...p, name])),
@@ -71,6 +98,9 @@ export function TripProvider({ children }) {
     return { it, req, hotel, flightCost, stayCost, expCost, total, chosenItems, isBest: hotel.id === it.hotel.id };
   }, [result, hotelId, planned]);
 
-  const value = { form, setForm, result, trip, loading, error, setError, plan, hotelId, setHotelId, planned, toggleItem };
+  const value = {
+    form, setForm, result, trip, loading, error, setError, plan, hotelId, setHotelId, planned, toggleItem,
+    config, destinations, cityName, profile, setProfile, forgetProfile,
+  };
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

@@ -4,6 +4,8 @@ AI trip-planner, built out incrementally from [requirement.txt](requirement.txt)
 
 - **[backend/](backend/)** — primary implementation. FastAPI + real LangGraph + real
   MCP servers (flights/hotels), Python. Start here.
+- **Live data:** 100 destinations (Europe, Americas, Asia) on free public sources, with optional Amadeus (real prices)
+  and OpenAI (plain-English requests, grounded summaries). See [docs/05-live-data-and-ai.md](docs/05-live-data-and-ai.md).
 - **[frontend/](frontend/)** — the traveler-facing web app: React + Vite, with real licensed destination
   photos, interactive maps, charts and a multi-page flow (Home, Your trip, Stays, Explore).
 - **[docs/](docs/)** — flow charts, architecture diagrams, and technology/model explanations.

@@ -65,7 +65,7 @@ flowchart TB
 | **Recharts** | Donut, bar and sparkline charts | Declarative charts that map directly onto API data | [pages/](../frontend/src/pages) |
 | **Leaflet + OpenStreetMap** | Interactive maps | Free, no API key | [MapView.jsx](../frontend/src/components/MapView.jsx) |
 | **Framer Motion** | Page transitions and reveals | Polished feel with little code | [App.jsx](../frontend/src/App.jsx) |
-| **pytest** | Automated tests | 28 tests covering scoring, guides, pros/cons and the API | [tests/](../backend/tests) |
+| **pytest** | Automated tests | 60 tests covering scoring, guides, pros/cons, live data adapters and the API | [tests/](../backend/tests) |
 
 ---
 
@@ -146,8 +146,8 @@ sequenceDiagram
 | Client | `MCPToolClient`: one persistent `ClientSession` per server |
 | Error handling | If a tool reports `isError`, the client raises a `RuntimeError` naming the tool and server |
 
-**Business value:** replacing the mock flights server with a real Amadeus-backed one changes the
-server file only. The graph, ranking, API and UI stay untouched.
+**Business value:** swapping a data source (for example, from price estimates to Amadeus) changes the
+server only. The graph, ranking, API and UI stay untouched.
 
 ## uvicorn
 
@@ -162,7 +162,7 @@ page map, component architecture, photo licensing, maps and where each number co
 
 ## pytest
 
-28 tests, all passing:
+60 tests, all passing:
 
 | Suite | What it proves |
 |---|---|

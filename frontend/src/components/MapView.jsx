@@ -61,8 +61,8 @@ export default function MapView({ center, pins, selectedId, highlightId, onSelec
       const icon = L.divIcon({
         html: pinElement(pin, pin.id === selectedRef.current),
         className: "pin-wrap",
-        iconSize: small ? [16, 16] : pin.kind === "hotel" ? [64, 30] : [34, 34],
-        iconAnchor: small ? [8, 8] : pin.kind === "hotel" ? [32, 15] : [17, 17],
+        iconSize: small ? [16, 16] : pin.kind === "hotel" ? [64, 30] : pin.kind === "you" ? [22, 22] : [34, 34],
+        iconAnchor: small ? [8, 8] : pin.kind === "hotel" ? [32, 15] : pin.kind === "you" ? [11, 11] : [17, 17],
       });
       const m = L.marker([pin.lat, pin.lng], { icon, title: pin.title, zIndexOffset: small ? 0 : 400 });
       m.on("click", () => onSelectRef.current && onSelectRef.current(pin.id));

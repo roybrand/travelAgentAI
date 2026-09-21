@@ -1,24 +1,32 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { useNavigate } from "react-router-dom";
+import { buildTrip } from "../api";
 import { useTrip } from "../state/TripContext.jsx";
 import { INTERESTS, SHOWCASE } from "../lib/constants";
 import { isoDate } from "../lib/format";
+import { PLACE_TYPE_LABEL, resizeImage } from "../lib/profile";
+import DestSelect from "../components/DestSelect.jsx";
 import Photo from "../components/Photo.jsx";
 import PlanningOverlay from "../components/PlanningOverlay.jsx";
 
 const FEATURES = [
+  ["100 destinations, live data", "Europe, the Americas and Asia. Real weather, real sights and photos, real hotels and restaurants from free public sources."],
   ["Ranked, not just listed", "Every flight and stay is scored on price, quality, your interests and budget fit, then combined into one best pick."],
-  ["Pros and cons, in plain words", "See exactly what you gain and give up with each choice, based on the real numbers in your search."],
-  ["The right time to go", "Your dates are scored against the destination's season, with a nudge when a better window exists."],
-  ["Places, adventures, nearby deals", "Photos, a map, what it costs, and the best-value spots within walking distance."],
+  ["Honest about what it knows", "Every price and data source is labelled: live, estimate or demo. Nothing is invented and passed off as real."],
+  ["The right time to go", "Your dates are scored against real historical weather for the destination, with a nudge when a better window exists."],
 ];
 
 export default function Home() {
-  const { form, setForm, plan, loading, error, setError } = useTrip();
+  const { form, setForm, plan, loading, error, setError, config, destinations, profile, setProfile, forgetProfile } = useTrip();
   const navigate = useNavigate();
   const [slide, setSlide] = useState(0);
   const [formError, setFormError] = useState("");
+  const [freeText, setFreeText] = useState("");
+  const [parsing, setParsing] = useState(false);
+  const [image, setImage] = useState(null);
+  const fileRef = useRef(null);
+  const [assumptions, setAssumptions] = useState([]);
 
   useEffect(() => {
     const t = setInterval(() => setSlide((s) => (s + 1) % SHOWCASE.length), 6500);
@@ -30,7 +38,7 @@ export default function Home() {
     set({ interests: form.interests.includes(k) ? form.interests.filter((x) => x !== k) : [...form.interests, k] });
 
   function validate(p) {
-    if (!p.origin) return "Enter where you are flying from.";
+    if (!p.origin) return "Choose where you are flying from.";
     if (!p.destination) return "Choose a destination.";
     if (p.origin === p.destination) return "Origin and destination must differ.";
     if (!p.start_date || !p.end_date || p.end_date <= p.start_date) return "The return date must be after departure.";
@@ -40,12 +48,7 @@ export default function Home() {
 
   async function submit(e) {
     e.preventDefault();
-    const payload = {
-      ...form,
-      origin: form.origin.trim().toUpperCase(),
-      destination: form.destination.trim().toUpperCase(),
-      budget: form.budget === "" || form.budget == null ? null : Number(form.budget),
-    };
+    const payload = { ...form, budget: form.budget === "" || form.budget == null ? null : Number(form.budget) };
     const msg = validate(payload);
     setFormError(msg);
     if (msg) return;
@@ -53,7 +56,48 @@ export default function Home() {
     if (await plan(payload)) navigate("/trip");
   }
 
-  const chosen = SHOWCASE.find((s) => s.code === form.destination.trim().toUpperCase());
+  async function pickImage(e) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    try {
+      setImage(await resizeImage(file));
+      setFormError("");
+    } catch (err) {
+      setFormError(err.message);
+    }
+  }
+
+  /** Prompt (and optional photo) -> trip fields + a traveler profile -> plan the whole trip. */
+  async function build() {
+    setParsing(true);
+    setFormError("");
+    setAssumptions([]);
+    try {
+      const { assumptions: notes = [], profile: prof, ...fields } = await buildTrip(freeText, image);
+      const gotSomething = Object.keys(fields).length || prof?.place_types?.length || prof?.interests?.length;
+      if (!gotSomething) throw new Error("I could not find any trip details in that. Try adding a place, or a photo of somewhere you like.");
+      const merged = { ...form, ...fields, interests: prof?.interests?.length ? prof.interests : fields.interests || form.interests };
+      setForm(merged);
+      setAssumptions(notes);
+      if (prof) setProfile(prof);
+      const payload = {
+        ...merged,
+        budget: merged.budget === "" || merged.budget == null ? null : Number(merged.budget),
+        place_types: prof?.place_types ?? [],
+      };
+      const msg = validate(payload);
+      if (msg) throw new Error(`${msg} The form below has what I understood, so you can adjust it.`);
+      setParsing(false);
+      if (await plan(payload)) navigate("/trip");
+    } catch (e) {
+      setFormError(e.message);
+    } finally {
+      setParsing(false);
+    }
+  }
+
+  const chosen = SHOWCASE.find((s) => s.code === form.destination);
   const today = isoDate(new Date());
 
   return (
@@ -67,11 +111,11 @@ export default function Home() {
         <div className="hero-scrim" />
         <div className="wrap hero-inner">
           <motion.div initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1, duration: 0.6 }}>
-            <div className="eyebrow">AI travel agent</div>
+            <div className="eyebrow">AI travel agent · {destinations.length || 100} destinations</div>
             <h1>See it before <span>you book it.</span></h1>
             <p className="lede">
-              Flights, stays and experiences, ranked by an AI agent and laid out with photos, maps and charts so
-              the best choice is obvious at a glance.
+              Pick any of {destinations.length || 100} cities across Europe, the Americas and Asia. Your AI agent
+              finds real hotels, sights and weather, ranks the options, and shows you the best choice at a glance.
             </p>
           </motion.div>
 
@@ -83,7 +127,53 @@ export default function Home() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.25, duration: 0.6 }}
           >
-            <div className="dest-grid" role="radiogroup" aria-label="Destination">
+            {config.openai && (
+              <div className="ai-box">
+                <label className="field">
+                  <span>✨ Build a whole trip from a prompt</span>
+                  <textarea
+                    rows={3}
+                    value={freeText}
+                    maxLength={1500}
+                    placeholder="e.g. Four days in Porto in December for two, about £1,500. We love wine, old pubs, museums and a good market."
+                    onChange={(e) => setFreeText(e.target.value)}
+                  />
+                </label>
+                <div className="ai-actions">
+                  <input ref={fileRef} type="file" accept="image/*" hidden onChange={pickImage} />
+                  {image ? (
+                    <span className="thumb-chip">
+                      <img src={image} alt="Your inspiration" />
+                      <button type="button" onClick={() => setImage(null)} aria-label="Remove photo">×</button>
+                    </span>
+                  ) : (
+                    <button type="button" className="btn ghost sm" onClick={() => fileRef.current?.click()}>📷 Add a photo of the vibe you like</button>
+                  )}
+                  <button type="button" className="btn primary sm" disabled={parsing || loading || (freeText.trim().length < 3 && !image)} onClick={build}>
+                    {parsing ? "Reading…" : "Build my whole trip"}
+                  </button>
+                </div>
+                {image && <p className="fine tight">The photo is shrunk on your device and sent to OpenAI only for this request. It is not stored, and the model is told not to identify anyone in it.</p>}
+                {assumptions.length > 0 && (
+                  <ul className="assume">
+                    {assumptions.map((a) => <li key={a}>{a}</li>)}
+                  </ul>
+                )}
+                {profile && (
+                  <div className="profile-mini">
+                    <b>Your travel profile</b>
+                    <p className="muted">{profile.summary}</p>
+                    <div className="chips">
+                      {profile.keywords.map((k) => <span key={k} className="tag hit">{k}</span>)}
+                      {profile.place_types.map((k) => <span key={k} className="tag">{PLACE_TYPE_LABEL[k] || k}</span>)}
+                    </div>
+                    <button type="button" className="link-btn plain" onClick={forgetProfile}>Forget my profile</button>
+                  </div>
+                )}
+              </div>
+            )}
+
+            <div className="dest-grid" role="radiogroup" aria-label="Popular destinations">
               {SHOWCASE.map((s) => (
                 <button
                   type="button"
@@ -105,11 +195,11 @@ export default function Home() {
             <div className="fields">
               <label className="field">
                 <span>From</span>
-                <input value={form.origin} onChange={(e) => set({ origin: e.target.value })} placeholder="City or code" maxLength={30} />
+                <DestSelect value={form.origin} onChange={(v) => set({ origin: v })} destinations={destinations} exclude={form.destination} />
               </label>
               <label className="field">
-                <span>To (or any other code)</span>
-                <input value={form.destination} onChange={(e) => set({ destination: e.target.value })} placeholder="e.g. NAP" maxLength={30} />
+                <span>To</span>
+                <DestSelect value={form.destination} onChange={(v) => set({ destination: v })} destinations={destinations} exclude={form.origin} />
               </label>
               <label className="field">
                 <span>Depart</span>
@@ -148,14 +238,15 @@ export default function Home() {
             <button className="btn primary big" type="submit" disabled={loading}>
               {loading ? "Planning…" : "Plan my trip"}
             </button>
+            <p className="fine tight">The first search for a city can take up to a minute while live data is gathered. After that it is fast.</p>
           </motion.form>
         </div>
       </section>
 
       <section className="wrap section">
         <div className="section-head">
-          <h2>Four places, fully mapped</h2>
-          <p>Pick a showcase destination for the full visual experience: photos, an interactive map and nearby deals.</p>
+          <h2>Popular right now</h2>
+          <p>Naples, Lisbon, Tokyo and Dubai also come with hand-picked highlights and costs. Every other city uses live sources.</p>
         </div>
         <div className="showcase">
           {SHOWCASE.map((s) => (

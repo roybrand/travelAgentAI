@@ -3,6 +3,10 @@
 The traveler-facing app: a multi-page React single-page application that turns the API's data
 into photos, maps and charts. It lives in [frontend/](../frontend) and is served by FastAPI in production.
 
+> **Live data.** The app now runs on free live sources for 100 destinations. Where this document says "demo", that
+> describes the offline fallback or the four hand-curated showcase cities. See [05 · Live data and AI](05-live-data-and-ai.md)
+> for what is live, estimated or demo. The UI labels each one.
+
 **Contents**
 
 1. [Page map](#1-page-map)
@@ -102,20 +106,22 @@ All screens are driven by the single `POST /api/plan-trip` response.
 | Donut: flights / stay / experiences | Same three components | Experiences are per-person estimates x travelers |
 | Itinerary timeline | `flight`, selected hotel, planned experiences | Experiences spread over the free days |
 | Pros and cons | `itinerary.pros`, `cons`, `rationale` | Computed from the search, see [03](03-technology-and-models.md#pros-and-cons-model) |
-| Season chart, verdict, best window | `guide.months`, `guide.timing` | Curated content |
+| Season chart, verdict, best window | `guide.months`, `guide.climate`, `guide.timing` | Live weather (Open-Meteo) |
 | Stays comparison chart | `hotel_options[].price_per_night`, `hotel_price_stats.avg` | Bars vs the average line |
-| Stay cards | `hotel_options[]`: `photos`, `rating_breakdown`, `amenities`, `deal`, `price_history`, `lat`, `lng` | Enrichment fields are demo data |
-| Sight cards and map pins | `guide.places[]`, `adventures[]`: `photo`, `lat`, `lng`, `cost`, `duration`, `nearby[]` | Curated |
-| Nearby deals and deal chart | `guide.venues[]`, item `nearby[]` | Distances computed; listings and discounts are demo |
+| Stay cards | `hotel_options[]`: `stars`, `amenities`, `signals`, `website`, `price_source`, `lat`, `lng` | Real OpenStreetMap data. `deal`, `price_history` and `rating_breakdown` exist only in the demo fallback |
+| Sight cards and map pins | `guide.places[]`, `adventures[]`: `photo` or `photo_url`, `photo_credit`, `lat`, `lng`, `nearby[]` | Wikipedia (live), or curated for the four showcase cities (adds `cost`, `duration`) |
+| Nearby food, and the deal chart | `guide.venues[]`, item `nearby[]` | Real OpenStreetMap restaurants with real distances. The deal chart appears only for demo data, since free data has no discounts |
 
-If a destination has no rich guide, the app degrades gracefully: the Trip and Stays pages still work
-(without map or hero photo) and Explore explains that a guide is not available yet.
+If live sources fail for a destination, the app degrades gracefully: the Trip and Stays pages still work
+and Explore explains that a guide is not available.
 
 ---
 
 ## 4. Photo pipeline and licensing
 
-Real photographs of the destinations, with correct credit, and no runtime dependency on the internet.
+Real photographs of the destinations, with correct credit. The four showcase cities use bundled photos (below) and work
+offline. Every other city loads its lead and sight photos live from Wikimedia Commons, with the same licence filter and
+credit shown on the image.
 
 ```mermaid
 flowchart LR
@@ -138,6 +144,9 @@ flowchart LR
 ---
 
 ## 5. Maps, "nearby" and deals
+
+> In **live mode** nearby venues are real OpenStreetMap restaurants with real distances and **no prices or discounts**.
+> The pipeline below (fictional venues with synthetic discounts) is the **offline demo fallback** only.
 
 ```mermaid
 flowchart TD
@@ -170,12 +179,13 @@ Being clear about this is what makes the demo credible.
 
 | Data | Source | Status |
 |---|---|---|
-| Flight and hotel prices, availability | Random generator in the MCP servers | **Simulated** |
-| Hotel discounts, 30-day price history, rating breakdown, amenities | Random generator in the hotels server | **Simulated** |
+| Flight and hotel prices | Amadeus if configured, otherwise labelled estimates ([05](05-live-data-and-ai.md)) | **Live** or **Estimate** |
+| Hotels, amenities, neighbourhood signals | OpenStreetMap | **Live** |
+| Hotel discounts, price history, rating breakdown | Only in the offline demo fallback | **Demo** |
 | Ranking, scores, pros and cons, trip totals | Computed from the search results | **Real logic** |
 | Distances between sights and venues | Haversine on coordinates | **Real calculation** |
 | Best time to go, places, adventures, costs, tips | Hand-curated guide, 4 showcase destinations plus 6 text-only | **Curated** |
-| Venue listings, prices, discounts | Synthetic, fictional venues | **Simulated** |
+| Nearby restaurants | OpenStreetMap, real distances; no prices or discounts | **Live** |
 | Destination photos | Wikimedia Commons, credited | **Real, licensed** |
 | Hotel photos | Generic illustrations | **Illustrative** |
 | Map | OpenStreetMap | **Real** |

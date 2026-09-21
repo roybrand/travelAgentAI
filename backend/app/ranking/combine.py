@@ -34,6 +34,7 @@ def rank_and_combine(
 
     return {
         "chosen": chosen,
+        "combos": combos,
         "alternatives": alternatives,
         "rationale": _build_rationale(chosen, runner_up, interests),
     }
@@ -50,6 +51,17 @@ def _hm(minutes: float) -> str:
 
 def _stops_text(stops: int) -> str:
     return "a direct flight" if stops == 0 else f"{stops} stop{'s' if stops > 1 else ''}"
+
+
+def _has_guest_rating(hotel: dict) -> bool:
+    return hotel.get("rating") is not None
+
+
+def _quality(hotel: dict) -> float | None:
+    """Guest rating (0-5) when a provider gives one, else the OpenStreetMap star class, else unknown."""
+    if hotel.get("rating") is not None:
+        return hotel["rating"]
+    return hotel.get("stars")
 
 
 def _matched(hotel: dict, interests: list[str]) -> list[str]:
@@ -92,10 +104,17 @@ def _pros_cons_for_chosen(
     elif flight["duration_minutes"] >= avg_duration + 15:
         cons.append(f"Longer than average journey ({_hm(flight['duration_minutes'])})")
 
-    if hotel["rating"] >= 4.5:
-        pros.append(f"Top-rated hotel ({hotel['rating']} out of 5)")
-    elif hotel["rating"] < 4.0:
-        cons.append(f"Below-average hotel rating ({hotel['rating']} out of 5)")
+    quality = _quality(hotel)
+    if quality is not None and _has_guest_rating(hotel):
+        if quality >= 4.5:
+            pros.append(f"Top-rated hotel ({quality} out of 5)")
+        elif quality < 4.0:
+            cons.append(f"Below-average hotel rating ({quality} out of 5)")
+    elif quality is not None:  # OpenStreetMap star class, not guest reviews
+        if quality >= 4:
+            pros.append(f"{int(quality)}-star hotel")
+        elif quality <= 2:
+            cons.append(f"Only a {int(quality)}-star hotel")
 
     if interests:
         missing = [tag for tag in interests if tag not in matched]
@@ -155,11 +174,18 @@ def _compare_to_chosen(alt: dict, chosen: dict, interests: list[str]) -> tuple[l
         cons.append(f"{_hm(time_gap)} slower journey")
 
     a_hotel, c_hotel = alt["hotel"], chosen["hotel"]
-    rating_gap = a_hotel["rating"] - c_hotel["rating"]
-    if rating_gap >= 0.2:
-        pros.append(f"Higher-rated hotel ({a_hotel['rating']} vs {c_hotel['rating']})")
-    elif rating_gap <= -0.2:
-        cons.append(f"Lower-rated hotel ({a_hotel['rating']} vs {c_hotel['rating']})")
+    a_q, c_q = _quality(a_hotel), _quality(c_hotel)
+    if a_q is not None and c_q is not None:
+        rating_gap = a_q - c_q
+        stars = not (_has_guest_rating(a_hotel) and _has_guest_rating(c_hotel))
+        if stars and rating_gap >= 1:
+            pros.append(f"Higher star class ({int(a_q)}-star vs {int(c_q)}-star)")
+        elif stars and rating_gap <= -1:
+            cons.append(f"Lower star class ({int(a_q)}-star vs {int(c_q)}-star)")
+        elif not stars and rating_gap >= 0.2:
+            pros.append(f"Higher-rated hotel ({a_q} vs {c_q})")
+        elif not stars and rating_gap <= -0.2:
+            cons.append(f"Lower-rated hotel ({a_q} vs {c_q})")
 
     interest_gap = len(_matched(a_hotel, interests)) - len(_matched(c_hotel, interests))
     if interest_gap > 0:
@@ -184,14 +210,15 @@ def _build_rationale(chosen: dict, runner_up: dict | None, interests: list[str])
     notes = []
     stops = chosen["flight"]["stops"]
     stops_text = "direct" if stops == 0 else f"{stops} stop(s)"
-    notes.append(
-        f"Total estimated cost £{chosen['total_cost']:.0f} via {chosen['flight']['airline']} "
-        f"({stops_text}) + {chosen['hotel']['name']}."
-    )
+    if chosen["flight"].get("price_source") == "estimate":
+        via = f"a typical {stops_text} fare"
+    else:
+        via = f"{chosen['flight']['airline']} ({stops_text})"
+    notes.append(f"Total estimated cost £{chosen['total_cost']:.0f} via {via} + {chosen['hotel']['name']}.")
 
     if runner_up:
         price_diff = chosen["hotel"]["price_per_night"] - runner_up["hotel"]["price_per_night"]
-        rating_diff = chosen["hotel"]["rating"] - runner_up["hotel"]["rating"]
+        c_q, r_q = _quality(chosen["hotel"]), _quality(runner_up["hotel"])
         matched_tags = [tag for tag in interests if tag in chosen["hotel"]["tags"]]
 
         if price_diff == 0:
@@ -199,15 +226,18 @@ def _build_rationale(chosen: dict, runner_up: dict | None, interests: list[str])
         else:
             price_clause = f"is £{abs(price_diff):.0f} {'more' if price_diff > 0 else 'less'} per night than"
 
-        if rating_diff == 0:
-            rating_clause = "the same rating as"
+        both_guest = _has_guest_rating(chosen["hotel"]) and _has_guest_rating(runner_up["hotel"])
+        unit = "rating" if both_guest else "star class"
+        fmt = (lambda v: f"{v}") if both_guest else (lambda v: f"{int(v)}-star")
+        if c_q is None or r_q is None:
+            rating_clause = None
+        elif c_q == r_q:
+            rating_clause = f"the same {unit} as"
         else:
-            rating_clause = (
-                f"a {'higher' if rating_diff > 0 else 'lower'} rating "
-                f"({chosen['hotel']['rating']} vs {runner_up['hotel']['rating']}) than"
-            )
+            rating_clause = f"a {'higher' if c_q > r_q else 'lower'} {unit} ({fmt(c_q)} vs {fmt(r_q)}) than"
 
-        sentence = f"{chosen['hotel']['name']} {price_clause} {runner_up['hotel']['name']}, with {rating_clause} it."
+        sentence = f"{chosen['hotel']['name']} {price_clause} {runner_up['hotel']['name']}"
+        sentence += f", with {rating_clause} it." if rating_clause else "."
         if matched_tags:
             sentence += f" It also matches your interests: {', '.join(matched_tags)}."
         notes.append(sentence)
