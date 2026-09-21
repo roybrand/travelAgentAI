@@ -1,0 +1,14 @@
+{
+  "name": "travel-agent-ai",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "AI trip-planning vertical slice: flights + hotels search, ranked and combined into an itinerary via a LangGraph-style orchestration graph and MCP-style tool servers.",
+  "scripts": {
+    "start": "node src/server.js",
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

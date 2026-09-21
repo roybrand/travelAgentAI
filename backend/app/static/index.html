@@ -1,0 +1,645 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Wayfinder AI — Trip Planner</title>
+<meta name="description" content="An AI travel agent that searches flights and hotels, ranks every combination against your budget and interests, and explains its pick.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%2314b8a6'/%3E%3Cpath d='M7 17l18-8-6 16-3-7z' fill='%23041014'/%3E%3C/svg%3E">
+<style>
+:root {
+  --bg: #070d14;
+  --bg-2: #0b1420;
+  --surface: #101a28;
+  --surface-2: #142132;
+  --border: #1f2f44;
+  --border-strong: #2b4160;
+  --text: #e8eef6;
+  --muted: #8ea2b9;
+  --faint: #5d7189;
+  --accent: #2dd4bf;
+  --accent-strong: #14b8a6;
+  --accent-ink: #032925;
+  --accent-soft: rgba(45, 212, 191, .12);
+  --gold: #f5c76a;
+  --ok: #34d399;
+  --bad: #f87171;
+  --radius: 16px;
+  --shadow: 0 20px 50px -20px rgba(0, 0, 0, .6);
+  --font: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body {
+  margin: 0;
+  font-family: var(--font);
+  color: var(--text);
+  background:
+    radial-gradient(1000px 500px at 85% -10%, rgba(45, 212, 191, .10), transparent 60%),
+    radial-gradient(800px 500px at -10% 10%, rgba(99, 102, 241, .10), transparent 60%),
+    var(--bg);
+  background-attachment: fixed;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+button, input, select { font: inherit; color: inherit; }
+.wrap { max-width: 1180px; margin: 0 auto; padding: 0 20px; }
+
+/* ---------- header ---------- */
+header.top { padding: 20px 0; display: flex; align-items: center; justify-content: space-between; }
+.brand { display: flex; align-items: center; gap: 10px; font-weight: 700; letter-spacing: -.01em; font-size: 18px; }
+.brand .logo { width: 32px; height: 32px; border-radius: 9px; background: linear-gradient(135deg, #2dd4bf, #14b8a6); display: grid; place-items: center; }
+.brand .logo svg { width: 18px; height: 18px; }
+.brand small { color: var(--muted); font-weight: 500; }
+.pill {
+  display: inline-flex; align-items: center; gap: 8px; padding: 6px 12px; border-radius: 999px;
+  border: 1px solid var(--border); background: rgba(16, 26, 40, .7); color: var(--muted); font-size: 12.5px;
+}
+.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--faint); }
+.dot.live { background: var(--ok); box-shadow: 0 0 0 4px rgba(52, 211, 153, .18); }
+.dot.down { background: var(--bad); box-shadow: 0 0 0 4px rgba(248, 113, 113, .18); }
+
+/* ---------- hero ---------- */
+.hero { padding: 36px 0 28px; max-width: 760px; }
+.eyebrow { color: var(--accent); font-size: 13px; font-weight: 600; letter-spacing: .12em; text-transform: uppercase; }
+h1 { font-size: clamp(32px, 5.2vw, 54px); line-height: 1.06; letter-spacing: -.03em; margin: 12px 0 16px; }
+h1 span { background: linear-gradient(90deg, #5eead4, #a5b4fc); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.lede { color: var(--muted); font-size: 18px; max-width: 620px; margin: 0; }
+
+/* ---------- layout ---------- */
+.grid { display: grid; grid-template-columns: 380px 1fr; gap: 24px; align-items: start; padding-bottom: 60px; }
+@media (max-width: 960px) { .grid { grid-template-columns: 1fr; } }
+
+.card {
+  background: linear-gradient(180deg, var(--surface), var(--bg-2));
+  border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow);
+}
+.card.pad { padding: 22px; }
+.card h2 { margin: 0 0 4px; font-size: 17px; letter-spacing: -.01em; }
+.card .sub { margin: 0 0 18px; color: var(--muted); font-size: 13.5px; }
+
+/* ---------- form ---------- */
+form { display: grid; gap: 16px; }
+.row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+label.f, div.f { display: grid; gap: 6px; font-size: 12.5px; color: var(--muted); font-weight: 500; }
+input[type=text], input[type=date], input[type=number] {
+  width: 100%; background: #0a121c; border: 1px solid var(--border); border-radius: 10px;
+  padding: 11px 12px; color: var(--text); outline: none; transition: border-color .15s, box-shadow .15s;
+  color-scheme: dark;
+}
+input:focus { border-color: var(--accent-strong); box-shadow: 0 0 0 3px var(--accent-soft); }
+input.invalid { border-color: var(--bad); }
+.prefix { position: relative; }
+.prefix span { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--muted); pointer-events: none; }
+.prefix input { padding-left: 26px; }
+.stepper { display: flex; align-items: center; background: #0a121c; border: 1px solid var(--border); border-radius: 10px; }
+.stepper button { width: 40px; height: 40px; background: none; border: 0; cursor: pointer; color: var(--muted); font-size: 18px; }
+.stepper button:hover { color: var(--text); }
+.stepper output { flex: 1; text-align: center; font-weight: 600; color: var(--text); }
+
+.chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip {
+  padding: 7px 12px; border-radius: 999px; border: 1px solid var(--border); background: transparent;
+  color: var(--muted); font-size: 13px; cursor: pointer; transition: all .15s; user-select: none;
+}
+.chip:hover { border-color: var(--border-strong); color: var(--text); }
+.chip[aria-pressed=true] { background: var(--accent-soft); border-color: var(--accent-strong); color: #7ff0e0; }
+.presets { display: flex; gap: 8px; flex-wrap: wrap; }
+.presets .chip { font-size: 12.5px; padding: 5px 10px; }
+
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px; cursor: pointer;
+  border: 0; border-radius: 12px; padding: 13px 18px; font-weight: 650; font-size: 15px;
+  background: linear-gradient(180deg, #34e0cb, #14b8a6); color: var(--accent-ink);
+  box-shadow: 0 10px 24px -10px rgba(20, 184, 166, .7); transition: transform .1s, filter .15s;
+}
+.btn:hover { filter: brightness(1.06); }
+.btn:active { transform: translateY(1px); }
+.btn:disabled { opacity: .6; cursor: progress; }
+.btn.ghost { background: transparent; color: var(--text); border: 1px solid var(--border-strong); box-shadow: none; padding: 9px 14px; font-size: 13.5px; }
+.btn.ghost:hover { background: var(--surface-2); }
+.err { color: var(--bad); font-size: 13px; min-height: 18px; margin: 0; }
+
+/* ---------- empty / loading ---------- */
+.empty { padding: 48px 28px; text-align: center; }
+.empty .globe { width: 64px; height: 64px; margin: 0 auto 16px; border-radius: 18px; background: var(--accent-soft); display: grid; place-items: center; }
+.empty h3 { margin: 0 0 6px; font-size: 18px; }
+.empty p { margin: 0 auto; color: var(--muted); max-width: 420px; font-size: 14.5px; }
+.pipeline { display: grid; gap: 10px; padding: 26px; }
+.pipeline h3 { margin: 0 0 6px; font-size: 16px; }
+.step { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border: 1px solid var(--border); border-radius: 12px; color: var(--faint); background: rgba(10, 18, 28, .5); transition: all .25s; }
+.step .ic { width: 26px; height: 26px; border-radius: 50%; border: 2px solid var(--border-strong); display: grid; place-items: center; flex: none; }
+.step.active { color: var(--text); border-color: var(--accent-strong); background: var(--accent-soft); }
+.step.active .ic { border-color: var(--accent); border-top-color: transparent; animation: spin .8s linear infinite; }
+.step.done { color: var(--muted); }
+.step.done .ic { background: var(--accent-strong); border-color: var(--accent-strong); }
+.step.done .ic::after { content: ""; width: 6px; height: 11px; border: solid var(--accent-ink); border-width: 0 2.5px 2.5px 0; transform: rotate(45deg) translate(-1px, -1px); }
+.step b { font-weight: 600; }
+.step small { display: block; color: var(--faint); font-size: 12px; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ---------- results ---------- */
+#results { display: grid; gap: 20px; }
+.fade { animation: fade .45s ease both; }
+@keyframes fade { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+
+.best { overflow: hidden; }
+.best .head { padding: 22px 24px; display: flex; gap: 16px; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; border-bottom: 1px solid var(--border); background: linear-gradient(120deg, rgba(45, 212, 191, .10), transparent 60%); }
+.badge { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; background: rgba(245, 199, 106, .12); color: var(--gold); border: 1px solid rgba(245, 199, 106, .3); }
+.route { display: flex; align-items: center; gap: 12px; font-size: 30px; font-weight: 750; letter-spacing: -.02em; margin: 10px 0 2px; }
+.route svg { width: 26px; height: 26px; color: var(--accent); }
+.meta { color: var(--muted); font-size: 14px; }
+.total { text-align: right; }
+.total .amt { font-size: 34px; font-weight: 750; letter-spacing: -.03em; }
+.total .lbl { color: var(--muted); font-size: 12.5px; }
+.status { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 600; padding: 3px 9px; border-radius: 999px; margin-top: 6px; }
+.status.ok { color: var(--ok); background: rgba(52, 211, 153, .12); }
+.status.bad { color: var(--bad); background: rgba(248, 113, 113, .12); }
+
+.two { display: grid; grid-template-columns: 1fr 1fr; }
+@media (max-width: 700px) { .two { grid-template-columns: 1fr; } }
+.panel { padding: 22px 24px; }
+.panel + .panel { border-left: 1px solid var(--border); }
+@media (max-width: 700px) { .panel + .panel { border-left: 0; border-top: 1px solid var(--border); } }
+.kicker { font-size: 12px; color: var(--faint); text-transform: uppercase; letter-spacing: .1em; font-weight: 600; margin-bottom: 10px; display: flex; align-items: center; gap: 8px; }
+.kicker svg { width: 15px; height: 15px; color: var(--accent); }
+.panel h4 { margin: 0 0 4px; font-size: 19px; letter-spacing: -.01em; }
+.facts { display: flex; flex-wrap: wrap; gap: 8px 16px; color: var(--muted); font-size: 13.5px; margin: 10px 0 14px; }
+.facts b { color: var(--text); font-weight: 600; }
+.price { font-size: 20px; font-weight: 700; }
+.price small { color: var(--muted); font-weight: 500; font-size: 13px; }
+.tags { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 14px; }
+.tag { font-size: 12px; padding: 3px 9px; border-radius: 999px; border: 1px solid var(--border); color: var(--muted); }
+.tag.hit { color: #7ff0e0; border-color: var(--accent-strong); background: var(--accent-soft); }
+.stars { color: var(--gold); font-weight: 650; }
+
+.budget { padding: 20px 24px; border-top: 1px solid var(--border); }
+.bar { display: flex; height: 12px; border-radius: 999px; overflow: hidden; background: #0a121c; border: 1px solid var(--border); margin: 12px 0 10px; }
+.bar i { display: block; height: 100%; }
+.bar .f { background: linear-gradient(90deg, #6366f1, #818cf8); }
+.bar .h { background: linear-gradient(90deg, #14b8a6, #2dd4bf); }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 20px; font-size: 13px; color: var(--muted); }
+.legend span::before { content: ""; display: inline-block; width: 9px; height: 9px; border-radius: 3px; margin-right: 7px; background: var(--c); }
+.budget .line { display: flex; justify-content: space-between; font-size: 13.5px; color: var(--muted); }
+.budget .line b { color: var(--text); }
+
+.why { padding: 22px 24px; border-top: 1px solid var(--border); background: rgba(10, 18, 28, .5); }
+.why ul { margin: 0; padding: 0; list-style: none; display: grid; gap: 10px; }
+.why li { display: flex; gap: 12px; color: #c4d1e0; font-size: 14.5px; }
+.why li::before { content: ""; flex: none; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); margin-top: 9px; }
+
+.alts h3 { margin: 0; font-size: 16px; }
+.alts .hd { padding: 18px 24px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); flex-wrap: wrap; gap: 10px; }
+.alt { display: grid; grid-template-columns: 1fr auto; gap: 8px 16px; padding: 16px 24px; border-bottom: 1px solid var(--border); align-items: center; }
+.alt:last-child { border-bottom: 0; }
+.alt .t { font-weight: 600; font-size: 15px; }
+.alt .d { color: var(--muted); font-size: 13px; margin-top: 2px; }
+.alt .p { text-align: right; font-weight: 700; font-size: 17px; }
+.alt .delta { font-size: 12.5px; font-weight: 600; }
+.delta.up { color: var(--bad); } .delta.down { color: var(--ok); }
+.score { height: 4px; border-radius: 4px; background: #0a121c; grid-column: 1 / -1; overflow: hidden; }
+.score i { display: block; height: 100%; background: linear-gradient(90deg, #6366f1, #2dd4bf); }
+
+/* pros / cons */
+.pc-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0; border-top: 1px solid var(--border); }
+@media (max-width: 700px) { .pc-grid { grid-template-columns: 1fr; } }
+.pc-col { padding: 20px 24px; }
+.pc-col + .pc-col { border-left: 1px solid var(--border); }
+@media (max-width: 700px) { .pc-col + .pc-col { border-left: 0; border-top: 1px solid var(--border); } }
+.pc-col ul, details.pc ul { margin: 0; padding: 0; list-style: none; display: grid; gap: 8px; }
+.pc-col li, details.pc li { position: relative; padding-left: 24px; font-size: 14px; color: #c4d1e0; }
+.pc-col li::before, details.pc li::before { position: absolute; left: 0; top: 1px; width: 17px; height: 17px; border-radius: 50%; font-size: 11px; font-weight: 800; display: grid; place-items: center; }
+.pros li::before { content: "+"; background: rgba(52, 211, 153, .16); color: var(--ok); }
+.cons li::before { content: "\2212"; background: rgba(248, 113, 113, .14); color: var(--bad); }
+.kicker.ok { color: var(--ok); } .kicker.no { color: var(--bad); }
+details.pc { grid-column: 1 / -1; margin-top: 4px; }
+details.pc summary { cursor: pointer; color: var(--accent); font-size: 13px; font-weight: 600; list-style: none; }
+details.pc summary::-webkit-details-marker { display: none; }
+details.pc summary::after { content: " \25BE"; }
+details.pc[open] summary::after { content: " \25B4"; }
+details.pc .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding: 12px 0 2px; }
+@media (max-width: 700px) { details.pc .cols { grid-template-columns: 1fr; } }
+
+/* best time to go */
+.section-hd { padding: 18px 24px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; }
+.section-hd h3 { margin: 0; font-size: 16px; }
+.section-hd .where { color: var(--muted); font-size: 13px; }
+.verdict { display: inline-flex; align-items: center; gap: 6px; padding: 4px 11px; border-radius: 999px; font-size: 12.5px; font-weight: 700; }
+.verdict.Ideal { background: rgba(52, 211, 153, .14); color: var(--ok); }
+.verdict.Good { background: rgba(45, 212, 191, .12); color: #7ff0e0; }
+.verdict.Fair { background: rgba(245, 199, 106, .13); color: var(--gold); }
+.verdict.Off-season { background: rgba(248, 113, 113, .13); color: var(--bad); }
+.timing { padding: 22px 24px; display: grid; gap: 16px; }
+.months { display: grid; grid-template-columns: repeat(12, 1fr); gap: 5px; }
+.m { text-align: center; font-size: 11.5px; color: var(--muted); }
+.m i { display: block; height: 34px; border-radius: 8px; margin-bottom: 5px; background: rgba(45, 212, 191, var(--a)); border: 2px solid transparent; }
+.m.trip i { border-color: var(--gold); box-shadow: 0 0 0 3px rgba(245, 199, 106, .18); }
+.m.trip { color: var(--gold); font-weight: 700; }
+.scale { display: flex; align-items: center; gap: 8px; color: var(--faint); font-size: 12px; flex-wrap: wrap; }
+.scale b { width: 70px; height: 8px; border-radius: 4px; background: linear-gradient(90deg, rgba(45, 212, 191, .1), rgba(45, 212, 191, 1)); }
+.scale .key { display: inline-flex; align-items: center; gap: 6px; margin-left: 10px; }
+.scale .key i { width: 12px; height: 12px; border-radius: 4px; border: 2px solid var(--gold); }
+.facts2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+@media (max-width: 700px) { .facts2 { grid-template-columns: 1fr; } }
+.fact { padding: 14px 16px; border: 1px solid var(--border); border-radius: 12px; background: rgba(10, 18, 28, .5); }
+.fact .l { color: var(--faint); font-size: 11.5px; letter-spacing: .08em; text-transform: uppercase; font-weight: 600; }
+.fact .v { font-size: 17px; font-weight: 700; margin-top: 2px; }
+.callout { padding: 12px 16px; border-radius: 12px; background: rgba(245, 199, 106, .08); border: 1px solid rgba(245, 199, 106, .25); color: #ecd9a8; font-size: 14px; }
+.note { color: var(--muted); font-size: 14px; margin: 0; }
+
+/* discover */
+.discover { display: grid; grid-template-columns: 1fr 1fr; }
+@media (max-width: 700px) { .discover { grid-template-columns: 1fr; } }
+.disc-col { padding: 20px 24px; display: grid; gap: 14px; align-content: start; }
+.disc-col + .disc-col { border-left: 1px solid var(--border); }
+@media (max-width: 700px) { .disc-col + .disc-col { border-left: 0; border-top: 1px solid var(--border); } }
+.item .n { font-weight: 650; font-size: 15px; }
+.item .w { color: var(--muted); font-size: 13.5px; margin-top: 1px; }
+.match { display: inline-block; margin-top: 6px; font-size: 11.5px; font-weight: 600; color: #7ff0e0; background: var(--accent-soft); border: 1px solid var(--accent-strong); border-radius: 999px; padding: 2px 9px; }
+.tips { padding: 18px 24px; border-top: 1px solid var(--border); background: rgba(10, 18, 28, .5); }
+.tips ul { margin: 0; padding-left: 18px; color: #c4d1e0; font-size: 14px; display: grid; gap: 4px; }
+.disclaimer { padding: 12px 24px 16px; color: var(--faint); font-size: 12px; }
+.nogd { padding: 18px 24px; color: var(--muted); font-size: 14px; }
+
+.foot { border-top: 1px solid var(--border); padding: 26px 0 40px; color: var(--faint); font-size: 12.5px; display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.foot a { color: var(--muted); }
+.toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: #2a1216; border: 1px solid #5b2229; color: #fecaca; padding: 12px 18px; border-radius: 12px; font-size: 14px; max-width: 90vw; z-index: 10; }
+[hidden] { display: none !important; }
+@media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div class="brand">
+      <div class="logo"><svg viewBox="0 0 24 24" fill="#041014"><path d="M2 12.5 21 3l-6.5 18-3.2-7.6z"/></svg></div>
+      Wayfinder <small>AI</small>
+    </div>
+    <div class="pill" id="health"><span class="dot"></span><span>Checking agents…</span></div>
+  </header>
+
+  <section class="hero">
+    <div class="eyebrow">AI travel agent</div>
+    <h1>Plan the whole trip <span>in one request.</span></h1>
+    <p class="lede">Tell us where, when and what you love. Our agent searches flights and hotels through live tool servers, scores every combination against your budget and interests, weighs the pros and cons, and tells you the best time to go and what to do when you get there.</p>
+  </section>
+
+  <main class="grid">
+    <aside class="card pad">
+      <h2>Trip details</h2>
+      <p class="sub">Everything the agent needs to build your itinerary.</p>
+      <form id="form" novalidate>
+        <div class="presets" aria-label="Quick examples">
+          <button type="button" class="chip" data-preset="NAP">🇮🇹 Naples</button>
+          <button type="button" class="chip" data-preset="LIS">🇵🇹 Lisbon</button>
+          <button type="button" class="chip" data-preset="TYO">🇯🇵 Tokyo</button>
+          <button type="button" class="chip" data-preset="DXB">🇦🇪 Dubai</button>
+        </div>
+        <div class="row">
+          <label class="f">From
+            <input type="text" id="origin" list="airports" value="LON" maxlength="30" autocomplete="off" placeholder="City or code" required>
+          </label>
+          <label class="f">To
+            <input type="text" id="destination" list="airports" value="NAP" maxlength="30" autocomplete="off" placeholder="City or code" required>
+          </label>
+        </div>
+        <datalist id="airports">
+          <option value="LON">London</option><option value="NYC">New York</option><option value="PAR">Paris</option>
+          <option value="NAP">Naples</option><option value="LIS">Lisbon</option><option value="TYO">Tokyo</option>
+          <option value="DXB">Dubai</option><option value="BCN">Barcelona</option><option value="ROM">Rome</option>
+          <option value="TLV">Tel Aviv</option><option value="ATH">Athens</option>
+        </datalist>
+        <div class="row">
+          <label class="f">Depart <input type="date" id="start" required></label>
+          <label class="f">Return <input type="date" id="end" required></label>
+        </div>
+        <div class="row">
+          <label class="f">Total budget
+            <div class="prefix"><span>£</span><input type="number" id="budget" min="1" step="50" value="2500" placeholder="No limit"></div>
+          </label>
+          <div class="f">Travelers
+            <div class="stepper">
+              <button type="button" id="minus" aria-label="Fewer travelers">−</button>
+              <output id="travelers">2</output>
+              <button type="button" id="plus" aria-label="More travelers">+</button>
+            </div>
+          </div>
+        </div>
+        <div class="f">What matters to you
+          <div class="chips" id="interests"></div>
+        </div>
+        <p class="err" id="err" role="alert"></p>
+        <button class="btn" id="go" type="submit">Plan my trip</button>
+      </form>
+    </aside>
+
+    <section aria-live="polite">
+      <div class="card empty" id="empty">
+        <div class="globe"><svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#2dd4bf" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/></svg></div>
+        <h3>Your itinerary will appear here</h3>
+        <p>Pick your dates and interests, then hit <b>Plan my trip</b>. The agent returns a best pick, the reasoning behind it, and ranked alternatives.</p>
+      </div>
+      <div class="card pipeline" id="pipeline" hidden>
+        <h3>Agent is working…</h3>
+        <div class="step" data-i="0"><span class="ic"></span><div><b>Searching flights</b><small>flights MCP server</small></div></div>
+        <div class="step" data-i="1"><span class="ic"></span><div><b>Searching hotels</b><small>hotels MCP server · matching your interests</small></div></div>
+        <div class="step" data-i="2"><span class="ic"></span><div><b>Consulting destination guide</b><small>guides MCP server · best season, places, adventures</small></div></div>
+        <div class="step" data-i="3"><span class="ic"></span><div><b>Ranking combinations</b><small>scoring price, rating, comfort and budget fit</small></div></div>
+        <div class="step" data-i="4"><span class="ic"></span><div><b>Building your itinerary</b><small>writing the rationale</small></div></div>
+      </div>
+      <div id="results" hidden></div>
+    </section>
+  </main>
+
+  <footer class="foot">
+    <span>Wayfinder AI · LangGraph orchestration · MCP tool servers · FastAPI</span>
+    <span>Prototype: flight &amp; hotel inventory is simulated. <a href="/docs">API docs</a></span>
+  </footer>
+</div>
+
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const INTERESTS = [
+    ["beachfront", "🏖 Beachfront"], ["nightlife", "🌙 Nightlife"], ["michelin-nearby", "🍽 Fine dining"],
+    ["spa", "💆 Spa"], ["old-town", "🏛 Old town"], ["rooftop-bar", "🍸 Rooftop bar"],
+    ["family-friendly", "👨‍👩‍👧 Family"], ["quiet", "🤫 Quiet"], ["pet-friendly", "🐾 Pet friendly"],
+    ["supercar-rental-nearby", "🏎 Supercars"],
+  ];
+  const TAG_LABEL = Object.fromEntries(INTERESTS.map(([k, v]) => [k, v.replace(/^\S+\s/, "")]));
+  const selected = new Set(["beachfront", "nightlife", "michelin-nearby"]);
+  let travelers = 2;
+  let running = false;
+
+  const money = (n, cur = "GBP") =>
+    new Intl.NumberFormat("en-GB", { style: "currency", currency: cur, maximumFractionDigits: 0 }).format(n);
+  const fmtDate = (s) =>
+    new Date(s + "T00:00:00").toLocaleDateString("en-GB", { day: "numeric", month: "short" });
+  const dur = (m) => `${Math.floor(m / 60)}h ${String(m % 60).padStart(2, "0")}m`;
+  const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const iso = (d) => d.toISOString().slice(0, 10);
+
+  // ---- defaults ----
+  const today = new Date();
+  const start = new Date(today); start.setDate(start.getDate() + 30);
+  const end = new Date(start); end.setDate(end.getDate() + 7);
+  $("start").value = iso(start);
+  $("end").value = iso(end);
+  $("start").min = iso(today);
+
+  // ---- interests chips ----
+  const chipBox = $("interests");
+  INTERESTS.forEach(([key, label]) => {
+    const b = document.createElement("button");
+    b.type = "button"; b.className = "chip"; b.textContent = label;
+    b.setAttribute("aria-pressed", selected.has(key));
+    b.addEventListener("click", () => {
+      selected.has(key) ? selected.delete(key) : selected.add(key);
+      b.setAttribute("aria-pressed", selected.has(key));
+    });
+    chipBox.appendChild(b);
+  });
+
+  document.querySelectorAll("[data-preset]").forEach((b) =>
+    b.addEventListener("click", () => { $("destination").value = b.dataset.preset; }));
+
+  $("minus").onclick = () => { travelers = Math.max(1, travelers - 1); $("travelers").textContent = travelers; };
+  $("plus").onclick = () => { travelers = Math.min(12, travelers + 1); $("travelers").textContent = travelers; };
+
+  $("start").addEventListener("change", () => {
+    if ($("end").value <= $("start").value) {
+      const d = new Date($("start").value + "T00:00:00"); d.setDate(d.getDate() + 7); $("end").value = iso(d);
+    }
+    $("end").min = $("start").value;
+  });
+
+  // ---- health ----
+  async function health() {
+    const el = $("health");
+    try {
+      const r = await fetch("/health");
+      if (!r.ok) throw 0;
+      el.innerHTML = '<span class="dot live"></span><span>Agents online</span>';
+    } catch {
+      el.innerHTML = '<span class="dot down"></span><span>Backend unreachable</span>';
+    }
+  }
+  health();
+
+  // ---- pipeline animation ----
+  let timers = [];
+  function startPipeline() {
+    $("empty").hidden = true; $("results").hidden = true; $("pipeline").hidden = false;
+    const steps = [...document.querySelectorAll(".step")];
+    steps.forEach((s) => s.className = "step");
+    timers.forEach(clearTimeout); timers = [];
+    steps.forEach((s, i) => timers.push(setTimeout(() => {
+      if (i > 0) steps[i - 1].className = "step done";
+      s.className = "step active";
+    }, i * 450)));
+  }
+  function stopPipeline() { timers.forEach(clearTimeout); timers = []; $("pipeline").hidden = true; }
+
+  // ---- render ----
+  const planeSvg = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.8 19.2 16 11l3.5-3.5C21 6 21.5 4 21 3c-1-.5-3 0-4.5 1.5L13 8 4.8 6.2c-.5-.1-.9.1-1.1.5l-.3.5c-.2.5-.1 1 .3 1.3L9 12l-2 3H4l-1 1 3 2 2 3 1-1v-3l3-2 3.5 5.3c.3.4.8.5 1.3.3l.5-.2c.4-.3.6-.7.5-1.2z"/></svg>';
+  const bedSvg = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 4v16M2 8h18a2 2 0 0 1 2 2v10M2 17h20M6 8v9"/></svg>';
+
+  const tagsHtml = (tags, interests) =>
+    tags.map((t) => `<span class="tag${interests.includes(t) ? " hit" : ""}">${esc(TAG_LABEL[t] || t)}</span>`).join("");
+
+  const list = (items) => items.map((t) => `<li>${esc(t)}</li>`).join("");
+  const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+  function itemHtml(i) {
+    const hit = i.matches.length
+      ? `<span class="match">★ Matches your interest: ${esc(i.matches.map((t) => TAG_LABEL[t] || t).join(", "))}</span>` : "";
+    return `<div class="item"><div class="n">${esc(i.name)}</div><div class="w">${esc(i.why)}</div>${hit}</div>`;
+  }
+
+  function guideHtml(g, req) {
+    if (!g) {
+      return `<section class="card fade"><div class="nogd">No curated travel guide for <b>${esc(req.destination)}</b> yet, so best-time and adventure tips are unavailable. Flights and hotels above are still ranked.</div></section>`;
+    }
+    const t = g.timing;
+    const trip = new Set(t.trip_months);
+    const cells = g.months.map((s, i) =>
+      `<div class="m${trip.has(i + 1) ? " trip" : ""}" title="${MONTHS[i]}: ${s} of 5"><i style="--a:${(0.08 + (s - 1) * 0.23).toFixed(2)}"></i>${MONTHS[i]}</div>`).join("");
+    const tripLabel = t.trip_months.map((m) => MONTHS[m - 1]).join(" – ");
+
+    return `
+      <section class="card fade">
+        <div class="section-hd"><div><h3>Best time to go</h3><div class="where">${esc(g.name)}</div></div>
+          <span class="verdict ${esc(t.verdict)}">Your dates: ${esc(t.verdict)}</span></div>
+        <div class="timing">
+          <div>
+            <div class="months" role="img" aria-label="Month-by-month suitability, your trip in ${esc(tripLabel)}">${cells}</div>
+            <div class="scale" style="margin-top:12px"><span>Less suitable</span><b></b><span>More suitable</span>
+              <span class="key"><i></i> Your trip (${esc(tripLabel)})</span></div>
+          </div>
+          <div class="facts2">
+            <div class="fact"><div class="l">Ultimate time to go</div><div class="v">${esc(t.best_windows)}</div></div>
+            <div class="fact"><div class="l">Best avoided</div><div class="v">${esc(t.avoid_windows || "None")}</div></div>
+          </div>
+          ${t.suggestion ? `<div class="callout"><b>Tip:</b> ${esc(t.suggestion)}</div>` : ""}
+          <p class="note">${esc(g.season_note)}</p>
+        </div>
+      </section>
+      <section class="card fade">
+        <div class="section-hd"><div><h3>Top places &amp; adventures</h3><div class="where">Ranked by your interests</div></div></div>
+        <div class="discover">
+          <div class="disc-col"><div class="kicker">Must-see places</div>${g.places.map(itemHtml).join("")}</div>
+          <div class="disc-col"><div class="kicker">Adventures</div>${g.adventures.map(itemHtml).join("")}</div>
+        </div>
+        <div class="tips"><div class="kicker">Good to know</div><ul>${list(g.tips)}</ul></div>
+        <div class="disclaimer">Guide content is curated prototype content, not live data. Check local conditions and current travel advisories before booking.</div>
+      </section>`;
+  }
+
+  function render(data) {
+    const it = data.itinerary, req = data.request, f = it.flight, h = it.hotel;
+    const flightCost = f.total_price;
+    const hotelCost = h.price_per_night * it.nights;
+    const denom = Math.max(it.total_cost, it.budget || 0) || 1;
+    const fPct = (flightCost / denom) * 100, hPct = (hotelCost / denom) * 100;
+    const stops = f.stops === 0 ? "Direct" : `${f.stops} stop${f.stops > 1 ? "s" : ""}`;
+    const left = it.budget != null ? it.budget - it.total_cost : null;
+    const status = it.budget == null ? "" : it.within_budget
+      ? `<span class="status ok">✓ Within budget · ${money(left)} to spare</span>`
+      : `<span class="status bad">Over budget by ${money(-left)}</span>`;
+    const maxScore = Math.max(...it.alternatives.map((a) => a.final_score), 0.0001);
+
+    const alts = it.alternatives.map((a) => {
+      const diff = a.total_cost - it.total_cost;
+      const delta = diff === 0 ? "" : `<div class="delta ${diff > 0 ? "up" : "down"}">${money(Math.abs(diff))} ${diff > 0 ? "more" : "cheaper"} than best match</div>`;
+      const fl = a.flight.stops === 0 ? "Direct" : `${a.flight.stops} stop${a.flight.stops > 1 ? "s" : ""}`;
+      return `<div class="alt">
+        <div><div class="t">${esc(a.hotel.name)} <span class="stars">★ ${a.hotel.rating.toFixed(1)}</span></div>
+          <div class="d">${esc(a.flight.airline)} · ${fl} · ${dur(a.flight.duration_minutes)} · ${money(a.hotel.price_per_night)}/night</div></div>
+        <div class="p">${money(a.total_cost)}${delta}</div>
+        <div class="score" title="Match score ${a.final_score}"><i style="width:${Math.round((a.final_score / maxScore) * 100)}%"></i></div>
+        <details class="pc"><summary>Pros &amp; cons vs. best match</summary>
+          <div class="cols">
+            <div><div class="kicker ok">Pros</div><ul class="pros">${list(a.pros)}</ul></div>
+            <div><div class="kicker no">Cons</div><ul class="cons">${list(a.cons)}</ul></div>
+          </div>
+        </details>
+      </div>`;
+    }).join("");
+
+    $("results").innerHTML = `
+      <article class="card best fade">
+        <div class="head">
+          <div>
+            <span class="badge">★ Best match</span>
+            <div class="route">${esc(req.origin)} ${planeSvg} ${esc(req.destination)}</div>
+            <div class="meta">${fmtDate(req.start_date)} – ${fmtDate(req.end_date)} · ${it.nights} nights · ${req.travelers} traveler${req.travelers > 1 ? "s" : ""}</div>
+          </div>
+          <div class="total"><div class="amt">${money(it.total_cost)}</div><div class="lbl">total estimate, flights + hotel</div>${status}</div>
+        </div>
+        <div class="two">
+          <div class="panel">
+            <div class="kicker">${planeSvg} Flight</div>
+            <h4>${esc(f.airline)}</h4>
+            <div class="facts"><span><b>${stops}</b></span><span><b>${dur(f.duration_minutes)}</b></span><span>Departs <b>${esc(f.depart_time)}</b></span></div>
+            <div class="price">${money(f.total_price)} <small>· ${money(f.price_per_traveler)} per traveler, return</small></div>
+          </div>
+          <div class="panel">
+            <div class="kicker">${bedSvg} Hotel</div>
+            <h4>${esc(h.name)} <span class="stars">★ ${h.rating.toFixed(1)}</span></h4>
+            <div class="facts"><span><b>${h.distance_to_center_km} km</b> from center</span></div>
+            <div class="tags">${tagsHtml(h.tags, req.interests)}</div>
+            <div class="price">${money(hotelCost)} <small>· ${money(h.price_per_night)} × ${it.nights} nights</small></div>
+          </div>
+        </div>
+        <div class="budget">
+          <div class="line"><span>Cost breakdown</span><span>${it.budget != null ? `<b>${money(it.total_cost)}</b> of ${money(it.budget)} budget` : `<b>${money(it.total_cost)}</b>`}</span></div>
+          <div class="bar" role="img" aria-label="Flights ${money(flightCost)}, hotel ${money(hotelCost)}"><i class="f" style="width:${fPct}%"></i><i class="h" style="width:${hPct}%"></i></div>
+          <div class="legend"><span style="--c:#818cf8">Flights ${money(flightCost)}</span><span style="--c:#2dd4bf">Hotel ${money(hotelCost)}</span></div>
+        </div>
+        <div class="pc-grid">
+          <div class="pc-col"><div class="kicker ok">Pros</div><ul class="pros">${list(it.pros)}</ul></div>
+          <div class="pc-col"><div class="kicker no">Cons</div><ul class="cons">${list(it.cons)}</ul></div>
+        </div>
+        <div class="why">
+          <div class="kicker">Why the agent chose this</div>
+          <ul>${it.rationale.map((r) => `<li>${esc(r)}</li>`).join("")}</ul>
+        </div>
+      </article>
+      <section class="card alts fade">
+        <div class="hd"><h3>Ranked alternatives</h3>
+          <button class="btn ghost" id="refresh" type="button">↻ Re-run search</button></div>
+        ${alts || '<div class="alt"><div class="d">No other combinations found.</div></div>'}
+      </section>
+      ${guideHtml(it.guide, req)}`;
+    $("results").hidden = false;
+    $("refresh").addEventListener("click", () => run());
+  }
+
+  // ---- submit ----
+  function payload() {
+    const b = $("budget").value;
+    return {
+      origin: $("origin").value.trim().toUpperCase(),
+      destination: $("destination").value.trim().toUpperCase(),
+      start_date: $("start").value,
+      end_date: $("end").value,
+      budget: b ? Number(b) : null,
+      travelers,
+      interests: [...selected],
+    };
+  }
+  function validate(p) {
+    document.querySelectorAll("input.invalid").forEach((e) => e.classList.remove("invalid"));
+    const bad = (id, msg) => { $(id).classList.add("invalid"); return msg; };
+    if (!p.origin) return bad("origin", "Enter where you're flying from.");
+    if (!p.destination) return bad("destination", "Enter where you're going.");
+    if (p.origin === p.destination) return bad("destination", "Origin and destination must differ.");
+    if (!p.start_date) return bad("start", "Choose a departure date.");
+    if (!p.end_date || p.end_date <= p.start_date) return bad("end", "Return date must be after departure.");
+    if (p.budget !== null && !(p.budget > 0)) return bad("budget", "Budget must be greater than zero.");
+    return "";
+  }
+
+  async function run() {
+    if (running) return;
+    const p = payload();
+    const msg = validate(p);
+    $("err").textContent = msg;
+    if (msg) return;
+    running = true;
+    $("go").disabled = true; $("go").textContent = "Planning…";
+    startPipeline();
+    const minWait = new Promise((r) => setTimeout(r, 1700)); // let the agent steps read as a sequence
+    try {
+      const [res] = await Promise.all([
+        fetch("/api/plan-trip", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(p) }),
+        minWait,
+      ]);
+      if (!res.ok) {
+        let detail = `Request failed (${res.status})`;
+        try {
+          const j = await res.json();
+          if (Array.isArray(j.detail)) detail = j.detail.map((d) => d.msg.replace(/^Value error, /, "")).join("; ");
+          else if (j.detail) detail = j.detail;
+        } catch {}
+        throw new Error(detail);
+      }
+      const data = await res.json();
+      stopPipeline();
+      render(data);
+      $("results").scrollIntoView({ behavior: "smooth", block: "start" });
+    } catch (e) {
+      stopPipeline();
+      $("empty").hidden = false;
+      $("err").textContent = e.message || "Something went wrong.";
+      health();
+    } finally {
+      running = false;
+      $("go").disabled = false; $("go").textContent = "Plan my trip";
+    }
+  }
+  $("form").addEventListener("submit", (e) => { e.preventDefault(); run(); });
+})();
+</script>
+</body>
+</html>
