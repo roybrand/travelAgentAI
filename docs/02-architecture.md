@@ -156,7 +156,26 @@ travelAgentAi/
 │   │   ├── ranking/
 │   │   │   ├── score.py         Flight, hotel, and combination scoring
 │   │   │   └── combine.py       Pairing, ranking, rationale, pros/cons
-│   │   ├── live/                Live sources: catalog (100 cities), climate, places, osm, amadeus, llm, pricing
+│   │   ├── live/                Live sources: catalog (100 cities), climate, places, osm, amadeus, llm, pricing,
+│   │   │                        travel.py (flight and stay search: Amadeus, Travelpayouts, estimates), geo.py (distances), nearby, guide,
+│   │   │                        nightlife.py (Tonight: best clubs and bars for one night)
+│   │   ├── partners/            The partner side, see doc 07
+│   │   │   ├── db.py            SQLite schema and connections (backend/data/partners.db)
+│   │   │   ├── security.py      scrypt passwords, hashed tokens and keys, rate limiter
+│   │   │   ├── accounts.py      Sign-up, sessions, API keys, suspension
+│   │   │   ├── deals.py         Deal validation, moderation, payment-blind ranking
+│   │   │   ├── routes.py        The partner, moderation, feed, deals and events endpoints
+│   │   │   └── activity.py      Runtime log of partner events (backend/logs/partner-activity.md)
+│   │   ├── social/              Wayfinder People, see doc 09
+│   │   │   ├── users.py         Traveler accounts (18+), profiles, photos, blocks
+│   │   │   ├── moderation.py    Photo and text checks (OpenAI moderation, free) and photo validation
+│   │   │   ├── places.py        Registering to places and seeing who is going
+│   │   │   ├── intents.py       Reading a looking-for request and matching people
+│   │   │   ├── connect.py       Connection requests, chat, reports, bans
+│   │   │   ├── vocab.py         The fixed lists of activities, languages and vibes, and the protected-trait detector
+│   │   │   └── routes.py        The /api/people and /api/admin/people endpoints
+│   │   ├── suppliers/           Optional real-time adapters: ticketmaster.py (events), travelpayouts.py (fares)
+│   │   ├── docsync.py           Generates docs/08-api-reference.md from the code
 │   │   ├── mcp_tools/
 │   │   │   ├── client.py        MCPToolClient (spawns and calls servers)
 │   │   │   ├── flights_server.py  MCP server: search_flights (Amadeus / estimates, demo fallback)
@@ -165,7 +184,10 @@ travelAgentAi/
 │   │   │   └── guides_data.py     Curated guides + best-time scoring
 │   │   └── static/index.html    Fallback page (used if the React build is absent)
 │   ├── scripts/fetch_photos.py   Downloads licensed photos from Wikimedia Commons
-│   └── tests/                   60 tests: ranking, guides, live data, API
+│   ├── scripts/sync_docs.py      Regenerates the API reference (a test fails if it is stale)
+│   ├── scripts/seed_demo.py      Adds or removes clearly-labelled demo partners and deals
+│   ├── scripts/seed_people.py    Adds or removes clearly-labelled demo travelers
+│   └── tests/                   125+ tests: ranking, guides, live data, nearby, partners, API, docs in sync
 ├── frontend/                    React + Vite web app (pages, charts, maps, photos)
 ├── node-slice/                  Earlier zero-dependency Node.js proof of concept
 ├── docs/                        This documentation

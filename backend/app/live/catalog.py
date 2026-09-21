@@ -144,6 +144,40 @@ def resolve(value: str | None) -> dict | None:
     return next((d for d in DESTINATIONS if d["city"].lower() == low), None)
 
 
+COUNTRY_ALIASES = {
+    "uk": "United Kingdom", "britain": "United Kingdom", "great britain": "United Kingdom", "england": "United Kingdom",
+    "scotland": "United Kingdom", "usa": "United States", "us": "United States", "america": "United States",
+    "united states of america": "United States", "uae": "United Arab Emirates", "emirates": "United Arab Emirates",
+    "holland": "Netherlands", "the netherlands": "Netherlands", "czech republic": "Czechia", "korea": "South Korea",
+}
+_AMBIGUOUS_CITY_WORDS = {"male", "nice", "split", "lima", "reading"}  # ordinary words that are also city names
+
+
+def _plain(text: str) -> str:
+    import unicodedata
+    return unicodedata.normalize("NFKD", text).encode("ascii", "ignore").decode().lower()
+
+
+def find_in_text(text: str) -> dict:
+    """Which catalog cities and countries a piece of free text names, matched on whole words and ignoring accents.
+    Ordinary words that are also city names (nice, split, male, lima) are skipped: the language model handles those."""
+    import re
+    plain = _plain(text or "")
+
+    def has(word: str) -> bool:
+        return re.search(rf"(?<![a-z0-9]){re.escape(word)}(?![a-z0-9])", plain) is not None
+
+    cities = [d for d in DESTINATIONS
+              if any(has(n) for n in {_plain(d["city"]), _plain(d["wiki"])} if n not in _AMBIGUOUS_CITY_WORDS)]
+    countries = {d["country"] for d in DESTINATIONS if has(_plain(d["country"]))}
+    countries |= {c for alias, c in COUNTRY_ALIASES.items() if has(alias)}
+    return {"cities": cities, "countries": sorted(countries)}
+
+
+def cities_in(country: str) -> list[dict]:
+    return [d for d in DESTINATIONS if d["country"] == country]
+
+
 def public_list() -> list[dict]:
     """What the API exposes to the UI (no internal fields)."""
     return [{k: d[k] for k in ("code", "city", "country", "region", "lat", "lng")} for d in DESTINATIONS]

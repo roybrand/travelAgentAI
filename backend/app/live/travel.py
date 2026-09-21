@@ -4,6 +4,7 @@ from datetime import date
 
 from app.live import amadeus, catalog, climate, osm, pricing
 from app.live.geo import haversine_km
+from app.suppliers import travelpayouts
 
 
 def search_flights(origin: str, destination: str, depart: str, ret: str, travelers: int) -> dict | None:
@@ -17,6 +18,13 @@ def search_flights(origin: str, destination: str, depart: str, ret: str, travele
             options = amadeus.flight_offers(o["code"], d["code"], depart, ret, travelers) or None
             if options:
                 source, detail = "amadeus", "Real offers from Amadeus Self-Service"
+        except Exception:
+            options = None
+    if not options and travelpayouts.enabled():
+        try:
+            options = travelpayouts.flight_fares(o["code"], d["code"], depart, ret, travelers) or None
+            if options:
+                source, detail = "travelpayouts", "Recent fares found by travelers (Aviasales via Travelpayouts). Cached, so not a live quote."
         except Exception:
             options = None
     if not options:

@@ -9,12 +9,54 @@ export const useNearby = () => useContext(Ctx);
 const PREFS_KEY = "wf.nearby.v1";
 const MOVE_M = 150; // refresh when the user has moved this far
 const MAX_AGE_MS = 10 * 60 * 1000; // ...or after this long
+const PUSH_KEY = "wf.nearby.push.v1";
+const DAILY_PUSH_CAP = 3; // device notifications per day
+const QUIET_FROM = 22; // no device notifications from 10 pm...
+const QUIET_TO = 8; // ...until 8 am, unless the user turns quiet hours off
+
+/** Device notifications are rationed: a daily cap and (optional) quiet hours. In-app toasts are not limited. */
+function mayNotify(quiet) {
+  const now = new Date();
+  const h = now.getHours();
+  if (quiet && (h >= QUIET_FROM || h < QUIET_TO)) return false;
+  const day = now.toLocaleDateString("en-CA");
+  let used = { day, n: 0 };
+  try {
+    const s = JSON.parse(localStorage.getItem(PUSH_KEY) || "null");
+    if (s?.day === day) used = s;
+  } catch {
+    /* storage may be unavailable */
+  }
+  if (used.n >= DAILY_PUSH_CAP) return false;
+  try {
+    localStorage.setItem(PUSH_KEY, JSON.stringify({ day, n: used.n + 1 }));
+  } catch {
+    /* ignore */
+  }
+  return true;
+}
+
+/** Prefer the service worker (works on phones); fall back to the page Notification API. */
+async function showDeviceNotification(rec) {
+  const options = { body: rec.reason, tag: rec.id, data: { url: "/nearby" }, icon: "/icon-192.png" };
+  try {
+    const reg = await navigator.serviceWorker?.getRegistration();
+    if (reg?.showNotification) return void (await reg.showNotification(rec.title, options));
+  } catch {
+    /* fall through */
+  }
+  try {
+    new Notification(rec.title, options);
+  } catch {
+    /* some browsers only allow notifications from a service worker */
+  }
+}
 
 function loadPrefs() {
   try {
-    return { enabled: false, usePlan: true, notify: false, ...JSON.parse(localStorage.getItem(PREFS_KEY) || "{}") };
+    return { enabled: false, usePlan: true, notify: false, quiet: true, ...JSON.parse(localStorage.getItem(PREFS_KEY) || "{}") };
   } catch {
-    return { enabled: false, usePlan: true, notify: false };
+    return { enabled: false, usePlan: true, notify: false, quiet: true };
   }
 }
 
@@ -52,12 +94,8 @@ export function NearbyProvider({ children }) {
     const id = `${rec.id}-${Date.now()}`;
     setToasts((t) => [...t.slice(-2), { id, rec }]);
     setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), 9000);
-    if (ctx.current.prefs.notify && "Notification" in window && Notification.permission === "granted") {
-      try {
-        new Notification(rec.title, { body: rec.reason, tag: rec.id });
-      } catch {
-        /* some mobile browsers only allow notifications from a service worker */
-      }
+    if (ctx.current.prefs.notify && "Notification" in window && Notification.permission === "granted" && mayNotify(ctx.current.prefs.quiet)) {
+      showDeviceNotification(rec);
     }
   }, []);
 
@@ -70,7 +108,7 @@ export function NearbyProvider({ children }) {
     const planned = p.usePlan && t ? t.chosenItems.filter((i) => i.lat != null).map((i) => ({ name: i.name, lat: i.lat, lng: i.lng })) : [];
     setBusy(true);
     try {
-      const res = await fetchNearby({ lat: pos.lat, lng: pos.lng, interests: f.interests, planned });
+      const res = await fetchNearby({ lat: pos.lat, lng: pos.lng, interests: t?.req.interests ?? f.interests, planned });
       setData(res);
       const fresh = res.recommendations.filter((r) => !seen.current.has(r.id));
       fresh.forEach((r) => seen.current.add(r.id));
@@ -112,7 +150,7 @@ export function NearbyProvider({ children }) {
   useEffect(() => {
     if (prefs.enabled && position) lookup(position, true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [planKey, prefs.usePlan, form.interests.join(",")]);
+  }, [planKey, prefs.usePlan, (trip?.req.interests ?? form.interests).join(",")]);
 
   const requestNotifications = useCallback(async () => {
     if (!("Notification" in window)) return false;

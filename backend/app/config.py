@@ -8,6 +8,10 @@ Secrets live in backend/.env (never committed). Copy .env.example to .env and fi
     AMADEUS_CLIENT_ID=...            # optional: real flight/hotel offers (free at developers.amadeus.com)
     AMADEUS_CLIENT_SECRET=...
     AMADEUS_BASE_URL=https://test.api.amadeus.com   # default; use the production URL once approved
+    TICKETMASTER_API_KEY=...         # optional: live events and parties (free at developer.ticketmaster.com)
+    TRAVELPAYOUTS_TOKEN=...          # optional: recent real flight fares (free affiliate signup at travelpayouts.com)
+    ADMIN_TOKEN=...                  # required to use the moderation page (/admin); pick a long random string
+    WAYFINDER_DB=...                 # optional: path of the partner/deals SQLite file (default backend/data/partners.db)
 
 WAYFINDER_OFFLINE=1 disables every network call and uses the built-in demo data (the test suite sets it).
 """
@@ -60,3 +64,20 @@ def amadeus_credentials() -> tuple[str, str] | None:
 
 def amadeus_base_url() -> str:
     return os.environ.get("AMADEUS_BASE_URL", "https://test.api.amadeus.com").rstrip("/")
+
+
+def ticketmaster_key() -> str | None:
+    return None if offline() else (os.environ.get("TICKETMASTER_API_KEY") or None)
+
+
+def travelpayouts_token() -> str | None:
+    return None if offline() else (os.environ.get("TRAVELPAYOUTS_TOKEN") or None)
+
+
+def admin_token() -> str | None:
+    """The moderation page is disabled until this is set. Deliberately not tied to offline mode."""
+    return os.environ.get("ADMIN_TOKEN") or None
+
+
+def db_path() -> Path:
+    return Path(os.environ.get("WAYFINDER_DB") or ROOT / "data" / "partners.db")

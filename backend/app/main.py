@@ -3,14 +3,17 @@ from contextlib import asynccontextmanager
 from datetime import date, datetime, timezone
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from . import config
 from .graph import build_trip_planning_graph
-from .live import catalog, llm, nearby
+from .live import catalog, llm, nearby, nightlife
 from .mcp_tools.client import MCPToolClient
+from .partners.routes import router as partner_router
+from .social.routes import router as people_router
+from .suppliers import ticketmaster, travelpayouts
 from .schemas import BuildRequest, NearbyRequest, ParseRequest, TripRequest
 
 
@@ -27,11 +30,13 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="travel-agent-ai backend", lifespan=lifespan)
+app.include_router(partner_router)
+app.include_router(people_router)
 
 
 STATIC_DIR = Path(__file__).parent / "static"
 FRONTEND_DIST = Path(__file__).resolve().parents[2] / "frontend" / "dist"
-SPA_ROUTES = ("trip", "stays", "explore", "nearby", "credits")  # client-side routes served by the React app
+SPA_ROUTES = ("trip", "stays", "explore", "nearby", "tonight", "people", "deals", "partners", "admin", "credits")  # client-side routes served by the React app
 
 if (FRONTEND_DIST / "index.html").exists():
     app.mount("/assets", StaticFiles(directory=FRONTEND_DIST / "assets"), name="assets")
@@ -53,9 +58,29 @@ async def index():
 for _route in SPA_ROUTES:
     app.add_api_route(f"/{_route}", index, methods=["GET"], include_in_schema=False)
 
+# Files that must live at the site root for the app to be installable and to show phone notifications.
+ROOT_FILES = {
+    "sw.js": "application/javascript", "manifest.webmanifest": "application/manifest+json",
+    "icon-192.png": "image/png", "icon-512.png": "image/png", "apple-touch-icon.png": "image/png",
+}
+
+
+def _root_file(name: str):
+    async def handler():
+        path = FRONTEND_DIST / name
+        if not path.exists():
+            raise HTTPException(status_code=404, detail="Not found")
+        return FileResponse(path, media_type=ROOT_FILES[name], headers={"Cache-Control": "no-cache"})
+    return handler
+
+
+for _name in ROOT_FILES:
+    app.add_api_route(f"/{_name}", _root_file(_name), methods=["GET"], include_in_schema=False)
+
 
 @app.get("/health")
 async def health():
+    """Liveness check used by the UI status pill."""
     return {"status": "ok"}
 
 
@@ -65,6 +90,9 @@ async def get_config():
     return {
         "openai": llm.enabled(),
         "amadeus": bool(config.amadeus_credentials()),
+        "ticketmaster": ticketmaster.enabled(),
+        "travelpayouts": travelpayouts.enabled(),
+        "admin": bool(config.admin_token()),
         "offline": config.offline(),
         "destinations": len(catalog.DESTINATIONS),
     }
@@ -105,19 +133,37 @@ async def build_trip(body: BuildRequest):
 @app.post("/api/nearby")
 async def nearby_now(body: NearbyRequest):
     """Dynamic recommendations around a GPS position, using the weather, time of day, interests and trip plan."""
-    if config.offline():
-        return {"context": None, "recommendations": [], "notes": ["Offline mode: nearby recommendations need internet."],
-                "generated_at": datetime.now(timezone.utc).isoformat()}
     planned = [p.model_dump() for p in body.planned]
     try:
+        fn = nearby.run_local if config.offline() else nearby.run
         return await asyncio.wait_for(
-            asyncio.to_thread(nearby.run, body.lat, body.lng, body.interests, planned, body.radius_m), timeout=60)
+            asyncio.to_thread(fn, body.lat, body.lng, body.interests, planned, body.radius_m), timeout=60)
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"Could not look up places near you right now ({type(exc).__name__}).") from exc
 
 
+@app.get("/api/tonight")
+async def tonight(dest: str, day: date | None = Query(default=None, alias="date"), kinds: str = "clubs,bars"):
+    """The best clubs and bars in a city for one night, with photos, opening hours, and real prices where they exist."""
+    city = catalog.resolve(dest)
+    if not city:
+        raise HTTPException(status_code=404, detail="Unknown destination.")
+    try:
+        night = nightlife.valid_day(day)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    wanted = [k for k in kinds.split(",") if k in nightlife.KINDS]
+    try:
+        if config.offline():
+            return await asyncio.to_thread(nightlife.run_local, city["code"], night)
+        return await asyncio.wait_for(asyncio.to_thread(nightlife.run, city["code"], night, wanted), timeout=75)
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Could not look up tonight's venues right now ({type(exc).__name__}).") from exc
+
+
 @app.post("/api/plan-trip")
 async def plan_trip(req: TripRequest):
+    """Plan a trip: flights, stays, ranking, guide, packages, partner deals and an optional AI summary."""
     nights = (req.end_date - req.start_date).days
     request_dict = {
         "origin": req.origin,

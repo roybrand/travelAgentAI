@@ -23,7 +23,7 @@ into photos, maps and charts. It lives in [frontend/](../frontend) and is served
 
 ```mermaid
 flowchart LR
-    H["Home<br/>photo hero, destination tiles,<br/>search form"] -->|"Plan my trip<br/>(agent overlay)"| T
+    H["Home<br/>photo hero, destination tiles,<br/>search form, Reset"] -->|"Plan my trip<br/>(agent overlay)"| T
     T["Your trip<br/>total, donut, itinerary,<br/>pros and cons, best time, highlights"]
     S["Stays<br/>price vs area average, map,<br/>photo galleries, deals"]
     E["Explore<br/>sights with photos, map,<br/>nearby deals, plan builder"]

@@ -1,7 +1,8 @@
 import { motion } from "framer-motion";
-import { Link, Navigate } from "react-router-dom";
+import { Link, Navigate, useNavigate } from "react-router-dom";
 import { Bar, BarChart, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis } from "recharts";
 import { useTrip } from "../state/TripContext.jsx";
+import { DealsGrid, DISCLOSURE, EventsBlock } from "../components/DealsSection.jsx";
 import { TAG_LABEL } from "../lib/constants";
 import { MONTHS, duration, longDate, money, shortDate } from "../lib/format";
 import { qualityLabel, stayPhotos } from "../lib/stay";
@@ -23,8 +24,23 @@ const rise = (i = 0) => ({ initial: { opacity: 0, y: 22 }, whileInView: { opacit
 /** Photo props for a guide item: a bundled key, or a live Wikimedia URL with its credit. */
 const itemPhoto = (i) => ({ k: i.photo, src: i.photo_url, info: i.photo_credit });
 
+/** One line per part of the trip, split by whether the person's words gave it or the form did. */
+function readbackLines(said, req, cityName, fromWords) {
+  const has = (k) => said.includes(k);
+  const parts = [
+    ["origin", `Flying from ${cityName(req.origin)}`],
+    ["destination", `Going to ${cityName(req.destination)}`],
+    ["dates", `${shortDate(req.start_date)} to ${shortDate(req.end_date)}`, has("start_date")],
+    ["travelers", `${req.travelers} traveler${req.travelers > 1 ? "s" : ""}`],
+    ["budget", req.budget ? `Budget ${money(req.budget)}` : "No budget set"],
+    ["interests", req.interests.length ? `Interests: ${req.interests.map((i) => TAG_LABEL[i] || i).join(", ")}` : "No interests set"],
+  ];
+  return parts.filter(([k, , explicit]) => (explicit ?? has(k)) === fromWords).map(([, line]) => line);
+}
+
 export default function Trip() {
-  const { trip, cityName, profile, forgetProfile } = useTrip();
+  const { trip, cityName, profile, forgetProfile, config, resetSearch, readback } = useTrip();
+  const navigate = useNavigate();
   if (!trip) return <Navigate to="/" replace />;
 
   const { it, req, hotel, flightCost, stayCost, expCost, total, chosenItems } = trip;
@@ -79,6 +95,10 @@ export default function Trip() {
               {shortDate(req.start_date)} – {shortDate(req.end_date)} · {it.nights} nights · {req.travelers} traveler{req.travelers > 1 ? "s" : ""}
               {g && <span className={`verdict ${g.timing.verdict}`}>Season: {g.timing.verdict}</span>}
             </p>
+            <div className="hero-actions">
+              <Link to="/" className="btn ghost sm">✎ Change this search</Link>
+              <button className="btn primary sm" onClick={() => { resetSearch(); navigate("/"); }}>↺ Start a new search</button>
+            </div>
           </motion.div>
         </div>
       </section>
@@ -125,7 +145,25 @@ export default function Trip() {
           </motion.section>
         )}
 
-        {profile && (
+        {readback && (
+          <motion.section className="card pad readback" {...rise()}>
+            <h2 className="card-title">How I read your request</h2>
+            {readback.prompt && <p className="quote">“{readback.prompt}”{readback.photo ? " + your photo" : ""}</p>}
+            <div className="readback-cols">
+              <div>
+                <span className="tag-strong">From your words</span>
+                <ul>{readbackLines(readback.said, req, cityName, true).map((l) => <li key={l}>{l}</li>)}</ul>
+              </div>
+              <div>
+                <span className="tag-strong">Not mentioned, so I assumed</span>
+                <ul>{readbackLines(readback.said, req, cityName, false).map((l) => <li key={l}>{l}</li>)}</ul>
+              </div>
+            </div>
+            <p className="fine">Not right? <Link to="/">Describe it again</Link>, or plan it with the form instead.</p>
+          </motion.section>
+        )}
+
+        {profile && readback && (
           <motion.section className="card pad profile-card" {...rise()}>
             <div className="card-head">
               <h2 className="card-title">Your travel profile</h2>
@@ -171,6 +209,34 @@ export default function Trip() {
               ))}
             </div>
             <p className="fine">Compared across the flights and stays found for your dates. Free data has no price comparison across booking sites, so prices marked Estimate are modelled; add Amadeus keys for real offers.</p>
+          </motion.section>
+        )}
+
+        {(req.interests.includes("nightlife") || (readback && profile?.place_types?.some((t) => t === "nightclub" || t === "pub"))) && (
+          <motion.section className="card pad tonight-cta" {...rise()}>
+            <div>
+              <h2 className="card-title">🌙 Nightlife in {place}</h2>
+              <p className="muted">See the best clubs and bars that are open on any night of your trip, with photos, hours and any live deal.</p>
+            </div>
+            <Link to="/tonight" className="btn primary">Find the best clubs tonight</Link>
+          </motion.section>
+        )}
+
+        {it.partner_deals?.length > 0 && (
+          <motion.section className="card pad" {...rise()}>
+            <div className="card-head">
+              <h2 className="card-title">Partner deals for your trip</h2>
+              <Link to="/deals" className="btn ghost sm">See all deals</Link>
+            </div>
+            <DealsGrid deals={it.partner_deals} />
+            <p className="fine">{DISCLOSURE}</p>
+          </motion.section>
+        )}
+
+        {config.ticketmaster && (
+          <motion.section className="card pad" {...rise()}>
+            <h2 className="card-title">What is on during your trip</h2>
+            <EventsBlock dest={req.destination} start={req.start_date} end={req.end_date} enabled />
           </motion.section>
         )}
 

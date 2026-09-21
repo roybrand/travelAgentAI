@@ -3,7 +3,8 @@ the traveler's interests and their trip plan. Opt-in: the browser only calls thi
 the feature on.
 
 Data (all free, no keys): Wikipedia sights around the point, OpenStreetMap places to eat and drink,
-Open-Meteo current weather and short-range rain forecast.
+Open-Meteo current weather and short-range rain forecast. Also reviewed partner deals from our own database
+and, when a free Ticketmaster key is set, live events.
 
 Privacy: coordinates are used only to look things up. They are rounded when used as cache keys, and the
 runtime log (backend/logs/dynamic-features.md) records rule names and the nearest city, never coordinates.
@@ -18,6 +19,8 @@ from app.config import ROOT
 from app.live import catalog, osm, places
 from app.live.geo import haversine_m
 from app.live.http import cached, get_json
+from app.partners import deals as partner_deals
+from app.suppliers import ticketmaster
 
 LOG_PATH = ROOT / "logs" / "dynamic-features.md"
 WALK_M_PER_MIN = 80
@@ -34,6 +37,9 @@ RULES = {
     "DYN-08": "Distance: nearer places rank higher, with a walking-time estimate",
     "DYN-09": "Popularity: among sights, more-read Wikipedia articles rank higher",
     "DYN-10": "No repeats: the app only pushes a recommendation it has not already shown this session",
+    "DYN-11": "Partner deal in reach: a reviewed partner deal nearby ranks by interest match, real discount and distance, never by payment, and is always labelled",
+    "DYN-12": "Ends soon: a deal ending today or tomorrow is nudged up a little, as information rather than pressure",
+    "DYN-13": "Live event: an event starting within the next few hours close to you (needs a free Ticketmaster key)",
 }
 
 INDOOR = re.compile(r"museum|gallery|church|cathedral|basilica|palace|theat|opera|market hall|library|aquarium|temple|mosque|castle|synagogue|hall", re.I)
@@ -139,8 +145,13 @@ def _day_part(hour: int) -> str | None:
     return None
 
 
+def _event_start_hour(ev: dict) -> int | None:
+    return int(ev["time"][:2]) if ev.get("time") else None
+
+
 def recommend(pos: tuple[float, float], weather: dict, sights: list[dict], food: list[dict],
-              planned: list[dict], interests: list[str], radius_m: int = 1500, limit: int = 8) -> list[dict]:
+              planned: list[dict], interests: list[str], radius_m: int = 1500, limit: int = 10,
+              deals: list[dict] = (), events: list[dict] = ()) -> list[dict]:
     """Pure ranking. Returns recommendations sorted best first, each with the rule IDs that fired."""
     bad_weather = bool(weather.get("raining") or weather.get("rain_soon"))
     warm_clear = not bad_weather and weather.get("temp_c") is not None and 14 <= weather["temp_c"] <= 31
@@ -208,12 +219,60 @@ def recommend(pos: tuple[float, float], weather: dict, sights: list[dict], food:
             "url": f.get("website"), "category": amenity,
         })
 
+    for dl in deals:
+        if dl.get("lat") is None:
+            continue
+        d = haversine_m(pos[0], pos[1], dl["lat"], dl["lng"])
+        if d > radius_m:
+            continue
+        rules, reasons = ["DYN-11", "DYN-08"], [f"{_walk(d)} away"]
+        score = 0.9 - 0.5 * d / radius_m
+        hits = sorted(partner_deals.deal_tags(dl) & set(interests))
+        if hits:
+            score += 0.35 * min(2, len(hits)); rules.append("DYN-07"); reasons.insert(0, "Matches your interests")
+        if dl["discount_pct"] >= 10:
+            score += min(0.5, dl["discount_pct"] / 100); reasons.insert(0, f"{dl['discount_pct']}% below the usual price")
+        if partner_deals.ends_within(dl, 1):
+            score += 0.1; rules.append("DYN-12"); reasons.append("Ends today" if dl["days_left"] == 0 else "Ends tomorrow")
+        recs.append({
+            "id": f"deal-{dl['id']}", "kind": "deal", "title": dl["title"], "subtitle": dl["description"][:140],
+            "distance_m": d, "reason": " · ".join(reasons), "rules": rules, "score": score,
+            "lat": dl["lat"], "lng": dl["lng"], "url": dl["url"], "photo_url": dl.get("photo_url"),
+            "category": dl["category"], "deal_id": dl["id"], "partner": True, "partner_name": dl["partner_name"],
+            "price": dl["price"], "reference_price": dl["reference_price"], "currency": dl["currency"],
+            "discount_pct": dl["discount_pct"], "price_note": dl["price_note"], "valid_to": dl["valid_to"],
+        })
+
+    local_hour = weather.get("local_hour", 12)
+    for ev in events:
+        if ev.get("lat") is None:
+            continue
+        d = haversine_m(pos[0], pos[1], ev["lat"], ev["lng"])
+        start_h = _event_start_hour(ev)
+        if d > min(radius_m, 3000) or (start_h is not None and not local_hour - 1 <= start_h <= local_hour + 6):
+            continue
+        rules, reasons = ["DYN-13", "DYN-08"], [f"{_walk(d)} away"]
+        score = 0.85 - 0.4 * d / min(radius_m, 3000)
+        if start_h is not None and start_h - local_hour <= 3:
+            score += 0.3
+        reasons.insert(0, f"Today at {ev['time']}" if ev.get("time") else "On today")
+        if ev["category"] == "Music" and "nightlife" in interests:
+            score += 0.2; rules.append("DYN-07")
+        recs.append({
+            "id": ev["id"], "kind": "event", "title": ev["title"], "subtitle": ev.get("venue") or ev["category"],
+            "distance_m": d, "reason": " · ".join(reasons), "rules": rules, "score": score,
+            "lat": ev["lat"], "lng": ev["lng"], "url": ev["url"], "photo_url": ev.get("photo_url"),
+            "category": "event", "attribution": "Ticketmaster", "price": ev.get("price_min"), "currency": ev.get("currency"),
+        })
+
     recs.sort(key=lambda r: -r["score"])
     plan_recs = [r for r in recs if r["kind"] == "plan"][:3]
     others = [r for r in recs if r["kind"] != "plan"]
     top_sights = [r for r in others if r["kind"] == "sight"][:4]
     top_food = [r for r in others if r["kind"] == "food"][:3]
-    picked = sorted(plan_recs + top_sights + top_food, key=lambda r: -r["score"])[:limit]
+    top_deals = [r for r in others if r["kind"] == "deal"][:3]
+    top_events = [r for r in others if r["kind"] == "event"][:2]
+    picked = sorted(plan_recs + top_sights + top_food + top_deals + top_events, key=lambda r: -r["score"])[:limit]
     for r in picked:
         r["score"] = round(r["score"], 3)
     return picked
@@ -251,9 +310,26 @@ def log_event(city: str, recs: list[dict], weather: dict, path=None) -> None:
         pass  # logging must never break a request
 
 
+def _finish(lat: float, lng: float, recs: list[dict], weather: dict, radius_m: int, notes: list[str]) -> dict:
+    partner_deals.record_impressions([r["deal_id"] for r in recs if r["kind"] == "deal"])
+    city = nearest_city(lat, lng)
+    log_event(city, recs, weather)
+    return {
+        "context": {"city": city, "weather": weather or None, "day_part": _day_part(weather["local_hour"]) if weather else None, "radius_m": radius_m},
+        "recommendations": recs, "notes": notes,
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+def run_local(lat: float, lng: float, interests: list[str], planned: list[dict], radius_m: int = 1500) -> dict:
+    """Offline mode: no internet lookups, but the trip plan and our own partner deals still work."""
+    recs = recommend((lat, lng), {}, [], [], planned, interests, radius_m, deals=partner_deals.near(lat, lng, radius_m))
+    return _finish(lat, lng, recs, {}, radius_m, ["Offline mode: only your plan and partner deals are shown."])
+
+
 def run(lat: float, lng: float, interests: list[str], planned: list[dict], radius_m: int = 1500) -> dict:
     weather = fetch_weather(lat, lng)
-    sights, food, notes = [], [], []
+    sights, food, events, notes = [], [], [], []
     try:
         sights = fetch_sights(lat, lng, radius_m)
     except Exception:
@@ -262,11 +338,11 @@ def run(lat: float, lng: float, interests: list[str], planned: list[dict], radiu
         food = fetch_food(lat, lng)
     except Exception:
         notes.append("Places to eat are temporarily unavailable.")
-    recs = recommend((lat, lng), weather, sights, food, planned, interests, radius_m)
-    city = nearest_city(lat, lng)
-    log_event(city, recs, weather)
-    return {
-        "context": {"city": city, "weather": weather, "day_part": _day_part(weather.get("local_hour", 12)), "radius_m": radius_m},
-        "recommendations": recs, "notes": notes,
-        "generated_at": datetime.now(timezone.utc).isoformat(),
-    }
+    if ticketmaster.enabled():
+        try:
+            events = ticketmaster.events_near(lat, lng, radius_km=max(1, min(radius_m, 3000) // 1000 + 1))
+        except Exception:
+            notes.append("Live events are temporarily unavailable.")
+    recs = recommend((lat, lng), weather, sights, food, planned, interests, radius_m,
+                     deals=partner_deals.near(lat, lng, radius_m), events=events)
+    return _finish(lat, lng, recs, weather, radius_m, notes)

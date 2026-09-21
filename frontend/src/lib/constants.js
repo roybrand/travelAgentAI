@@ -38,6 +38,7 @@ export const KIND_META = {
 export const SOURCE_MODE = {
   live: { label: "Live", tone: "ok" },
   amadeus: { label: "Live offers", tone: "ok" },
+  travelpayouts: { label: "Recent fares", tone: "ok" },
   estimate: { label: "Estimate", tone: "warn" },
   demo: { label: "Demo", tone: "muted" },
   none: { label: "Unavailable", tone: "muted" },

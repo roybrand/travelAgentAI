@@ -6,7 +6,7 @@ import { isoDate } from "../lib/format";
 const Ctx = createContext(null);
 export const useTrip = () => useContext(Ctx);
 
-function defaults() {
+export function tripDefaults() {
   const start = new Date();
   start.setDate(start.getDate() + 45);
   const end = new Date(start);
@@ -32,7 +32,7 @@ function defaultPlan(guide) {
 }
 
 export function TripProvider({ children }) {
-  const [form, setForm] = useState(defaults);
+  const [form, setForm] = useState(tripDefaults);
   const [result, setResult] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -41,10 +41,24 @@ export function TripProvider({ children }) {
   const [config, setConfig] = useState({ openai: false, amadeus: false, offline: false });
   const [destinations, setDestinations] = useState([]);
   const [profile, setProfileState] = useState(loadProfile);
+  // How the last "build from a prompt" was read: which parts came from the words and which from the form.
+  const [readback, setReadback] = useState(null);
 
   useEffect(() => {
-    fetchConfig().then((c) => c && setConfig(c));
-    fetchDestinations().then((d) => d && setDestinations(d.destinations));
+    // The server may still be starting when the page first loads, so retry instead of leaving the lists empty.
+    let live = true;
+    const until = async (fetcher, apply) => {
+      for (let i = 0; i < 6 && live; i++) {
+        const v = await fetcher();
+        if (v) return apply(v);
+        await new Promise((r) => setTimeout(r, 1500 * (i + 1)));
+      }
+    };
+    until(fetchConfig, setConfig);
+    until(fetchDestinations, (d) => setDestinations(d.destinations));
+    return () => {
+      live = false;
+    };
   }, []);
 
   const setProfile = useCallback((p) => {
@@ -66,7 +80,8 @@ export function TripProvider({ children }) {
     setError("");
     try {
       // Hold the overlay briefly so the agent steps read as a sequence; live lookups may take longer.
-      const withTypes = { ...payload, place_types: payload.place_types ?? profile?.place_types ?? [] };
+      // The form and the prompt builder are separate processes: place types come only from what the caller sends.
+      const withTypes = { ...payload, place_types: payload.place_types ?? [] };
       const [data] = await Promise.all([planTrip(withTypes), new Promise((r) => setTimeout(r, 2300))]);
       setResult(data);
       setHotelId(data.itinerary.hotel.id);
@@ -78,7 +93,17 @@ export function TripProvider({ children }) {
     } finally {
       setLoading(false);
     }
-  }, [profile]);
+  }, []);
+
+  /** Forget the current trip and put the search form back to its defaults. The traveler profile is kept. */
+  const resetSearch = useCallback(() => {
+    setResult(null);
+    setHotelId(null);
+    setPlanned([]);
+    setError("");
+    setReadback(null);
+    setForm(tripDefaults());
+  }, []);
 
   const toggleItem = useCallback(
     (name) => setPlanned((p) => (p.includes(name) ? p.filter((n) => n !== name) : [...p, name])),
@@ -100,7 +125,7 @@ export function TripProvider({ children }) {
 
   const value = {
     form, setForm, result, trip, loading, error, setError, plan, hotelId, setHotelId, planned, toggleItem,
-    config, destinations, cityName, profile, setProfile, forgetProfile,
+    config, destinations, cityName, profile, setProfile, forgetProfile, resetSearch, readback, setReadback,
   };
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

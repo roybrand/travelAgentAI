@@ -186,7 +186,37 @@ flowchart LR
 
 `POST /api/build-trip` takes free text and optionally one photo. The photo is shrunk to 768 px on the device, must be a small JPEG, PNG or WebP data URL, and is sent to OpenAI only for that request. The model returns trip fields and a profile (keywords, interests, place types, vibe, pace, budget style). Everything is validated: destinations must be catalog codes, interests and place types must be known keys, dates must be real and in the future. The model is told to treat the photo as a hint about taste and never to identify or describe a person.
 
+**Prompt and form are separate.** The home page has two cards. "Describe your trip" builds from your words alone and never reads or changes the form. "Plan with the form" uses only the form and ignores the prompt and the saved profile. Anything the words do not say (origin, dates, travelers, budget) gets a fixed default, which the trip page lists as assumed.
+
+**Which place wins.** After the model answers, the server scans the text for the 100 catalog cities and their countries (whole words, accents and case ignored, with aliases such as UK, USA and UAE; everyday words that are also city names, like "nice" or "split", are skipped):
+
+| What the person wrote | What happens |
+|---|---|
+| A city we cover | That city is used, even if the model chose another or the form says something else |
+| A country with one covered city | That city |
+| A country with several covered cities | The model's pick if it fits the country, otherwise clickable choices. The form is never used |
+| A specific city or country we do not cover (Egypt) | Reported as "not one of our 100 cities yet". No trip is planned and no other place is substituted |
+| A vague wish ("somewhere warm") | The model may suggest a city and says so in its notes |
+
+The trip page lists what came from your words and what was assumed under "How I read your request".
+
 The profile is saved only in the browser (`localStorage`). Its place types drive the real OpenStreetMap searches for museums, pubs, parks and so on.
+
+### Tonight: clubs and bars for one night
+
+`GET /api/tonight?dest=OPO&date=2026-09-25&kinds=clubs,bars` returns the best places to go out in a city on a chosen night.
+
+| Part | Source | Notes |
+|---|---|---|
+| Venues, hours, websites | OpenStreetMap (Overpass, Nominatim fallback) | Real places only. Cached for two weeks |
+| Photos | Wikimedia Commons search by venue name and city | Kept only if the file name contains the venue's distinctive name words and the licence is CC BY, CC BY-SA, CC0 or public domain. The author and licence are shown. Cached for 30 days |
+| Prices | Partner deals (our database) and Ticketmaster events (free key) | **Never estimated.** A venue with neither shows "No price published" |
+| Events tonight | Ticketmaster | Optional |
+
+Free sources have no guest reviews, so "best" means: open that night (+1.5), open past 00:30 (+0.7), a nightclub (+0.5),
+well documented with a Wikipedia entry (+2), has a website (+0.5), has a photo (+0.5), has a live partner deal (+1),
+and less far from the centre (-0.15 per km). Venues whose listed hours say they are closed that night are hidden and
+counted. Venues with no hours listed stay in, marked "Hours not listed". The ranking rule is printed on the page.
 
 ## 5. Configuration
 
@@ -199,6 +229,10 @@ Copy [backend/.env.example](../backend/.env.example) to `backend/.env` and fill 
 | `OPENAI_BASE_URL` | An OpenAI-compatible endpoint (proxy, Azure, local test server) | OpenAI |
 | `AMADEUS_CLIENT_ID`, `AMADEUS_CLIENT_SECRET` | Enables real flight and hotel offers | off |
 | `AMADEUS_BASE_URL` | Amadeus environment | test (free) |
+| `TICKETMASTER_API_KEY` | Live events and parties (free key) | off |
+| `TRAVELPAYOUTS_TOKEN` | Recent real flight fares (free affiliate signup) | off |
+| `ADMIN_TOKEN` | Unlocks the moderation page `/admin` | moderation off |
+| `WAYFINDER_DB` | Where partner accounts and deals are stored | `backend/data/partners.db` |
 | `WAYFINDER_OFFLINE` | `1` disables every network call and uses built-in demo data | `0` |
 
 `GET /api/config` reports what is switched on, and the UI shows or hides features accordingly.

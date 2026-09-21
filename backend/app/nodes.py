@@ -3,7 +3,8 @@ import logging
 from datetime import date
 
 from . import config
-from .live import llm
+from .live import catalog, llm
+from .partners import deals as partner_deals
 from .mcp_tools.client import MCPToolClient
 from .ranking.combine import rank_and_combine
 from .ranking.score import score_hotels
@@ -133,8 +134,25 @@ async def build_itinerary_node(state: TripState) -> dict:
         },
     ]
     itinerary["packages"] = _packages(ranking["combos"], chosen)
+    itinerary["partner_deals"] = _partner_deals(state["request"])
     itinerary["ai"] = await _ai_summary(itinerary, state)
     return {"itinerary": itinerary}
+
+
+def _partner_deals(req: dict) -> list[dict]:
+    """Reviewed partner deals at the destination during the trip, best match first. Supplementary: a database
+    problem here must not sink the plan. Ranking is by match to the traveler only (see partners/deals.py)."""
+    dest = catalog.resolve(req["destination"])
+    if not dest:
+        return []
+    try:
+        found = partner_deals.for_city(dest["code"], date.fromisoformat(req["start_date"]), date.fromisoformat(req["end_date"]))
+        ranked = partner_deals.rank_deals(found, req["interests"], req.get("place_types", []))[:8]
+        partner_deals.record_impressions([d["id"] for d in ranked])
+        return ranked
+    except Exception:
+        logger.exception("partner deals lookup failed; continuing without them")
+        return []
 
 
 def _quality(combo: dict) -> float:

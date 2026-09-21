@@ -132,3 +132,54 @@ def test_nearby_endpoint_passes_position_interests_and_plan_to_the_engine(client
     res = client.post("/api/nearby", json=body)
     assert res.status_code == 200 and res.json()["recommendations"] == [{"id": "x"}]
     assert seen["interests"] == ["nightlife"] and seen["planned"][0]["name"] == "Livraria" and seen["radius"] == 1500
+
+
+# ---------------------------------------------------------------- partner deals and events
+
+def deal(id_, lat, lng, pct=0, days_left=10, tags=(), category="bar", **extra):
+    return {"id": id_, "title": f"Deal {id_}", "description": "A reviewed partner deal", "lat": lat, "lng": lng, "discount_pct": pct,
+            "days_left": days_left, "tags": list(tags), "category": category, "url": "https://example.com", "photo_url": None,
+            "partner_name": "Partner", "price": 10, "reference_price": None, "currency": "EUR", "price_note": None,
+            "valid_to": "2099-01-01", **extra}
+
+
+def event(id_, lat, lng, time="19:30", category="Music"):
+    return {"id": id_, "title": f"Event {id_}", "venue": "Hall", "category": category, "time": time,
+            "lat": lat, "lng": lng, "url": "https://example.com", "photo_url": None, "price_min": 20, "currency": "EUR"}
+
+
+def test_partner_deals_are_ranked_by_match_discount_and_distance_and_labelled():
+    near_plain, near_match = deal(1, 41.1500, -8.6110, category="hotel"), deal(2, 41.1500, -8.6110, pct=30, tags=["nightlife"])
+    far = deal(3, 41.1600, -8.6110, pct=30, tags=["nightlife"])
+    recs = nearby.recommend(HERE, DRY, [], [], [], ["nightlife"], deals=[near_plain, far, near_match])
+    ids = order(recs)
+    assert ids == ["deal-2", "deal-3", "deal-1"]
+    top = recs[0]
+    assert top["kind"] == "deal" and top["partner"] is True and {"DYN-11", "DYN-07", "DYN-08"} <= set(top["rules"])
+    assert "30% below the usual price" in top["reason"]
+
+
+def test_deals_outside_the_radius_or_without_a_location_are_skipped():
+    recs = nearby.recommend(HERE, DRY, [], [], [], [], radius_m=500, deals=[deal(1, 41.20, -8.61), deal(2, None, None)])
+    assert recs == []
+
+
+def test_ending_soon_nudges_up_and_says_so_without_pressure():
+    a, b = deal(1, 41.1500, -8.6110, days_left=0), deal(2, 41.1500, -8.6110, days_left=20)
+    recs = nearby.recommend(HERE, DRY, [], [], [], [], deals=[b, a])
+    assert order(recs) == ["deal-1", "deal-2"] and "DYN-12" in recs[0]["rules"] and "Ends today" in recs[0]["reason"]
+    assert "DYN-12" not in recs[1]["rules"]
+
+
+def test_partner_status_cannot_change_the_order():
+    a, b = deal(1, 41.1500, -8.6110), deal(2, 41.1500, -8.6110)
+    plain = order(nearby.recommend(HERE, DRY, [], [], [], [], deals=[a, b]))
+    dressed = order(nearby.recommend(HERE, DRY, [], [], [], [], deals=[{**a, "paid": True, "tier": "gold", "boost": 50}, b]))
+    assert plain == dressed
+
+
+def test_events_starting_soon_and_close_are_pushed_and_late_or_far_ones_are_not():
+    soon, later, far, passed = event("e1", 41.1500, -8.6110, "17:00"), event("e2", 41.1500, -8.6110, "23:00"), event("e3", 41.19, -8.61), event("e4", 41.15, -8.611, "10:00")
+    recs = nearby.recommend(HERE, DRY, [], [], [], [], events=[soon, later, far, passed])
+    assert order(recs) == ["e1"] and {"DYN-13", "DYN-08"} <= set(recs[0]["rules"]) and recs[0]["attribution"] == "Ticketmaster"
+    assert "Today at 17:00" in recs[0]["reason"]

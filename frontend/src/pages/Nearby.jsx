@@ -1,7 +1,9 @@
 import { useMemo } from "react";
 import { motion } from "framer-motion";
 import { Link } from "react-router-dom";
+import { trackDealClick } from "../api";
 import { useNearby } from "../state/NearbyContext.jsx";
+import { PartnerBadge } from "../components/DealCard.jsx";
 import { useTrip } from "../state/TripContext.jsx";
 import { metres } from "../lib/format";
 import MapView from "../components/MapView.jsx";
@@ -17,8 +19,8 @@ const STATUS_TEXT = {
   error: "Could not get recommendations just now. It will retry when you move.",
 };
 
-const KIND_ICON = { plan: "📌", sight: "🏛️", food: "🍽️" };
-const CAT_ICON = { cafe: "☕", bar: "🍸", pub: "🍺", restaurant: "🍽️", indoor: "🏛️", outdoor: "🌳", plan: "📌" };
+const KIND_ICON = { plan: "📌", sight: "🏛️", food: "🍽️", deal: "🏷️", event: "🎟️" };
+const CAT_ICON = { cafe: "☕", bar: "🍸", pub: "🍺", restaurant: "🍽️", indoor: "🏛️", outdoor: "🌳", plan: "📌", party: "🎉", hotel: "🛏️", tour: "🧭", activity: "🎟️", spa: "💆", car_rental: "🚗", event: "🎟️" };
 
 function weatherText(w) {
   if (!w) return null;
@@ -65,6 +67,10 @@ export default function Nearby() {
             Use my trip plan {trip ? "" : "(plan a trip first)"}
           </label>
           <label>
+            <input type="checkbox" checked={prefs.quiet} onChange={(e) => savePrefs({ quiet: e.target.checked })} />
+            Quiet hours: no device notifications from 10 pm to 8 am
+          </label>
+          <label>
             <input
               type="checkbox"
               checked={prefs.notify}
@@ -75,7 +81,7 @@ export default function Nearby() {
           </label>
         </div>
         <p className="fine">
-          Privacy: your position is sent to our server only to look up places around you. It is not stored, and the runtime log records rule names and the nearest city, never coordinates. Notifications work while this page is open; background push to a phone needs the app installed with a push service, which is not built yet.
+          Privacy: your position is sent to our server only to look up places around you. It is not stored, and the runtime log records rule names and the nearest city, never coordinates. Partner deals and events are labelled and shown only when you are close. Device notifications are limited to 3 a day. They work while the app or its tab is open; true background push to a closed phone needs a push service, which is not built yet.
         </p>
       </section>
 
@@ -98,16 +104,23 @@ export default function Nearby() {
                     {!r.photo_url && <span className="rec-icon">{CAT_ICON[r.category] || KIND_ICON[r.kind]}</span>}
                   </Photo>
                   <div className="rec-body">
+                    {r.kind === "deal" && <div><PartnerBadge /></div>}
                     <h3>{r.title}</h3>
                     {r.subtitle && <p className="muted">{r.subtitle}</p>}
                     <p className="rec-why">{r.reason}</p>
                     <div className="facts-row">
                       <span className="fpill">{metres(r.distance_m)} away</span>
                       {r.kind === "plan" && <span className="tag hit">★ In your plan</span>}
+                      {r.kind === "deal" && r.discount_pct >= 10 && <span className="badge deal sm">−{r.discount_pct}%</span>}
+                      {r.price != null && r.currency && (
+                        <span className="fpill">{r.kind === "event" ? "from " : ""}{new Intl.NumberFormat("en-GB", { style: "currency", currency: r.currency, maximumFractionDigits: 2 }).format(r.price)}{r.price_note ? ` ${r.price_note}` : ""}</span>
+                      )}
                     </div>
                     <div className="links">
                       <a href={`https://www.google.com/maps/dir/?api=1&destination=${r.lat},${r.lng}&travelmode=walking`} target="_blank" rel="noreferrer">Directions ↗</a>
-                      {r.url && <a href={r.url} target="_blank" rel="noreferrer">More info ↗</a>}
+                      {r.kind === "deal" && r.url && <a href={r.url} target="_blank" rel="noopener noreferrer sponsored" onClick={() => trackDealClick(r.deal_id)}>Get this deal ↗</a>}
+                      {r.kind === "event" && r.url && <a href={r.url} target="_blank" rel="noopener noreferrer">Tickets on {r.attribution} ↗</a>}
+                      {r.kind !== "deal" && r.kind !== "event" && r.url && <a href={r.url} target="_blank" rel="noreferrer">More info ↗</a>}
                     </div>
                   </div>
                 </motion.article>

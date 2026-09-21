@@ -75,7 +75,50 @@ def normalize_request(raw: dict, today: date) -> dict:
     if interests:
         out["interests"] = interests
     out["assumptions"] = [str(a)[:160] for a in _as_list(raw.get("assumptions"))][:5]
+    place = str(raw.get("place_mentioned") or "").strip()
+    if place and place.lower() not in ("null", "none"):
+        out["place_mentioned"] = place[:60]
+    kind = str(raw.get("place_kind") or "").lower()
+    if kind in ("city", "country", "region", "vague"):
+        out["place_kind"] = kind
     return out
+
+
+def resolve_place(result: dict, text: str) -> dict:
+    """The person's own words beat the form and the model's guesses. If the model gave no destination, look for a
+    city or country the text names. One city: use it. A country with several cities, or several cities: offer them
+    as choices instead of guessing. Never fall back silently: the caller must ask when nothing is found."""
+    kind = result.pop("place_kind", None)
+    found = catalog.find_in_text(text)
+    origin = result.get("origin")
+    dest = catalog.BY_CODE.get(result.get("destination", ""))
+    named = bool(found["cities"] or found["countries"])
+    if dest and named:
+        # The words name a place we know: the model's pick must fit it, or the words win.
+        fits = dest in found["cities"] or dest["country"] in found["countries"]
+        if not fits:
+            result.pop("destination")
+            dest = None
+    elif dest and kind in ("city", "country"):
+        # A specific city or country we do not cover (say, Egypt): the model must not swap in a different place.
+        result.pop("destination")
+        dest = None
+        result["assumptions"] = [a for a in result.get("assumptions", []) if catalog.resolve(a) is None][:5]
+    if dest:
+        return result
+    cities = [c for c in found["cities"] if c["code"] != origin]
+    if len(cities) == 1:
+        result["destination"] = cities[0]["code"]
+        result["assumptions"] = [*result.get("assumptions", []), f"You mentioned {cities[0]['city']}, so I planned that."][:5]
+        return result
+    options = cities or [c for country in found["countries"] for c in catalog.cities_in(country)
+                         if c["code"] != origin]
+    if len(options) == 1:
+        result["destination"] = options[0]["code"]
+    elif options:
+        result["destination_choices"] = [{"code": c["code"], "city": c["city"], "country": c["country"]} for c in options][:12]
+        result.setdefault("place_mentioned", ", ".join(found["countries"] or [c["city"] for c in cities])[:60])
+    return result
 
 
 def _as_list(value) -> list:
@@ -91,13 +134,15 @@ def parse_trip_request(text: str, today: date | None = None) -> dict:
     system = (
         "You turn a traveler's free-text trip request into JSON. Reply with a JSON object with these keys: "
         "origin, destination (each MUST be one of these codes: " + places + " ; use null if unclear or not listed), "
+        "place_mentioned (the place the person named as their destination, exactly as they wrote it, or null), "
+        "place_kind (one of: city, country, region, vague; 'vague' for things like 'somewhere warm'), "
         "start_date, end_date (ISO YYYY-MM-DD), nights (integer, only if dates are not given), budget (number, "
         "total for the trip; assume GBP), travelers (integer), interests (a subset of: " + ", ".join(INTERESTS) + "), "
         "assumptions (short strings describing anything you had to guess). "
         f"Today is {today.isoformat()}; resolve relative dates such as 'next month' to future dates. "
         "Never invent details the traveler did not imply; use null instead."
     )
-    return normalize_request(_chat(system, text[:1200], 500), today)
+    return resolve_place(normalize_request(_chat(system, text[:1200], 500), today), text)
 
 
 # ---------- traveler profile (text, and optionally a photo) ----------
@@ -138,6 +183,9 @@ def build_trip(text: str, image: str | None = None, today: date | None = None) -
         "Reply with one JSON object with two keys. 'trip': origin, destination (each MUST be one of these codes: " + places + "; null if unclear), "
         "start_date, end_date (ISO), nights (integer, only if no dates), budget (number, GBP total), travelers (integer), "
         "assumptions (list of short strings for anything you guessed). "
+        "If the person names a country or region instead of a city, pick the single best matching city from the list for what they like and say so in assumptions. "
+        "Set place_mentioned to the place they named as their destination exactly as they wrote it (or null), and place_kind to one of: city, country, region, vague. "
+        "If they name a specific city or country that is not in the list, set destination to null rather than choosing a different place. "
         "'profile': summary (max 2 sentences, addressed to 'you'), keywords (up to 8 short words for what they like), "
         "interests (subset of: " + ", ".join(INTERESTS) + "), place_types (subset of: " + types + " - choose the kinds of places they would want to visit), "
         "vibe (one of: " + ", ".join(VIBES) + "), pace (one of: " + ", ".join(PACES) + "), budget_style (one of: " + ", ".join(BUDGET_STYLES) + "). "
@@ -145,7 +193,7 @@ def build_trip(text: str, image: str | None = None, today: date | None = None) -
         + ("The photo is only a hint about the atmosphere and activities they like (scenery, food, nightlife, culture). Never identify or describe any person in it. " if image else "")
     )
     raw = _chat(system, text[:1500] or "(no text, use the photo)", 700, image if valid_image(image) else None)
-    result = normalize_request(raw.get("trip") or {}, today)
+    result = resolve_place(normalize_request(raw.get("trip") or {}, today), text)
     result["profile"] = normalize_profile(raw.get("profile"))
     return result
 
