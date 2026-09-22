@@ -9,7 +9,7 @@ Rules that protect people:
 from datetime import datetime, timedelta, timezone
 
 from app.partners import db
-from app.social import moderation, users
+from app.social import demo_people, moderation, users
 
 MAX_REQUESTS_PER_DAY = 20
 MAX_MESSAGE = 500
@@ -36,7 +36,8 @@ def request(from_id: int, to_id: int, message: str) -> dict:
     if from_id == to_id:
         raise ConnectError("You cannot connect with yourself.")
     target = users.get_row(to_id)
-    if not target or target["status"] != "active" or not target["visible"] or users.blocked_between(from_id, to_id):
+    if not target or target["status"] != "active" or not target["visible"] or users.blocked_between(from_id, to_id) \
+            or not users.allowed(users.get_row(from_id), target):
         raise ConnectError("That person is not available.", 404)
     if message and moderation.check_text(message):
         raise ConnectError("That note may break the community rules. Please reword it.", 422)
@@ -54,6 +55,12 @@ def request(from_id: int, to_id: int, message: str) -> dict:
         if n >= MAX_REQUESTS_PER_DAY:
             raise ConnectError("You have sent a lot of requests today. Please try again tomorrow.", 429)
         cur = c.execute("INSERT INTO connections (from_user, to_user, message, created_at) VALUES (?, ?, ?, ?)", (from_id, to_id, message, _now()))
+        if target["demo"]:
+            # A demo profile accepts at once and says hello, so the chat can be shown. The chat is labelled as automated.
+            c.execute("UPDATE connections SET status = 'accepted', responded_at = ? WHERE id = ?", (_now(), cur.lastrowid))
+            c.execute("INSERT INTO messages (connection_id, sender_id, body, created_at) VALUES (?, ?, ?, ?)",
+                      (cur.lastrowid, to_id, demo_people.welcome(target), _now()))
+            return {"id": cur.lastrowid, "status": "accepted"}
         return {"id": cur.lastrowid, "status": "pending"}
 
 
@@ -115,7 +122,13 @@ def send(user_id: int, connection_id: int, body: str) -> dict:
     if moderation.check_text(body):
         raise ConnectError("That message may break the community rules, so it was not sent.", 422)
     with db.tx() as c:
+        _, other = _open_chat(c, user_id, connection_id)
         cur = c.execute("INSERT INTO messages (connection_id, sender_id, body, created_at) VALUES (?, ?, ?, ?)", (connection_id, user_id, body, _now()))
+        other_row = c.execute("SELECT * FROM users WHERE id = ?", (other,)).fetchone()
+        if other_row and other_row["demo"]:  # automated reply from a demo profile
+            n = c.execute("SELECT COUNT(*) FROM messages WHERE connection_id = ? AND sender_id = ?", (connection_id, user_id)).fetchone()[0]
+            c.execute("INSERT INTO messages (connection_id, sender_id, body, created_at) VALUES (?, ?, ?, ?)",
+                      (connection_id, other, demo_people.reply(other_row, n), _now()))
         return {"id": cur.lastrowid, "mine": True, "body": body, "at": _now()}
 
 

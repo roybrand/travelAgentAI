@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { people } from "../api";
 import { usePeople } from "../state/PeopleContext.jsx";
 import { useTrip } from "../state/TripContext.jsx";
@@ -6,6 +7,7 @@ import { longDate } from "../lib/format";
 import { resizeImage } from "../lib/profile";
 import DestSelect from "../components/DestSelect.jsx";
 import PersonCard, { Avatar } from "../components/PersonCard.jsx";
+import BackLink from "../components/BackLink.jsx";
 
 const TABS = [["find", "Find people"], ["inbox", "Inbox"], ["profile", "My profile"]];
 
@@ -53,6 +55,7 @@ function Landing() {
 
   return (
     <div className="wrap page">
+      <BackLink fallback="/" />
       <div className="partner-hero">
         <div>
           <div className="eyebrow">People</div>
@@ -69,7 +72,7 @@ function Landing() {
           <div className="safety-note">
             <b>Your safety comes first</b>
             <Rules rules={options?.rules} />
-            <p className="fine">You choose what to share. You can hide your profile, block or report anyone, and delete your account and data at any time. We never show your email, your age or your exact location.</p>
+            <p className="fine">You choose what to share. You can hide your profile, block or report anyone, and delete your account and data at any time. We never show your email, your exact age or your exact location.</p>
           </div>
         </div>
         <form className="card pad auth" onSubmit={submit}>
@@ -127,7 +130,14 @@ function Find() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [result, setResult] = useState(null);
+  // null = read gender and age from the words; once the person picks any chip, their choice is used instead.
+  const [want, setWant] = useState(null);
   const label = (k) => options?.activities.find((a) => a.key === k)?.label || k;
+  const pick = (kind, v) => setWant((w) => {
+    const cur = w || { genders: [], ages: [] };
+    const list = cur[kind].includes(v) ? cur[kind].filter((x) => x !== v) : [...cur[kind], v];
+    return { ...cur, [kind]: list };
+  });
 
   const submit = async (e) => {
     e.preventDefault();
@@ -135,7 +145,10 @@ function Find() {
     setBusy(true);
     setError("");
     try {
-      const r = await people.looking(token, { text, lat: loc.pos.lat, lng: loc.pos.lng, radius_m: radius });
+      const r = await people.looking(token, {
+        text, lat: loc.pos.lat, lng: loc.pos.lng, radius_m: radius,
+        ...(want ? { want_genders: want.genders, want_ages: want.ages } : {}),
+      });
       setResult(r);
       refresh();
     } catch (err) {
@@ -179,6 +192,15 @@ function Find() {
             </select>
           </Field>
         </div>
+        <div className="tag-pick">
+          <span className="muted">Who would you like to meet? (optional)</span>
+          <div className="chips">
+            {options?.genders.map((g) => <button type="button" key={g} className="chip" aria-pressed={!!want?.genders.includes(g)} onClick={() => pick("genders", g)}>{g}</button>)}
+            {options?.age_bands.map((a) => <button type="button" key={a} className="chip" aria-pressed={!!want?.ages.includes(a)} onClick={() => pick("ages", a)}>{a}</button>)}
+            {want && <button type="button" className="linkbtn" onClick={() => setWant(null)}>Clear</button>}
+          </div>
+          <small className="hint">Leave these alone and I will read any gender or age you mention in your description. Only people who chose to share their gender are shown when you filter by it, and everyone can limit who is allowed to find them.</small>
+        </div>
         <p className="fine">
           Searching around {loc.pos?.label || "…"}.{" "}
           <button type="button" className="linkbtn" onClick={loc.ask}>Use my location instead</button>
@@ -212,6 +234,8 @@ function Find() {
               {result.request.tags.map((t) => <span key={t} className="tag hit">{label(t)}</span>)}
               <span className="tag">{longDate(result.request.day)}</span>
               {result.request.part !== "any" && <span className="tag">{result.request.part}</span>}
+              {result.request.want_genders?.map((g) => <span key={g} className="tag hit">only {g}</span>)}
+              {result.request.want_ages?.map((a) => <span key={a} className="tag hit">age {a}</span>)}
               {result.request.languages.map((l) => <span key={l} className="tag">{l}</span>)}
               {result.request.vibes.map((v) => <span key={v} className="tag">{v}</span>)}
             </div>
@@ -300,6 +324,7 @@ function Chat({ chat, onClose, onChanged }) {
         <b>{chat.person.display_name}</b>
         <button className="linkbtn" onClick={onClose}>Close</button>
       </header>
+      {chat.person.demo && <p className="demo-banner">This is a demo profile. Its replies are automated, so it is not a real person.</p>}
       <div className="chat-log" ref={box}>
         {messages.length === 0 && <p className="fine">Say hello. Suggest a public place and time, and tell a friend where you are going.</p>}
         {messages.map((m) => <div key={m.id} className={`bubble ${m.mine ? "mine" : ""}`}>{m.body}</div>)}
@@ -334,7 +359,7 @@ function ChatSafety({ person, onDone }) {
   );
 }
 
-function Inbox() {
+function Inbox({ openId }) {
   const { token } = usePeople();
   const [data, setData] = useState(null);
   const [open, setOpen] = useState(null);
@@ -348,6 +373,13 @@ function Inbox() {
     const t = setInterval(load, 15000);
     return () => clearInterval(t);
   }, [load]);
+
+  useEffect(() => {
+    if (openId && data) {
+      const chat = data.chats.find((c) => String(c.connection_id) === String(openId));
+      if (chat) setOpen(chat);
+    }
+  }, [openId, data]);
 
   const answer = async (id, accept) => {
     await people.respond(token, id, accept).catch((e) => setError(e.message));
@@ -410,7 +442,8 @@ function Profile() {
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    if (me) setF({ display_name: me.display_name, bio: me.bio, interests: me.interests, languages: me.languages, visible: me.visible });
+    if (me) setF({ display_name: me.display_name, bio: me.bio, interests: me.interests, languages: me.languages, visible: me.visible,
+      gender: me.gender || "", show_age: me.show_age, audience_genders: me.audience_genders, audience_ages: me.audience_ages });
   }, [me]);
   if (!me || !f) return null;
 
@@ -476,6 +509,25 @@ function Profile() {
         <div className="tag-pick"><span className="muted">Languages you speak</span>
           <div className="chips">{options?.languages.map((l) => <button type="button" key={l} className="chip" aria-pressed={f.languages.includes(l)} onClick={() => toggle("languages", l)}>{l}</button>)}</div>
         </div>
+        <div className="fields">
+          <Field label="Gender (optional)" hint="Shown on your profile if you choose one. People searching by gender only see those who shared it.">
+            <select value={f.gender} onChange={(e) => setF({ ...f, gender: e.target.value })}>
+              <option value="">Prefer not to say</option>
+              {options?.genders.map((g) => <option key={g} value={g}>{g}</option>)}
+            </select>
+          </Field>
+          <div className="field">
+            <span>Age</span>
+            <label className="check"><input type="checkbox" checked={f.show_age} onChange={(e) => setF({ ...f, show_age: e.target.checked })} /><span>Show my age range ({me.age_band || "n/a"}) on my profile. Your exact age is never shown.</span></label>
+          </div>
+        </div>
+        <div className="tag-pick"><span className="muted">Who can find me? (optional)</span>
+          <div className="chips">
+            {options?.genders.map((g) => <button type="button" key={g} className="chip" aria-pressed={f.audience_genders.includes(g)} onClick={() => toggle("audience_genders", g)}>only {g}</button>)}
+            {options?.age_bands.map((a) => <button type="button" key={a} className="chip" aria-pressed={f.audience_ages.includes(a)} onClick={() => toggle("audience_ages", a)}>age {a}</button>)}
+          </div>
+          <small className="hint">Leave empty to be found by everyone. If you limit it, only people who match can see your profile, find you in searches or ask to connect. People who have not shared that detail cannot pass the limit. For example, choose “only woman” to be visible to women only.</small>
+        </div>
         <label className="check">
           <input type="checkbox" checked={f.visible} onChange={(e) => setF({ ...f, visible: e.target.checked })} />
           <span><b>Let other people find me.</b> Turn this off to hide your profile from everyone. Your chats stay.</span>
@@ -520,14 +572,51 @@ function Profile() {
   );
 }
 
+// ---------------------------------------------------------------- a single profile, opened from a match, alert or toast
+
+function PersonModal({ id, onClose }) {
+  const { token } = usePeople();
+  const [person, setPerson] = useState(null);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    let alive = true;
+    setPerson(null);
+    setError("");
+    people.get(token, id).then((p) => alive && setPerson(p)).catch((e) => alive && setError(e.message));
+    return () => { alive = false; };
+  }, [token, id]);
+
+  useEffect(() => {
+    const onKey = (e) => e.key === "Escape" && onClose();
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  return (
+    <div className="modal-scrim" onClick={onClose}>
+      <div className="modal-card" onClick={(e) => e.stopPropagation()}>
+        <button className="panel-close" onClick={onClose} aria-label="Close">×</button>
+        {error && <p className="error" role="alert">{error}</p>}
+        {!error && !person && <p className="muted pad">Loading…</p>}
+        {person && <PersonCard person={person} />}
+      </div>
+    </div>
+  );
+}
+
 // ---------------------------------------------------------------- page
 
 export default function People() {
   const { token, me } = usePeople();
-  const [tab, setTab] = useState("find");
+  const [params, setParams] = useSearchParams();
+  const [tab, setTab] = useState(["find", "inbox", "profile"].includes(params.get("tab")) ? params.get("tab") : "find");
+  const personId = params.get("person");
+  const closePerson = () => { const p = new URLSearchParams(params); p.delete("person"); setParams(p); };
   if (!token || !me) return token ? <div className="wrap page"><p className="muted">Loading…</p></div> : <Landing />;
   return (
     <div className="wrap page">
+      <BackLink fallback="/" />
       <div className="page-head">
         <div>
           <div className="eyebrow">People</div>
@@ -539,8 +628,9 @@ export default function People() {
         </div>
       </div>
       {tab === "find" && <Find />}
-      {tab === "inbox" && <Inbox />}
+      {tab === "inbox" && <Inbox openId={params.get("chat")} />}
       {tab === "profile" && <Profile />}
+      {personId && <PersonModal id={personId} onClose={closePerson} />}
     </div>
   );
 }

@@ -4,6 +4,7 @@ import { BrowserRouter } from "react-router-dom";
 import App from "./App.jsx";
 import { NearbyProvider } from "./state/NearbyContext.jsx";
 import { PeopleProvider } from "./state/PeopleContext.jsx";
+import { AlertsProvider } from "./state/AlertsContext.jsx";
 import { TripProvider } from "./state/TripContext.jsx";
 import "./styles.css";
 
@@ -18,7 +19,9 @@ createRoot(document.getElementById("root")).render(
       <TripProvider>
         <NearbyProvider>
           <PeopleProvider>
-            <App />
+            <AlertsProvider>
+              <App />
+            </AlertsProvider>
           </PeopleProvider>
         </NearbyProvider>
       </TripProvider>

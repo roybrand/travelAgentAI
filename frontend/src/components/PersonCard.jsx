@@ -9,8 +9,9 @@ export function Avatar({ person, size = 56 }) {
   const [failed, setFailed] = useState(false);
   const initials = (person.display_name || "?").split(/\s+/).map((w) => w[0]).slice(0, 2).join("").toUpperCase();
   return (
-    <span className="avatar" style={{ width: size, height: size, background: `linear-gradient(135deg, hsl(${hue(person.display_name)} 50% 34%), hsl(${(hue(person.display_name) + 50) % 360} 55% 20%))`, fontSize: size * 0.38 }}>
+    <span className="avatar" title={person.demo ? "AI-generated picture of a fictional person (demo profile)" : undefined} style={{ width: size, height: size, background: `linear-gradient(135deg, hsl(${hue(person.display_name)} 50% 34%), hsl(${(hue(person.display_name) + 50) % 360} 55% 20%))`, fontSize: size * 0.38 }}>
       {person.photo_url && !failed ? <img src={person.photo_url} alt={`${person.display_name}'s photo`} onError={() => setFailed(true)} /> : initials}
+      {person.demo && size >= 40 && <i className="ai-mark">AI</i>}
     </span>
   );
 }
@@ -87,6 +88,8 @@ export default function PersonCard({ person, extra, compact = false, showActions
         <div className="facts-row">
           {person.shared?.map((t) => <span key={t} className="tag hit">★ {label(t)}</span>)}
           {!compact && person.interests?.filter((t) => !person.shared?.includes(t)).slice(0, 3).map((t) => <span key={t} className="tag">{label(t)}</span>)}
+          {person.gender && <span className="tag">{person.gender}</span>}
+          {person.age_band && <span className="tag">{person.age_band}</span>}
           {person.languages?.slice(0, 3).map((l) => <span key={l} className="tag">{l}</span>)}
         </div>
         {person.request && <p className="fine person-request">Looking for: “{person.request}” · {person.distance}</p>}

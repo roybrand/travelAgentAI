@@ -113,9 +113,9 @@ def test_spa_routes_serve_the_app_but_unknown_routes_still_404(client):
 
 def test_config_and_destinations_endpoints(client):
     cfg = client.get("/api/config").json()
-    assert cfg["offline"] is True and cfg["openai"] is False and cfg["destinations"] == 100
+    assert cfg["offline"] is True and cfg["openai"] is False and cfg["destinations"] == 109
     data = client.get("/api/destinations").json()
-    assert len(data["destinations"]) == 100 and data["regions"] == ["Europe", "Americas", "Asia"]
+    assert len(data["destinations"]) == 109 and data["regions"] == ["Europe", "Americas", "Asia", "Oceania"]
 
 
 def test_parse_request_needs_an_openai_key(client):

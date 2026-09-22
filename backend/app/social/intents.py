@@ -1,8 +1,10 @@
 """Looking for people to do something with: describe it in words, and we find people nearby who want the same.
 
-The AI (or, without a key, a keyword reader) only turns the description into tags from a fixed list. Matching is then
-plain arithmetic over those tags, the day, the time of day and the distance. People are never filtered or ranked by
-protected traits (gender, age, ethnicity, religion, sexuality); if a request asks for that, we say we ignore it.
+The AI (or, without a key, a keyword reader) turns the description into tags from a fixed list. Matching is then plain
+arithmetic over those tags, the day, the time of day and the distance. A request may also ask for a gender or an age band
+(from the person's own choice or read from their words). Both sides are voluntary: only people who chose to share a gender
+are returned by a gender search, and each person's own "who can find me" limits are always honoured. We do not filter by
+ethnicity, religion, sexuality or looks, and a request that asks for that is told so.
 
 Privacy: a request stores a coarse position (rounded to about 1 km) and expires when its day ends. Other people see a
 distance band such as "within 1 km", never coordinates.
@@ -40,7 +42,8 @@ def _fallback(text: str, today: date) -> dict:
                                     ("evening", ("evening", "dinner", "sunset")), ("night", ("tonight", "night", "late"))) if any(w in low for w in words)), "any")
     langs = [l for l in vocab.LANGUAGES if l.lower() in low]
     vibes = [v for v in vocab.VIBES if v in low]
-    return {"tags": tags[:6], "languages": langs[:3], "vibes": vibes[:3], "day": day, "part": part, "summary": text.strip()[:140]}
+    return {"tags": tags[:6], "languages": langs[:3], "vibes": vibes[:3], "day": day, "part": part, "summary": text.strip()[:140],
+            "want_genders": [], "want_ages": []}
 
 
 def parse(text: str, today: date | None = None) -> dict:
@@ -54,8 +57,8 @@ def parse(text: str, today: date | None = None) -> dict:
             f"activities (subset of: {acts}), languages (subset of: {', '.join(vocab.LANGUAGES)}), "
             f"vibes (subset of: {', '.join(vocab.VIBES)}), day (ISO date, today is {today.isoformat()}; default today), "
             f"part (one of: {', '.join(vocab.PARTS)}), summary (one friendly sentence, first person, max 140 characters, "
-            "describing the activity only). Never include anything about gender, age, looks, ethnicity, religion or "
-            "sexuality, and ignore any request to filter by them. Use only what the person wrote."
+            "describing the activity only, without mentioning gender, age, looks, ethnicity, religion or sexuality). "
+            "Use only what the person wrote."
         )
         try:
             raw = llm._chat(system, text[:600], 350)
@@ -72,14 +75,16 @@ def parse(text: str, today: date | None = None) -> dict:
                     base["day"] = d
             except (TypeError, ValueError):
                 pass
-            if isinstance(raw.get("summary"), str) and raw["summary"].strip() and not vocab.mentions_sensitive_filter(raw["summary"]):
+            if isinstance(raw.get("summary"), str) and raw["summary"].strip() and not vocab.mentions_personal_filter(raw["summary"]):
                 base["summary"] = raw["summary"].strip()[:140]
         except Exception:
             notes.append("The AI reader was unavailable, so I used a simpler keyword reader.")
-    if vocab.mentions_sensitive_filter(text):
-        notes.append("I do not filter people by gender, age, looks, ethnicity, religion or sexuality. I matched on the activity, language and vibe only.")
-        if vocab.mentions_sensitive_filter(base["summary"]):
-            base["summary"] = "Looking for company for " + (", ".join(vocab.ACTIVITIES[t][0].lower() for t in base["tags"]) or "an activity")
+    base["want_genders"] = vocab.detect_genders(text)
+    base["want_ages"] = vocab.detect_age_bands(text)
+    if vocab.mentions_unsupported_filter(text):
+        notes.append("I do not filter by ethnicity, religion, sexuality or looks. I matched on the activity, language, vibe, and any gender or age range you asked for.")
+    if vocab.mentions_personal_filter(base["summary"]):
+        base["summary"] = "Looking for company for " + (", ".join(vocab.ACTIVITIES[t][0].lower() for t in base["tags"]) or "an activity")
     base["notes"] = notes
     return base
 
@@ -87,6 +92,7 @@ def parse(text: str, today: date | None = None) -> dict:
 # ---------------------------------------------------------------- posting and closing
 
 def create(user_id: int, text: str, lat: float, lng: float, radius_m: int, parsed: dict) -> int:
+    """Store a request. `parsed` may carry want_genders and want_ages, from the person's choices or read from their words."""
     if not parsed["tags"]:
         raise IntentError("I could not tell what you want to do. Try naming an activity, like live music, hiking or coffee.", 422)
     places.valid_day(parsed["day"])
@@ -100,9 +106,10 @@ def create(user_id: int, text: str, lat: float, lng: float, radius_m: int, parse
         for r in old[MAX_OPEN - 1:]:
             c.execute("UPDATE intents SET status = 'closed' WHERE id = ?", (r["id"],))
         cur = c.execute(
-            "INSERT INTO intents (user_id, text, tags, languages, vibes, summary, day, part, lat, lng, radius_m, created_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO intents (user_id, text, tags, languages, vibes, want_genders, want_ages, summary, day, part, lat, lng, radius_m, created_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (user_id, text.strip()[:600], json.dumps(parsed["tags"]), json.dumps(parsed["languages"]), json.dumps(parsed["vibes"]),
+             json.dumps(vocab.clean_tags(parsed.get("want_genders"), vocab.GENDERS)), json.dumps(vocab.clean_tags(parsed.get("want_ages"), vocab.AGE_BANDS)),
              parsed["summary"], parsed["day"].isoformat(), parsed["part"], coarse(lat), coarse(lng), radius_m, now.isoformat()))
         return cur.lastrowid
 
@@ -114,7 +121,7 @@ def close(user_id: int, intent_id: int) -> bool:
 
 def _shape(row) -> dict:
     return {"id": row["id"], "summary": row["summary"], "tags": json.loads(row["tags"]), "languages": json.loads(row["languages"]),
-            "vibes": json.loads(row["vibes"]), "day": row["day"], "part": row["part"], "radius_m": row["radius_m"], "status": row["status"]}
+            "vibes": json.loads(row["vibes"]), "want_genders": json.loads(row["want_genders"]), "want_ages": json.loads(row["want_ages"]), "day": row["day"], "part": row["part"], "radius_m": row["radius_m"], "status": row["status"]}
 
 
 def mine(user_id: int) -> list[dict]:
@@ -142,7 +149,9 @@ def _parts_compatible(a: str, b: str) -> bool:
 def find(user_id: int, intent) -> dict:
     """People with an open, matching request the same day nearby, and places where discoverable people are going."""
     mine_tags, mine_langs, mine_vibes = json.loads(intent["tags"]), json.loads(intent["languages"]), json.loads(intent["vibes"])
+    want_genders, want_ages = json.loads(intent["want_genders"]), json.loads(intent["want_ages"])
     hidden = users.hidden_ids(user_id)
+    viewer = users.get_row(user_id)
     dlat = intent["radius_m"] / 111_000
     with db.tx() as c:
         rows = c.execute(
@@ -152,6 +161,9 @@ def find(user_id: int, intent) -> dict:
     scored = []
     for r in rows:
         if r["uid"] in hidden or not _parts_compatible(intent["part"], r["part"]):
+            continue
+        candidate = users.get_row(r["uid"])
+        if not users.allowed(viewer, candidate) or not users.passes(candidate, want_genders, want_ages):
             continue
         dist = haversine_m(intent["lat"], intent["lng"], r["lat"], r["lng"])
         if dist > min(intent["radius_m"], r["radius_m"]) + 1500:  # 1.5 km slack: positions are rounded to about 1 km
@@ -166,10 +178,9 @@ def find(user_id: int, intent) -> dict:
     scored.sort(key=lambda x: -x[0])
     people = []
     for score, r, shared, langs, dist in scored[:20]:
-        urow = users.get_row(r["uid"])
-        card = users.card(urow, shared)
+        card = users.card(users.get_row(r["uid"]), shared)
         card.update({"request": r["summary"], "part": r["part"], "distance": distance_band(int(dist)), "shared_languages": langs,
                      "why": [f"You both want {', '.join(vocab.ACTIVITIES[t][0].lower() for t in shared)}"] + ([f"You both speak {', '.join(langs)}"] if langs else [])})
         people.append(card)
-    at_places = places.near(user_id, intent["lat"], intent["lng"], intent["radius_m"], date.fromisoformat(intent["day"]), mine_tags)
+    at_places = places.near(user_id, intent["lat"], intent["lng"], intent["radius_m"], date.fromisoformat(intent["day"]), mine_tags, want_genders, want_ages)
     return {"people": people, "at_places": at_places}

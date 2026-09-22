@@ -7,6 +7,7 @@ import { isoDate, longDate } from "../lib/format";
 import { PLACE_TYPE_LABEL } from "../lib/profile";
 import DealCard from "../components/DealCard.jsx";
 import DestSelect from "../components/DestSelect.jsx";
+import BackLink from "../components/BackLink.jsx";
 
 const TOKEN_KEY = "wf.partner.v1";
 const loadToken = () => {
@@ -68,6 +69,7 @@ function Landing({ onAuth, options }) {
 
   return (
     <div className="wrap page">
+      <BackLink fallback="/" />
       <div className="partner-hero">
         <div>
           <div className="eyebrow">For businesses</div>
@@ -168,12 +170,17 @@ function DealForm({ token, me, options, editing, onSaved, onCancel }) {
 
   useEffect(() => setF(editing ? fromDeal(editing) : blank(me.partner)), [editing, me.partner]);
 
+  const geocodeAddress = async () => {
+    const r = await api.geocode(token, f.address, f.dest);
+    setF((x) => ({ ...x, lat: String(r.lat), lng: String(r.lng) }));
+    setGeo(`Found: ${r.label}`);
+    return r;
+  };
+
   const findAddress = async () => {
     setGeo("Searching…");
     try {
-      const r = await api.geocode(token, f.address, f.dest);
-      setF((x) => ({ ...x, lat: String(r.lat), lng: String(r.lng) }));
-      setGeo(`Found: ${r.label}`);
+      await geocodeAddress();
     } catch (e) {
       setGeo(e.message);
     }
@@ -186,8 +193,17 @@ function DealForm({ token, me, options, editing, onSaved, onCancel }) {
     setBusy(true);
     setError("");
     try {
-      if (editing) await api.update(token, editing.id, payload(f));
-      else await api.create(token, payload(f));
+      let form = f;
+      // Coordinates are found from the address automatically. A partner only needs to
+      // type coordinates themselves if the address search can't find the place.
+      if (needsLocation && (!f.lat || !f.lng)) {
+        if (f.address.trim().length < 4) throw new Error("Enter a street address, or the exact coordinates.");
+        setGeo("Searching…");
+        const r = await geocodeAddress();
+        form = { ...f, lat: String(r.lat), lng: String(r.lng) };
+      }
+      if (editing) await api.update(token, editing.id, payload(form));
+      else await api.create(token, payload(form));
       onSaved(editing ? "Saved. Changes go back to review before they show." : "Sent for review. It goes live once approved.");
     } catch (err) {
       setError(err.message);
@@ -211,15 +227,19 @@ function DealForm({ token, me, options, editing, onSaved, onCancel }) {
           <Field label="Destination"><DestSelect value={f.dest} onChange={(c) => setF((x) => ({ ...x, dest: c }))} destinations={destinations} /></Field>
           {needsLocation && (
             <>
-              <Field label="Street address" wide hint="Used on the map and for nearby alerts.">
+              <Field label="Street address" wide hint="We find the map coordinates from this automatically when you save.">
                 <span className="inline">
                   <input value={f.address} onChange={set("address")} maxLength={160} placeholder="Rua das Flores 10" />
                   <button type="button" className="btn ghost sm" onClick={findAddress} disabled={f.address.trim().length < 4}>Find on map</button>
                 </span>
                 {geo && <small className="hint">{geo}</small>}
               </Field>
-              <Field label="Latitude"><input required type="number" step="any" min={-90} max={90} value={f.lat} onChange={set("lat")} /></Field>
-              <Field label="Longitude"><input required type="number" step="any" min={-180} max={180} value={f.lng} onChange={set("lng")} /></Field>
+              <Field label="Latitude (optional)" hint="Only needed if the address search can't find the place.">
+                <input type="number" step="any" min={-90} max={90} value={f.lat} onChange={set("lat")} />
+              </Field>
+              <Field label="Longitude (optional)" hint="Only needed if the address search can't find the place.">
+                <input type="number" step="any" min={-180} max={180} value={f.lng} onChange={set("lng")} />
+              </Field>
             </>
           )}
           <Field label="Deal price"><input required type="number" min={0} step="0.01" value={f.price} onChange={set("price")} /></Field>
@@ -332,6 +352,7 @@ function Dashboard({ token, onSignOut }) {
 
   return (
     <div className="wrap page">
+      <BackLink fallback="/" />
       <div className="page-head">
         <div>
           <div className="eyebrow">Partner portal</div>

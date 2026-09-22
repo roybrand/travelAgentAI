@@ -6,6 +6,7 @@ import DestSelect from "../components/DestSelect.jsx";
 import { DealsGrid, DISCLOSURE, EventsBlock } from "../components/DealsSection.jsx";
 import MapView from "../components/MapView.jsx";
 import { CATEGORY_ICON } from "../components/DealCard.jsx";
+import BackLink from "../components/BackLink.jsx";
 
 const CATEGORIES = [
   ["hotel", "Stays"], ["restaurant", "Restaurants"], ["bar", "Bars and pubs"], ["party", "Parties and clubs"],
@@ -46,6 +47,7 @@ export default function Deals() {
 
   return (
     <div className="wrap page">
+      <BackLink fallback="/" />
       <div className="page-head">
         <div>
           <div className="eyebrow">Deals and events</div>

@@ -6,6 +6,7 @@ import { useNearby } from "./state/NearbyContext.jsx";
 import { useTrip } from "./state/TripContext.jsx";
 import Home from "./pages/Home.jsx";
 import Trip from "./pages/Trip.jsx";
+import DayPlan from "./pages/DayPlan.jsx";
 import Stays from "./pages/Stays.jsx";
 import Explore from "./pages/Explore.jsx";
 import Credits from "./pages/Credits.jsx";
@@ -13,6 +14,8 @@ import Nearby from "./pages/Nearby.jsx";
 import Deals from "./pages/Deals.jsx";
 import Tonight from "./pages/Tonight.jsx";
 import People from "./pages/People.jsx";
+import Alerts from "./pages/Alerts.jsx";
+import { AlertBell, AlertToasts } from "./components/AlertBell.jsx";
 import Partners from "./pages/Partners.jsx";
 import Admin from "./pages/Admin.jsx";
 
@@ -41,6 +44,7 @@ function Header() {
         {trip && (
           <>
             <NavLink to="/trip">Your trip</NavLink>
+            <NavLink to="/plan">Day plan</NavLink>
             <NavLink to="/stays">Stays</NavLink>
             <NavLink to="/explore">Explore</NavLink>
           </>
@@ -62,11 +66,56 @@ function Header() {
           ↺ New search
         </button>
       )}
+      <AlertBell />
+      <NavLink to="/partners" className="biz-link" title="For businesses: list your deals">For businesses</NavLink>
       <div className="pill" title="Backend status">
         <span className={`dot ${online === null ? "" : online ? "live" : "down"}`} />
         {online === null ? "Checking…" : online ? "Agents online" : "Backend unreachable"}
       </div>
     </header>
+  );
+}
+
+/** The bar at the bottom of the screen on phones, where the top tabs would not fit. */
+function BottomNav() {
+  const { trip } = useTrip();
+  const items = [
+    ["/", "Home", "🏠", true],
+    ...(trip ? [["/trip", "Trip", "🧳", false], ["/plan", "Plan", "🗓️", false]] : []),
+    ["/tonight", "Tonight", "🌙", false],
+    ["/people", "People", "👥", false],
+    ["/deals", "Deals", "🏷️", false],
+    ["/nearby", "Nearby", "📍", false],
+  ];
+  return (
+    <nav className="bottomnav" aria-label="Main">
+      {items.map(([to, label, icon, end]) => (
+        <NavLink key={to} to={to} end={end}>
+          <span aria-hidden="true">{icon}</span>
+          {label}
+        </NavLink>
+      ))}
+    </nav>
+  );
+}
+
+/** A bar inside the pages of an open trip, so its parts are always one tap apart. */
+function TripNav() {
+  const { trip, cityName } = useTrip();
+  const { pathname } = useLocation();
+  if (!trip || !["/trip", "/plan", "/stays", "/explore"].includes(pathname)) return null;
+  return (
+    <nav className="subnav" aria-label="This trip">
+      <div className="wrap subnav-in">
+        <span className="subnav-title">🧳 {cityName(trip.req.destination)}</span>
+        <NavLink to="/trip">Overview</NavLink>
+        <NavLink to="/plan">Day plan</NavLink>
+        <NavLink to="/stays">Stays</NavLink>
+        <NavLink to="/explore">Explore</NavLink>
+        <NavLink to="/tonight">Tonight</NavLink>
+        <NavLink to="/deals">Deals</NavLink>
+      </div>
+    </nav>
   );
 }
 
@@ -87,6 +136,16 @@ function Toasts() {
 function Footer() {
   return (
     <footer className="footer">
+      <nav className="footer-nav" aria-label="Site">
+        <Link to="/">Home</Link>
+        <Link to="/tonight">Tonight</Link>
+        <Link to="/people">People</Link>
+        <Link to="/deals">Deals</Link>
+        <Link to="/alerts">Radar</Link>
+        <Link to="/nearby">Nearby</Link>
+        <Link to="/partners">For businesses</Link>
+        <Link to="/credits">Credits</Link>
+      </nav>
       <div>
         <b>Wayfinder AI</b> · LangGraph orchestration · MCP tool servers · FastAPI · React
       </div>
@@ -107,6 +166,7 @@ export default function App() {
   return (
     <div className="app">
       <Header />
+      <TripNav />
       <AnimatePresence mode="wait">
         <motion.main
           key={location.pathname}
@@ -118,12 +178,14 @@ export default function App() {
           <Routes location={location}>
             <Route path="/" element={<Home />} />
             <Route path="/trip" element={<Trip />} />
+            <Route path="/plan" element={<DayPlan />} />
             <Route path="/stays" element={<Stays />} />
             <Route path="/explore" element={<Explore />} />
             <Route path="/nearby" element={<Nearby />} />
             <Route path="/deals" element={<Deals />} />
             <Route path="/tonight" element={<Tonight />} />
             <Route path="/people" element={<People />} />
+            <Route path="/alerts" element={<Alerts />} />
             <Route path="/partners" element={<Partners />} />
             <Route path="/admin" element={<Admin />} />
             <Route path="/credits" element={<Credits />} />
@@ -132,7 +194,9 @@ export default function App() {
         </motion.main>
       </AnimatePresence>
       <Toasts />
+      <AlertToasts />
       <Footer />
+      <BottomNav />
     </div>
   );
 }

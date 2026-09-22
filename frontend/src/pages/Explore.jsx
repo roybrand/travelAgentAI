@@ -7,6 +7,7 @@ import { KIND_META, TAG_LABEL } from "../lib/constants";
 import { km, metres, money } from "../lib/format";
 import MapView from "../components/MapView.jsx";
 import Photo from "../components/Photo.jsx";
+import BackLink from "../components/BackLink.jsx";
 
 function Venue({ v }) {
   const meta = KIND_META[v.kind] || KIND_META.experience;
@@ -70,7 +71,7 @@ function SightCard({ item, n, selected, planned, travelers, onSelect, onToggle }
         )}
         <button
           className={`btn ${planned ? "ghost" : "primary"} sm`}
-          onClick={(e) => { e.stopPropagation(); onToggle(item.name); }}
+          onClick={(e) => { e.stopPropagation(); onToggle(item); }}
         >
           {planned ? `✓ In your plan${hasCost ? ` · ${money(item.cost * travelers)}` : ""}` : "Add to my plan"}
         </button>
@@ -127,10 +128,11 @@ function ExploreView({ trip, planned, toggleItem, cityName }) {
   if (!g) {
     return (
       <div className="wrap page">
+      <BackLink fallback="/" />
         <div className="page-head"><div><div className="eyebrow">Explore</div><h1 className="h2">Explore {place}</h1></div></div>
         <div className="card pad empty-state">
           <b>No destination guide for {req.destination}</b>
-          <p className="muted">Your flights and stays are still ranked. Sights, weather and dining come from live sources for the 100 destinations in the list.</p>
+          <p className="muted">Your flights and stays are still ranked. Sights, weather and dining come from live sources for the 109 destinations in the list.</p>
           <Link to="/trip" className="btn primary">Back to your trip</Link>
         </div>
       </div>
@@ -139,6 +141,7 @@ function ExploreView({ trip, planned, toggleItem, cityName }) {
 
   return (
     <div className="wrap page">
+      <BackLink fallback="/" />
       <div className="page-head">
         <div>
           <div className="eyebrow">Explore</div>
@@ -267,6 +270,7 @@ function ExploreView({ trip, planned, toggleItem, cityName }) {
           <b>{trip.chosenItems.length} experience{trip.chosenItems.length === 1 ? "" : "s"} in your plan</b>
           <span className="muted">{trip.expCost ? ` · about ${money(trip.expCost)} for ${req.travelers} traveler${req.travelers > 1 ? "s" : ""}` : ""}</span>
         </div>
+        <Link to="/plan" className="btn ghost sm">Day plan</Link>
         <Link to="/trip" className="btn primary sm">View trip · {money(trip.total)}</Link>
       </div>
     </div>

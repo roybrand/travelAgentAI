@@ -10,6 +10,7 @@ import { DealsGrid } from "../components/DealsSection.jsx";
 import Going from "../components/Going.jsx";
 import MapView from "../components/MapView.jsx";
 import Photo from "../components/Photo.jsx";
+import BackLink from "../components/BackLink.jsx";
 
 const KINDS = [["clubs", "🪩 Clubs"], ["bars", "🍸 Bars and pubs"]];
 const ICON = { nightclub: "🪩", pub: "🍸" };
@@ -106,6 +107,7 @@ export default function Tonight() {
 
   return (
     <div className="wrap page">
+      <BackLink fallback="/" />
       <div className="page-head">
         <div>
           <div className="eyebrow">Tonight</div>
@@ -124,7 +126,7 @@ export default function Tonight() {
 
       <div className="chips deal-filters">
         {KINDS.map(([k, l]) => <button key={k} className="chip" aria-pressed={kinds.includes(k)} onClick={() => toggleKind(k)}>{l}</button>)}
-        <Link to="/nearby" className="chip">📍 Find places near me right now</Link>
+        <Link to="/nearby" state={{ from: "Tonight" }} className="chip">📍 Find places near me right now</Link>
       </div>
 
       {state.error && <p className="error" role="alert">{state.error}</p>}

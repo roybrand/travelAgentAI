@@ -20,13 +20,16 @@ For what each feature means and who it is for, see the [feature registry](FEATUR
 | POST | `/api/admin/people/photos/{user_id}/reject` | Admin token | Reject a pending profile photo and delete the file. |
 | GET | `/api/admin/people/reports` | Admin token | Open reports against people, with how many are open against each person. |
 | POST | `/api/admin/people/reports/{report_id}/resolve` | Admin token | Close a report, optionally banning the person (their sessions end at once). |
+| POST | `/api/alerts` | Partner sign-in | Deals for a planned trip or a radius, and (when signed in to People) matches, requests and messages. |
 | POST | `/api/build-trip` | Public | Trip fields plus a traveler profile (keywords, interests, place types) from free text and/or a photo. |
 | GET | `/api/config` | Public | What is switched on, so the UI can show or hide features and label data sources honestly. |
 | GET | `/api/deals` | Public | Approved partner deals for a destination, ranked by match to the traveler. |
+| GET | `/api/deals/art/{kind}/{seed}` | Public | The drawn picture used by DEMO deals: a colourful illustration for the category (not a photograph). |
 | GET | `/api/deals/options` | Public | The category, tag and currency lists for the deal form, and the public disclosure text. |
 | POST | `/api/deals/{deal_id}/click` | Public | Count one click on a deal's booking link (shown to the business as a result). |
-| GET | `/api/destinations` | Public | The 100 selectable destinations (Europe, Americas, Asia). |
+| GET | `/api/destinations` | Public | The 109 selectable destinations (Europe, Americas, Asia, Australia). |
 | GET | `/api/events` | Public | Live events near a destination during the trip (needs a free Ticketmaster key). |
+| GET | `/api/feed/deals.xml` | Public | A public RSS feed of good partner deals for a city, for feed readers and other apps. |
 | POST | `/api/nearby` | Public | Dynamic recommendations around a GPS position, using the weather, time of day, interests and trip plan. |
 | POST | `/api/parse-request` | Public | Turn a plain-English trip description into form fields (needs OPENAI_API_KEY). |
 | POST | `/api/partner-feed` | API key | Bulk create/update deals with an API key. Each item needs a stable external_id and an explicit valid_from. Items go through the same validation and review as deals typed into the portal. |
@@ -50,13 +53,14 @@ For what each feature means and who it is for, see the [feature registry](FEATUR
 | GET | `/api/people/connections` | Partner sign-in | Requests I received, requests I sent, and my open chats. |
 | POST | `/api/people/connections/{connection_id}/respond` | Partner sign-in | Accept or decline a request I received. |
 | GET | `/api/people/counts` | Public | How many discoverable people are going to each place on a day. Numbers only, so no sign-in is needed. |
+| GET | `/api/people/demo-avatar/{user_id}` | Public | The picture of a DEMO profile: an AI-generated portrait of a fictional person when one was made, otherwise a drawing. Neither is a photograph of a real person. |
 | POST | `/api/people/login` | Public | Sign in a traveler. Rate limited. |
 | POST | `/api/people/logout` | Partner sign-in | End the current session. |
 | POST | `/api/people/looking` | Partner sign-in | Describe an activity and the company you want. The AI reads it into tags, and we return matching people nearby. |
 | DELETE | `/api/people/looking/{intent_id}` | Partner sign-in | Close one of my requests so I stop showing up in other people's matches. |
 | GET | `/api/people/looking/{intent_id}/matches` | Partner sign-in | Refresh the matches for one of my open requests. |
 | GET | `/api/people/me` | Partner sign-in | My profile, my plans, my open requests and the people I have blocked. |
-| PATCH | `/api/people/me` | Partner sign-in | Edit my profile, or hide it from everyone with visible=false. |
+| PATCH | `/api/people/me` | Partner sign-in | Edit my profile: details, the gender I choose to share, whether to show my age band, and who is allowed to find me. |
 | POST | `/api/people/me/delete` | Partner sign-in | Delete my account and everything attached to it: messages, requests, plans and photo. |
 | DELETE | `/api/people/me/photo` | Partner sign-in | Remove my profile photo. |
 | POST | `/api/people/me/photo` | Partner sign-in | Upload a profile photo (a small JPEG, PNG or WebP). Others see it only after it is approved. |
@@ -65,6 +69,7 @@ For what each feature means and who it is for, see the [feature registry](FEATUR
 | POST | `/api/people/register` | Public | Create a traveler account. Adults only: the person confirms they are 18 or older and accepts the rules. |
 | POST | `/api/people/report` | Partner sign-in | Report a person (optionally a message) to the moderators. |
 | POST | `/api/people/unblock` | Partner sign-in | Undo a block. |
+| GET | `/api/people/{user_id}` | Partner sign-in | One person's profile card, for opening from a match alert. The same visibility rules as search apply: still active and findable, not someone who blocked or was blocked, and within their audience limits. |
 | POST | `/api/plan-trip` | Public | Plan a trip: flights, stays, ranking, guide, packages, partner deals and an optional AI summary. |
 | GET | `/api/tonight` | Public | The best clubs and bars in a city for one night, with photos, opening hours, and real prices where they exist. |
 | GET | `/health` | Public | Liveness check used by the UI status pill. |
@@ -80,6 +85,7 @@ For what each feature means and who it is for, see the [feature registry](FEATUR
 | `/nearby` |
 | `/tonight` |
 | `/people` |
+| `/alerts` |
 | `/deals` |
 | `/partners` |
 | `/admin` |

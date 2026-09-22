@@ -9,6 +9,7 @@ import { PRICE_SOURCE, qualityLabel, qualityValue, stayPhotos } from "../lib/sta
 import MapView from "../components/MapView.jsx";
 import Photo from "../components/Photo.jsx";
 import SourceBadge from "../components/SourceBadge.jsx";
+import BackLink from "../components/BackLink.jsx";
 
 const SORTS = {
   best: ["Best match", (a, b) => b.score - a.score],
@@ -193,6 +194,7 @@ function StaysView({ trip, hotelId, setHotelId }) {
 
   return (
     <div className="wrap page">
+      <BackLink fallback="/" />
       <div className="page-head">
         <div>
           <div className="eyebrow">Stays</div>

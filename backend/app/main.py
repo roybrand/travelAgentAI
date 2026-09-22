@@ -13,6 +13,9 @@ from .live import catalog, llm, nearby, nightlife
 from .mcp_tools.client import MCPToolClient
 from .partners.routes import router as partner_router
 from .social.routes import router as people_router
+from .social import demo_people
+from .partners import demo_businesses
+from .alerts import router as alerts_router
 from .suppliers import ticketmaster, travelpayouts
 from .schemas import BuildRequest, NearbyRequest, ParseRequest, TripRequest
 
@@ -23,6 +26,13 @@ async def lifespan(app: FastAPI):
     await client.start()
     app.state.mcp_client = client
     app.state.graph = build_trip_planning_graph(client)
+    try:  # keep the demo pools fresh; each does nothing if its demo data was never seeded
+        if demo_people.exists():
+            await asyncio.to_thread(demo_people.refresh_pool, True)
+        if demo_businesses.exists():
+            await asyncio.to_thread(demo_businesses.refresh, True)
+    except Exception:
+        pass
     try:
         yield
     finally:
@@ -32,11 +42,12 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="travel-agent-ai backend", lifespan=lifespan)
 app.include_router(partner_router)
 app.include_router(people_router)
+app.include_router(alerts_router)
 
 
 STATIC_DIR = Path(__file__).parent / "static"
 FRONTEND_DIST = Path(__file__).resolve().parents[2] / "frontend" / "dist"
-SPA_ROUTES = ("trip", "stays", "explore", "nearby", "tonight", "people", "deals", "partners", "admin", "credits")  # client-side routes served by the React app
+SPA_ROUTES = ("trip", "stays", "explore", "nearby", "tonight", "people", "alerts", "deals", "partners", "admin", "credits")  # client-side routes served by the React app
 
 if (FRONTEND_DIST / "index.html").exists():
     app.mount("/assets", StaticFiles(directory=FRONTEND_DIST / "assets"), name="assets")
@@ -100,8 +111,8 @@ async def get_config():
 
 @app.get("/api/destinations")
 async def destinations():
-    """The 100 selectable destinations (Europe, Americas, Asia)."""
-    return {"destinations": catalog.public_list(), "regions": [catalog.EUROPE, catalog.AMERICAS, catalog.ASIA]}
+    """The 109 selectable destinations (Europe, Americas, Asia, Australia)."""
+    return {"destinations": catalog.public_list(), "regions": [catalog.EUROPE, catalog.AMERICAS, catalog.ASIA, catalog.OCEANIA]}
 
 
 @app.post("/api/parse-request")

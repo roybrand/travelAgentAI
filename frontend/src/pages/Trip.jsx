@@ -3,10 +3,13 @@ import { Link, Navigate, useNavigate } from "react-router-dom";
 import { Bar, BarChart, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis } from "recharts";
 import { useTrip } from "../state/TripContext.jsx";
 import { DealsGrid, DISCLOSURE, EventsBlock } from "../components/DealsSection.jsx";
+import { useAlerts } from "../state/AlertsContext.jsx";
+import AlertCard from "../components/AlertCard.jsx";
 import { TAG_LABEL } from "../lib/constants";
 import { MONTHS, duration, longDate, money, shortDate } from "../lib/format";
 import { qualityLabel, stayPhotos } from "../lib/stay";
 import { PLACE_TYPE_LABEL } from "../lib/profile";
+import { PART_LABEL, PARTS } from "../lib/dayplan";
 import CountUp from "../components/CountUp.jsx";
 import Photo from "../components/Photo.jsx";
 import SourceBadge from "../components/SourceBadge.jsx";
@@ -41,6 +44,7 @@ function readbackLines(said, req, cityName, fromWords) {
 export default function Trip() {
   const { trip, cityName, profile, forgetProfile, config, resetSearch, readback } = useTrip();
   const navigate = useNavigate();
+  const { alerts } = useAlerts();
   if (!trip) return <Navigate to="/" replace />;
 
   const { it, req, hotel, flightCost, stayCost, expCost, total, chosenItems } = trip;
@@ -59,24 +63,24 @@ export default function Trip() {
     ...(expCost > 0 ? [{ name: "Experiences (est.)", value: expCost, color: C.exp }] : []),
   ];
 
-  // Spread the chosen experiences across the free days between arrival and departure.
-  const spacing = Math.max(1, Math.floor((it.nights - 2) / Math.max(1, chosenItems.length)));
+  // Anchors (the flight and the hotel) always lead or close a day; your approved experiences sit in the time of
+  // day you (or "Add to my plan") placed them in, exactly as set on the Day plan tab.
   const stopsText = flight.stops === 0 ? "Direct" : `${flight.stops} stop${flight.stops > 1 ? "s" : ""}`;
   const events = [
     {
-      day: 1, kind: "flight", title: `Fly ${cityName(req.origin)} → ${cityName(req.destination)}`,
+      day: 1, slot: -2, kind: "flight", title: `Fly ${cityName(req.origin)} → ${cityName(req.destination)}`,
       sub: [flight.price_source === "estimate" ? `Typical ${stopsText.toLowerCase()} fare` : `${flight.airline} · ${stopsText}`, duration(flight.duration_minutes), flight.depart_time && `departs ${flight.depart_time}`].filter(Boolean).join(" · "),
     },
-    { day: 1, kind: "stay", title: `Check in at ${hotel.name}`, sub: `${[quality, `${money(hotel.price_per_night)} per night`].filter(Boolean).join(" · ")}`, photo: stayPhotos(hotel)[0] },
-    ...chosenItems.map((item, i) => ({
-      day: Math.min(it.nights, 2 + i * spacing),
+    { day: 1, slot: -1, kind: "stay", title: `Check in at ${hotel.name}`, sub: `${[quality, `${money(hotel.price_per_night)} per night`].filter(Boolean).join(" · ")}`, photo: stayPhotos(hotel)[0] },
+    ...chosenItems.map((item) => ({
+      day: item.day, slot: PARTS.indexOf(item.part), part: item.part,
       kind: "exp",
       title: item.name,
-      sub: [item.duration, item.cost ? `about ${money(item.cost)} pp` : item.cost === 0 ? "free" : null].filter(Boolean).join(" · ") || item.why,
+      sub: [PART_LABEL[item.part], item.duration, item.cost ? `about ${money(item.cost)} pp` : item.cost === 0 ? "free" : null, !item.duration && !item.cost ? item.why : null].filter(Boolean).join(" · "),
       photoProps: itemPhoto(item),
     })),
-    { day: it.nights + 1, kind: "flight", title: `Fly home ${cityName(req.destination)} → ${cityName(req.origin)}`, sub: "Return flight included in your fare" },
-  ].sort((a, b) => a.day - b.day);
+    { day: it.nights + 1, slot: 99, kind: "flight", title: `Fly home ${cityName(req.destination)} → ${cityName(req.origin)}`, sub: "Return flight included in your fare" },
+  ].sort((a, b) => a.day - b.day || a.slot - b.slot);
 
   const months = g
     ? g.months.map((score, i) => ({ month: MONTHS[i], score, trip: g.timing.trip_months.includes(i + 1) }))
@@ -129,7 +133,7 @@ export default function Trip() {
           <div className="kpi">
             <span className="kpi-l">Experiences</span>
             <span className="kpi-v sm">{chosenItems.length} planned</span>
-            <span className="kpi-s">{expCost ? `${money(expCost)} est.` : "prices vary"} · <Link to="/explore">edit</Link></span>
+            <span className="kpi-s">{expCost ? `${money(expCost)} est.` : "prices vary"} · <Link to="/plan">edit</Link></span>
           </div>
         </motion.section>
 
@@ -142,6 +146,18 @@ export default function Trip() {
               </span>
             </div>
             <p className="ai-text">{it.ai.summary}</p>
+          </motion.section>
+        )}
+
+        {alerts.some((a) => a.kind === "deal") && (
+          <motion.section className="hot-strip" {...rise()}>
+            <div className="hot-head">
+              <h2 className="card-title">🔥 Hot right now for your trip</h2>
+              <Link to="/alerts" className="btn ghost sm">Open my radar</Link>
+            </div>
+            <div className="hot-row">
+              {alerts.filter((a) => a.kind === "deal").slice(0, 4).map((a) => <AlertCard key={a.id} a={a} compact />)}
+            </div>
           </motion.section>
         )}
 
@@ -270,7 +286,10 @@ export default function Trip() {
           </motion.section>
 
           <motion.section className="card pad" {...rise(2)}>
-            <h2 className="card-title">Your itinerary</h2>
+            <div className="card-head">
+              <h2 className="card-title">Your itinerary</h2>
+              <Link to="/plan" className="btn ghost sm">✎ Edit day plan</Link>
+            </div>
             <ol className="timeline">
               {events.map((e, i) => (
                 <li key={i} className={`tl ${e.kind}`}>
@@ -285,6 +304,12 @@ export default function Trip() {
                 </li>
               ))}
             </ol>
+            {chosenItems.length === 0 && (
+              <div className="plan-empty-note">
+                <p className="muted">You have not approved any activities yet, so only your flight and stay are shown. Add sights, food or nightlife to fill in the days between.</p>
+                <Link to="/plan" className="btn primary sm">Build your day plan</Link>
+              </div>
+            )}
           </motion.section>
         </div>
 

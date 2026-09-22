@@ -78,18 +78,22 @@ def counts(place_keys: list[str], day: date) -> dict[str, int]:
 
 def attendees(viewer_id: int, place_key: str, day: date) -> dict:
     hidden = users.hidden_ids(viewer_id)
+    viewer = users.get_row(viewer_id)
     with db.tx() as c:
         rows = c.execute(
             "SELECT u.*, a.id AS attendance_id FROM attendances a JOIN users u ON u.id = a.user_id "
             "WHERE a.place_key = ? AND a.day = ? AND u.status = 'active' ORDER BY a.id", (place_key, day.isoformat())).fetchall()
     going = any(r["id"] == viewer_id for r in rows)
-    people = [users.card(r) for r in rows if r["id"] != viewer_id and r["visible"] and r["id"] not in hidden]
+    people = [users.card(r) for r in rows if r["id"] != viewer_id and r["visible"] and r["id"] not in hidden and users.allowed(viewer, r)]
     return {"place_key": place_key, "day": day.isoformat(), "going": going, "people": people}
 
 
-def near(viewer_id: int, lat: float, lng: float, radius_m: int, day: date, my_tags: list[str]) -> list[dict]:
-    """Places within reach where other discoverable people are going that day."""
+def near(viewer_id: int, lat: float, lng: float, radius_m: int, day: date, my_tags: list[str],
+         want_genders: list[str] = (), want_ages: list[str] = ()) -> list[dict]:
+    """Places within reach where other discoverable people are going that day, honouring the search filters and
+    each person's own audience limits."""
     hidden = users.hidden_ids(viewer_id)
+    viewer = users.get_row(viewer_id)
     dlat = radius_m / 111_000
     with db.tx() as c:
         rows = c.execute(
@@ -98,7 +102,7 @@ def near(viewer_id: int, lat: float, lng: float, radius_m: int, day: date, my_ta
             "AND a.lat BETWEEN ? AND ?", (day.isoformat(), viewer_id, lat - dlat, lat + dlat)).fetchall()
     places: dict[str, dict] = {}
     for r in rows:
-        if r["id"] in hidden:
+        if r["id"] in hidden or not users.allowed(viewer, r) or not users.passes(r, list(want_genders), list(want_ages)):
             continue
         dist = haversine_m(lat, lng, r["plat"], r["plng"])
         if dist > radius_m:

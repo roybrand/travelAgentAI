@@ -1,6 +1,6 @@
 # 05 · Live data and AI
 
-The app runs on **free public data sources** for 100 destinations across Europe, the Americas and Asia,
+The app runs on **free public data sources** for 109 destinations across Europe, the Americas and Asia,
 with optional upgrades: **Amadeus** for real flight and hotel prices, and **OpenAI** for plain-English
 requests and grounded explanations. Every piece of data on screen is labelled with where it came from.
 
@@ -188,14 +188,14 @@ flowchart LR
 
 **Prompt and form are separate.** The home page has two cards. "Describe your trip" builds from your words alone and never reads or changes the form. "Plan with the form" uses only the form and ignores the prompt and the saved profile. Anything the words do not say (origin, dates, travelers, budget) gets a fixed default, which the trip page lists as assumed.
 
-**Which place wins.** After the model answers, the server scans the text for the 100 catalog cities and their countries (whole words, accents and case ignored, with aliases such as UK, USA and UAE; everyday words that are also city names, like "nice" or "split", are skipped):
+**Which place wins.** After the model answers, the server scans the text for the 109 catalog cities and their countries (whole words, accents and case ignored, with aliases such as UK, USA and UAE; everyday words that are also city names, like "nice" or "split", are skipped):
 
 | What the person wrote | What happens |
 |---|---|
 | A city we cover | That city is used, even if the model chose another or the form says something else |
 | A country with one covered city | That city |
 | A country with several covered cities | The model's pick if it fits the country, otherwise clickable choices. The form is never used |
-| A specific city or country we do not cover (Egypt) | Reported as "not one of our 100 cities yet". No trip is planned and no other place is substituted |
+| A specific city or country we do not cover (Egypt) | Reported as "not one of our 109 cities yet". No trip is planned and no other place is substituted |
 | A vague wish ("somewhere warm") | The model may suggest a city and says so in its notes |
 
 The trip page lists what came from your words and what was assumed under "How I read your request".

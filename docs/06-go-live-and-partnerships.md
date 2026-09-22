@@ -10,7 +10,7 @@ prototype to a live product with real-time prices and business-pushed deals.
 
 | Area | State |
 |---|---|
-| App, 100 destinations, AI trip builder, nearby engine | Working locally |
+| App, 109 destinations, AI trip builder, nearby engine | Working locally |
 | Weather, sights, photos, hotels and restaurants | Real, free sources (Open-Meteo, Wikipedia, OpenStreetMap) |
 | Flight and stay **prices** | Labelled estimates |
 | Amadeus, Ticketmaster and Travelpayouts adapters | Written and unit-tested, never run against real keys |

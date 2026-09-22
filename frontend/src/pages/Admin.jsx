@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { admin as api, adminPeople } from "../api";
 import DealCard from "../components/DealCard.jsx";
+import BackLink from "../components/BackLink.jsx";
 
 const KEY = "wf.admin.v1";
 const read = () => {
@@ -96,6 +97,7 @@ export default function Admin() {
   if (!token) {
     return (
       <div className="wrap page narrow">
+      <BackLink fallback="/" />
         <div className="eyebrow">Moderation</div>
         <h1 className="h2">Admin sign-in</h1>
         <form className="card pad auth" onSubmit={(e) => { e.preventDefault(); write(draft); setToken(draft); }}>
@@ -112,6 +114,7 @@ export default function Admin() {
 
   return (
     <div className="wrap page">
+      <BackLink fallback="/" />
       <div className="page-head">
         <div>
           <div className="eyebrow">Moderation</div>

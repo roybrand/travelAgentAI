@@ -11,7 +11,7 @@ import Photo from "../components/Photo.jsx";
 import PlanningOverlay from "../components/PlanningOverlay.jsx";
 
 const FEATURES = [
-  ["100 destinations, live data", "Europe, the Americas and Asia. Real weather, real sights and photos, real hotels and restaurants from free public sources."],
+  ["109 destinations, live data", "Europe, the Americas, Asia and Australia. Real weather, real sights and photos, real hotels and restaurants from free public sources."],
   ["Ranked, not just listed", "Every flight and stay is scored on price, quality, your interests and budget fit, then combined into one best pick."],
   ["Honest about what it knows", "Every price and data source is labelled: live, estimate or demo. Nothing is invented and passed off as real."],
   ["The right time to go", "Your dates are scored against real historical weather for the destination, with a nudge when a better window exists."],
@@ -162,10 +162,10 @@ export default function Home() {
         <div className="hero-scrim" />
         <div className="wrap hero-inner">
           <motion.div initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1, duration: 0.6 }}>
-            <div className="eyebrow">AI travel agent · {destinations.length || 100} destinations</div>
+            <div className="eyebrow">AI travel agent · {destinations.length || 109} destinations</div>
             <h1>See it before <span>you book it.</span></h1>
             <p className="lede">
-              Pick any of {destinations.length || 100} cities across Europe, the Americas and Asia. Your AI agent
+              Pick any of {destinations.length || 109} cities across Europe, the Americas, Asia and Australia. Your AI agent
               finds real hotels, sights and weather, ranks the options, and shows you the best choice at a glance.
             </p>
           </motion.div>
@@ -215,7 +215,7 @@ export default function Home() {
                         {ask.choices.length
                           ? `Which city did you mean${ask.mentioned ? ` in ${ask.mentioned}` : ""}?`
                           : ask.mentioned
-                            ? `“${ask.mentioned}” is not one of our ${destinations.length || 100} cities yet.`
+                            ? `“${ask.mentioned}” is not one of our ${destinations.length || 109} cities yet.`
                             : "I could not tell where you want to go."}
                       </b>
                       <p className="muted">

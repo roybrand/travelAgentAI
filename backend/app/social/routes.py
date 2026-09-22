@@ -3,12 +3,12 @@ import asyncio
 from datetime import date
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel, Field
 
 from app.partners import activity, db, security
 from app.partners.routes import admin_required
-from app.social import connect, intents, places, users, vocab
+from app.social import avatars, connect, demo_people, intents, places, users, vocab
 
 router = APIRouter()
 
@@ -51,7 +51,7 @@ def _day(value: date | None) -> date:
 def options():
     """Activity, language and vibe lists for profiles and requests, and the community rules."""
     return {"activities": [{"key": k, "label": v[0]} for k, v in vocab.ACTIVITIES.items()], "languages": vocab.LANGUAGES,
-            "vibes": vocab.VIBES, "rules": COMMUNITY_RULES, "report_reasons": connect.REASONS, "min_age": users.MIN_AGE}
+            "vibes": vocab.VIBES, "genders": vocab.GENDERS, "age_bands": list(vocab.AGE_BANDS), "rules": COMMUNITY_RULES, "report_reasons": connect.REASONS, "min_age": users.MIN_AGE}
 
 
 @router.get("/api/people/counts")
@@ -113,6 +113,17 @@ def me(user: dict = Depends(current_user)):
     return {"me": user, "plans": places.mine(user["id"]), "requests": intents.mine(user["id"]), "blocked": users.blocked_by_me(user["id"])}
 
 
+@router.get("/api/people/{user_id:int}")
+def person(user_id: int, user: dict = Depends(current_user)):
+    """One person's profile card, for opening from a match alert. The same visibility rules as search apply: still
+    active and findable, not someone who blocked or was blocked, and within their audience limits."""
+    row = users.get_row(user_id)
+    if (not row or row["status"] != "active" or not row["visible"] or user_id in users.hidden_ids(user["id"])
+            or not users.allowed(user, row)):
+        raise HTTPException(status_code=404, detail="Profile not found.")
+    return users.card(row)
+
+
 class ProfileIn(BaseModel):
     display_name: str | None = Field(default=None, max_length=60)
     bio: str | None = Field(default=None, max_length=400)
@@ -120,13 +131,20 @@ class ProfileIn(BaseModel):
     languages: list[str] | None = None
     home_city: str | None = Field(default=None, max_length=60)
     visible: bool | None = None
+    gender: str | None = Field(default=None, max_length=20)
+    show_age: bool | None = None
+    audience_genders: list[str] | None = None
+    audience_ages: list[str] | None = None
 
 
 @router.patch("/api/people/me")
 def update_me(body: ProfileIn, user: dict = Depends(current_user)):
-    """Edit my profile, or hide it from everyone with visible=false."""
+    """Edit my profile: details, the gender I choose to share, whether to show my age band, and who is allowed to find me."""
+    fields = body.model_fields_set
     try:
-        users.update(user["id"], body.display_name, body.bio, body.interests, body.languages, body.home_city, body.visible)
+        users.update(user["id"], body.display_name, body.bio, body.interests, body.languages, body.home_city, body.visible,
+                     gender=body.gender if "gender" in fields else "__keep__", show_age=body.show_age,
+                     audience_genders=body.audience_genders, audience_ages=body.audience_ages)
     except users.UserError as exc:
         _fail(exc)
     return {"me": users.row_to_me(users.get_row(user["id"]))}
@@ -162,6 +180,21 @@ def photo(name: str):
     if not path:
         raise HTTPException(status_code=404, detail="Not found.")
     return FileResponse(path, headers={"Cache-Control": "private, max-age=3600", "X-Content-Type-Options": "nosniff"})
+
+
+@router.get("/api/people/demo-avatar/{user_id}")
+def demo_avatar(user_id: int):
+    """The picture of a DEMO profile: an AI-generated portrait of a fictional person when one was made, otherwise a drawing.
+    Neither is a photograph of a real person."""
+    row = users.get_row(user_id)
+    if not row or not row["demo"]:
+        raise HTTPException(status_code=404, detail="Not found.")
+    for ext, kind in (("webp", "image/webp"), ("png", "image/png")):
+        path = demo_people.portrait_dir() / f"{user_id}.{ext}"
+        if path.exists():
+            return FileResponse(path, media_type=kind, headers={"Cache-Control": "public, max-age=86400", "X-Content-Type-Options": "nosniff"})
+    return Response(avatars.avatar_svg(user_id, row["gender"]), media_type="image/svg+xml",
+                    headers={"Cache-Control": "public, max-age=86400", "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'"})
 
 
 class DeleteIn(BaseModel):
@@ -223,6 +256,8 @@ class LookingIn(BaseModel):
     lat: float = Field(ge=-90, le=90)
     lng: float = Field(ge=-180, le=180)
     radius_m: int = Field(default=3000, ge=500, le=25000)
+    want_genders: list[str] | None = None  # None = read them from the words; a list (even empty) = the person's own choice
+    want_ages: list[str] | None = None
 
 
 @router.post("/api/people/looking")
@@ -231,11 +266,20 @@ async def looking(body: LookingIn, request: Request, user: dict = Depends(curren
     security.limit(f"people-looking:{user['id']}", 30, 3600)
     try:
         parsed = await asyncio.wait_for(asyncio.to_thread(intents.parse, body.text), timeout=45)
+        if body.want_genders is not None:
+            parsed["want_genders"] = body.want_genders
+        if body.want_ages is not None:
+            parsed["want_ages"] = body.want_ages
         iid = intents.create(user["id"], body.text, body.lat, body.lng, body.radius_m, parsed)
     except intents.IntentError as exc:
         _fail(exc)
     activity.record("intent.created", tags=",".join(parsed["tags"]))
     row = intents.get_mine(user["id"], iid)
+    try:  # demo people only: keep the pool busy and let a few fit this request (does nothing if no demo profiles exist)
+        demo_people.refresh_pool()
+        demo_people.attune(user["id"], row)
+    except Exception:
+        pass
     return {"request": intents._shape(row), "notes": parsed["notes"], **intents.find(user["id"], row)}
 
 

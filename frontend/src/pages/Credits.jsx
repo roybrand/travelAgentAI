@@ -1,9 +1,11 @@
+import BackLink from "../components/BackLink.jsx";
 import credits from "../data/photoCredits.json";
 
 export default function Credits() {
   const rows = Object.entries(credits).sort(([a], [b]) => a.localeCompare(b));
   return (
     <div className="wrap section">
+      <BackLink fallback="/" />
       <div className="section-head">
         <h2>Photo credits</h2>
         <p>

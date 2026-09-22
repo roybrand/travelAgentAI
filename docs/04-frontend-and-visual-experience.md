@@ -3,7 +3,7 @@
 The traveler-facing app: a multi-page React single-page application that turns the API's data
 into photos, maps and charts. It lives in [frontend/](../frontend) and is served by FastAPI in production.
 
-> **Live data.** The app now runs on free live sources for 100 destinations. Where this document says "demo", that
+> **Live data.** The app now runs on free live sources for 109 destinations. Where this document says "demo", that
 > describes the offline fallback or the four hand-curated showcase cities. See [05 · Live data and AI](05-live-data-and-ai.md)
 > for what is live, estimated or demo. The UI labels each one.
 
@@ -24,6 +24,7 @@ into photos, maps and charts. It lives in [frontend/](../frontend) and is served
 ```mermaid
 flowchart LR
     H["Home<br/>photo hero, destination tiles,<br/>search form, Reset"] -->|"Plan my trip<br/>(agent overlay)"| T
+    T --> DP["Day plan<br/>approve, move or remove<br/>each activity, day by day"]
     T["Your trip<br/>total, donut, itinerary,<br/>pros and cons, best time, highlights"]
     S["Stays<br/>price vs area average, map,<br/>photo galleries, deals"]
     E["Explore<br/>sights with photos, map,<br/>nearby deals, plan builder"]

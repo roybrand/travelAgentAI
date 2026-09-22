@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 
-const REGION_LABEL = { Europe: "Europe", Americas: "The Americas", Asia: "Asia and the Middle East" };
+const REGION_LABEL = { Europe: "Europe", Americas: "The Americas", Asia: "Asia and the Middle East", Oceania: "Australia" };
 
 /** A native dropdown of all destinations, grouped by region. */
 export default function DestSelect({ value, onChange, destinations, exclude, id }) {

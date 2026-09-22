@@ -74,6 +74,10 @@ CREATE TABLE IF NOT EXISTS users (
     photo_file TEXT,
     photo_status TEXT NOT NULL DEFAULT 'none',
     visible INTEGER NOT NULL DEFAULT 1,
+    gender TEXT,
+    show_age INTEGER NOT NULL DEFAULT 0,
+    audience_genders TEXT NOT NULL DEFAULT '[]',
+    audience_ages TEXT NOT NULL DEFAULT '[]',
     status TEXT NOT NULL DEFAULT 'active',
     demo INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL
@@ -104,6 +108,8 @@ CREATE TABLE IF NOT EXISTS intents (
     tags TEXT NOT NULL,
     languages TEXT NOT NULL DEFAULT '[]',
     vibes TEXT NOT NULL DEFAULT '[]',
+    want_genders TEXT NOT NULL DEFAULT '[]',
+    want_ages TEXT NOT NULL DEFAULT '[]',
     summary TEXT NOT NULL,
     day TEXT NOT NULL,
     part TEXT NOT NULL DEFAULT 'any',
@@ -150,8 +156,24 @@ CREATE TABLE IF NOT EXISTS reports (
 );
 """
 
+# Columns added after the first release. CREATE TABLE IF NOT EXISTS never alters an existing table, so these are
+# added to databases created earlier.
+_ADDED_COLUMNS = {
+    "users": {"gender": "TEXT", "show_age": "INTEGER NOT NULL DEFAULT 0", "audience_genders": "TEXT NOT NULL DEFAULT '[]'",
+              "audience_ages": "TEXT NOT NULL DEFAULT '[]'"},
+    "intents": {"want_genders": "TEXT NOT NULL DEFAULT '[]'", "want_ages": "TEXT NOT NULL DEFAULT '[]'"},
+}
+
 _ready: set[str] = set()
 _lock = threading.Lock()
+
+
+def _migrate(conn: sqlite3.Connection) -> None:
+    for table, columns in _ADDED_COLUMNS.items():
+        have = {r["name"] for r in conn.execute(f"PRAGMA table_info({table})")}
+        for name, ddl in columns.items():
+            if name not in have:
+                conn.execute(f"ALTER TABLE {table} ADD COLUMN {name} {ddl}")
 
 
 def _init(path: str, conn: sqlite3.Connection) -> None:
@@ -161,6 +183,7 @@ def _init(path: str, conn: sqlite3.Connection) -> None:
             if has_tables:
                 return  # the file may have been deleted or replaced while the server ran
         conn.executescript(SCHEMA)
+        _migrate(conn)
         conn.commit()
         _ready.add(path)
 

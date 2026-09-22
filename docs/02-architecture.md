@@ -156,7 +156,7 @@ travelAgentAi/
 │   │   ├── ranking/
 │   │   │   ├── score.py         Flight, hotel, and combination scoring
 │   │   │   └── combine.py       Pairing, ranking, rationale, pros/cons
-│   │   ├── live/                Live sources: catalog (100 cities), climate, places, osm, amadeus, llm, pricing,
+│   │   ├── live/                Live sources: catalog (109 cities), climate, places, osm, amadeus, llm, pricing,
 │   │   │                        travel.py (flight and stay search: Amadeus, Travelpayouts, estimates), geo.py (distances), nearby, guide,
 │   │   │                        nightlife.py (Tonight: best clubs and bars for one night)
 │   │   ├── partners/            The partner side, see doc 07
@@ -165,6 +165,7 @@ travelAgentAi/
 │   │   │   ├── accounts.py      Sign-up, sessions, API keys, suspension
 │   │   │   ├── deals.py         Deal validation, moderation, payment-blind ranking
 │   │   │   ├── routes.py        The partner, moderation, feed, deals and events endpoints
+│   │   │   ├── demo_businesses.py  The labelled pool of 124 demo businesses, their daily deals and drawn pictures
 │   │   │   └── activity.py      Runtime log of partner events (backend/logs/partner-activity.md)
 │   │   ├── social/              Wayfinder People, see doc 09
 │   │   │   ├── users.py         Traveler accounts (18+), profiles, photos, blocks
@@ -172,8 +173,11 @@ travelAgentAi/
 │   │   │   ├── places.py        Registering to places and seeing who is going
 │   │   │   ├── intents.py       Reading a looking-for request and matching people
 │   │   │   ├── connect.py       Connection requests, chat, reports, bans
-│   │   │   ├── vocab.py         The fixed lists of activities, languages and vibes, and the protected-trait detector
+│   │   │   ├── vocab.py         The fixed lists of activities, languages, vibes, genders and age bands, and the gender and age detectors
+│   │   │   ├── demo_people.py   The labelled pool of 100 demo travelers: seeding, daily requests, dynamic matching, automated replies
+│   │   │   ├── avatars.py       Illustrated avatars (SVG) for demo profiles
 │   │   │   └── routes.py        The /api/people and /api/admin/people endpoints
+│   │   ├── alerts.py            The radar: deal, person, request and message alerts, and the RSS feed
 │   │   ├── suppliers/           Optional real-time adapters: ticketmaster.py (events), travelpayouts.py (fares)
 │   │   ├── docsync.py           Generates docs/08-api-reference.md from the code
 │   │   ├── mcp_tools/
@@ -187,6 +191,7 @@ travelAgentAi/
 │   ├── scripts/sync_docs.py      Regenerates the API reference (a test fails if it is stale)
 │   ├── scripts/seed_demo.py      Adds or removes clearly-labelled demo partners and deals
 │   ├── scripts/seed_people.py    Adds or removes clearly-labelled demo travelers
+│   ├── scripts/generate_demo_photos.py  Makes AI portraits of fictional people for the demo travelers (uses your OpenAI key)
 │   └── tests/                   125+ tests: ranking, guides, live data, nearby, partners, API, docs in sync
 ├── frontend/                    React + Vite web app (pages, charts, maps, photos)
 ├── node-slice/                  Earlier zero-dependency Node.js proof of concept
@@ -321,7 +326,7 @@ pgvector or Qdrant, PostgreSQL, Redis, Celery or Temporal.
 | Orchestration | Real | Actual LangGraph `StateGraph`, not a hand-rolled loop |
 | Tool protocol | Real | Actual MCP SDK; servers run as separate processes over stdio |
 | Ranking | Real | Deterministic weighted scoring, unit-tested |
-| Weather, sights, photos, hotels, restaurants (100 cities) | **Live** | Open-Meteo, Wikipedia/Wikimedia, OpenStreetMap. Free, no keys |
+| Weather, sights, photos, hotels, restaurants (109 cities) | **Live** | Open-Meteo, Wikipedia/Wikimedia, OpenStreetMap. Free, no keys |
 | Flight and hotel **prices** | **Estimate**, or **Live** with Amadeus keys | Modelled from distance, star class, city level and season unless Amadeus is configured. Always labelled |
 | Demo fallback | Simulated | Used only when live sources are unreachable, and labelled Demo |
 | LLM | **Optional (OpenAI)** | Plain-English requests and grounded trip summaries when a key is set. Ranking and pros/cons stay rule-based |

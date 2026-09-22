@@ -55,7 +55,7 @@ inside its dates. Anything else is hidden.
 |---|---|
 | Title and description | 5 to 90 and 10 to 600 characters |
 | Category | Stay, restaurant, bar or pub, party or club, tour, activity, spa, car rental, flight |
-| Destination | One of the 100 catalog cities |
+| Destination | One of the 109 catalog cities |
 | Location | Required for everything except flights. Must be within 40 km of the city centre |
 | Price and usual price | The usual price is optional, but if given it must be higher than the deal price, and a discount over 90% is refused as a probable mistake |
 | Dates | End date not in the past, and a window of at most a year |

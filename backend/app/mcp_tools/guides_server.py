@@ -23,7 +23,7 @@ def get_destination_guide(
     """Return a guide for a destination: how suitable the traveler's dates are, the ideal months,
     top places and adventures (ranked by the traveler's interests), and practical tips.
 
-    For the 100 catalog cities this is LIVE: real historical climate (Open-Meteo), sights and credited
+    For the 109 catalog cities this is LIVE: real historical climate (Open-Meteo), sights and credited
     photos (Wikipedia/Wikimedia) and real nearby restaurants (OpenStreetMap). Showcase cities also keep
     their curated highlights. Falls back to the curated demo content when offline or if sources fail.
     `source` is "live" or "demo".

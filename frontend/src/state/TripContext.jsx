@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState } 
 import { fetchConfig, fetchDestinations, planTrip } from "../api";
 import { clearStoredProfile, loadProfile, storeProfile } from "../lib/profile";
 import { isoDate } from "../lib/format";
+import { candidateItems, nextSlot, scheduledItems } from "../lib/dayplan";
 
 const Ctx = createContext(null);
 export const useTrip = () => useContext(Ctx);
@@ -13,7 +14,7 @@ export function tripDefaults() {
   end.setDate(end.getDate() + 7);
   return {
     origin: "LON",
-    destination: "NAP",
+    destination: "TLV",
     start_date: isoDate(start),
     end_date: isoDate(end),
     budget: 2500,
@@ -22,22 +23,15 @@ export function tripDefaults() {
   };
 }
 
-// Pre-select a few experiences so the trip total is meaningful before the user customises it.
-function defaultPlan(guide) {
-  if (!guide) return [];
-  return [guide.places[0], guide.adventures[0], guide.adventures[1], guide.places[1]]
-    .filter(Boolean)
-    .slice(0, 3)
-    .map((i) => i.name);
-}
-
 export function TripProvider({ children }) {
   const [form, setForm] = useState(tripDefaults);
   const [result, setResult] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [hotelId, setHotelId] = useState(null);
-  const [planned, setPlanned] = useState([]);
+  // The day plan: { [itemKey]: { day, part, order } }. Nothing goes in here except by an explicit action of the
+  // traveler's (a tap to add, or a move) — the plan starts empty and nothing is pre-approved for them.
+  const [schedule, setSchedule] = useState({});
   const [config, setConfig] = useState({ openai: false, amadeus: false, offline: false });
   const [destinations, setDestinations] = useState([]);
   const [profile, setProfileState] = useState(loadProfile);
@@ -85,7 +79,7 @@ export function TripProvider({ children }) {
       const [data] = await Promise.all([planTrip(withTypes), new Promise((r) => setTimeout(r, 2300))]);
       setResult(data);
       setHotelId(data.itinerary.hotel.id);
-      setPlanned(defaultPlan(data.itinerary.guide));
+      setSchedule({});
       return true;
     } catch (e) {
       setError(e.message || "Something went wrong.");
@@ -99,32 +93,50 @@ export function TripProvider({ children }) {
   const resetSearch = useCallback(() => {
     setResult(null);
     setHotelId(null);
-    setPlanned([]);
+    setSchedule({});
     setError("");
     setReadback(null);
     setForm(tripDefaults());
   }, []);
 
-  const toggleItem = useCallback(
-    (name) => setPlanned((p) => (p.includes(name) ? p.filter((n) => n !== name) : [...p, name])),
-    [],
-  );
+  /** Add or remove an item from the plan. Adding auto-places it (the fewest-filled day, a time of day guessed
+   * from its tags); the traveler can move or remove it afterwards on the Day plan tab. Nothing is added without
+   * this being called from an explicit tap. */
+  const toggleItem = useCallback((item) => {
+    const key = item.key || item.name;
+    setSchedule((s) => {
+      if (s[key]) {
+        const next = { ...s };
+        delete next[key];
+        return next;
+      }
+      const nights = result?.itinerary?.nights || 1;
+      return { ...s, [key]: { ...nextSlot(s, nights, item), order: Date.now() } };
+    });
+  }, [result]);
+
+  /** Move an already-planned item to a different day or time of day. */
+  const moveItem = useCallback((key, day, part) => {
+    setSchedule((s) => (s[key] ? { ...s, [key]: { ...s[key], day, part } } : s));
+  }, []);
 
   const trip = useMemo(() => {
     if (!result) return null;
     const { itinerary: it, request: req } = result;
     const hotel = it.hotel_options.find((h) => h.id === hotelId) || it.hotel;
-    const items = it.guide ? [...it.guide.places, ...it.guide.adventures] : [];
-    const chosenItems = items.filter((i) => planned.includes(i.name));
+    const candidates = candidateItems(it.guide);
+    const chosenItems = scheduledItems(candidates, schedule);
     const flightCost = it.flight.total_price;
     const stayCost = hotel.price_per_night * it.nights;
     const expCost = chosenItems.reduce((sum, i) => sum + (i.cost || 0) * req.travelers, 0);
     const total = flightCost + stayCost + expCost;
-    return { it, req, hotel, flightCost, stayCost, expCost, total, chosenItems, isBest: hotel.id === it.hotel.id };
-  }, [result, hotelId, planned]);
+    return { it, req, hotel, flightCost, stayCost, expCost, total, chosenItems, candidates, isBest: hotel.id === it.hotel.id };
+  }, [result, hotelId, schedule]);
+
+  const planned = trip ? trip.chosenItems.map((i) => i.key) : [];
 
   const value = {
-    form, setForm, result, trip, loading, error, setError, plan, hotelId, setHotelId, planned, toggleItem,
+    form, setForm, result, trip, loading, error, setError, plan, hotelId, setHotelId, planned, toggleItem, moveItem,
     config, destinations, cityName, profile, setProfile, forgetProfile, resetSearch, readback, setReadback,
   };
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

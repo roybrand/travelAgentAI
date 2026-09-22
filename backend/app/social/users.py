@@ -96,6 +96,8 @@ def get_row(user_id: int):
 
 
 def photo_url(row) -> str | None:
+    if row["demo"]:
+        return f"/api/people/demo-avatar/{row['id']}"   # an illustration drawn from the id, never a real person's photo
     return f"/api/people/photo/{row['photo_file']}" if row["photo_file"] else None
 
 
@@ -105,23 +107,67 @@ def row_to_me(row) -> dict:
         "id": row["id"], "email": row["email"], "display_name": row["display_name"], "bio": row["bio"],
         "interests": json.loads(row["interests"]), "languages": json.loads(row["languages"]), "home_city": row["home_city"],
         "photo_url": photo_url(row), "photo_status": row["photo_status"], "visible": bool(row["visible"]),
+        "gender": row["gender"], "show_age": bool(row["show_age"]), "age_band": band_of(row),
+        "audience_genders": json.loads(row["audience_genders"]), "audience_ages": json.loads(row["audience_ages"]),
         "status": row["status"], "created_at": row["created_at"],
     }
 
 
+def band_of(row) -> str | None:
+    return vocab.age_band(row["birth_year"], date.today().year)
+
+
 def card(row, shared: list[str] | None = None) -> dict:
-    """What OTHER people may see: display name, bio, interests, languages and an approved photo.
-    Never the email, birth year, exact location or anything private."""
+    """What OTHER people may see: display name, bio, interests, languages, an approved photo, the gender they chose to
+    share, and an age band only if they chose to show it. Never the email, birth year, exact age or location."""
     approved = row["photo_status"] == "approved"
     return {
         "id": row["id"], "display_name": row["display_name"], "bio": row["bio"], "interests": json.loads(row["interests"]),
-        "languages": json.loads(row["languages"]), "home_city": row["home_city"],
+        "languages": json.loads(row["languages"]), "home_city": row["home_city"], "gender": row["gender"],
+        "age_band": band_of(row) if row["show_age"] else None,
         "photo_url": photo_url(row) if approved else None, "shared": shared or [], "demo": bool(row["demo"]),
     }
 
 
-def update(user_id: int, display_name=None, bio=None, interests=None, languages=None, home_city=None, visible=None) -> None:
+def allowed(viewer, candidate) -> bool:
+    """May `viewer` see and contact `candidate`? Honours the candidate's own audience limits, for example
+    'only women' or 'only 25 to 34'. A viewer who has not shared the trait cannot pass a limit on it."""
+    genders = json.loads(candidate["audience_genders"])
+    ages = json.loads(candidate["audience_ages"])
+    if genders and viewer["gender"] not in genders:
+        return False
+    if ages and band_of(viewer) not in ages:
+        return False
+    return True
+
+
+def passes(candidate, want_genders: list[str], want_ages: list[str]) -> bool:
+    """Does `candidate` fit a search filter? People who did not share a gender are not returned by a gender search;
+    age uses the age band, which everyone has because 18+ is required to join."""
+    if want_genders and candidate["gender"] not in want_genders:
+        return False
+    if want_ages and band_of(candidate) not in want_ages:
+        return False
+    return True
+
+
+def update(user_id: int, display_name=None, bio=None, interests=None, languages=None, home_city=None, visible=None,
+           gender="__keep__", show_age=None, audience_genders=None, audience_ages=None) -> None:
     sets, vals = [], []
+    if gender != "__keep__":
+        if gender not in (None, "", *vocab.GENDERS):
+            raise UserError("Choose one of the options for gender, or leave it unset.", 422)
+        sets.append("gender = ?")
+        vals.append(gender or None)
+    if show_age is not None:
+        sets.append("show_age = ?")
+        vals.append(int(show_age))
+    if audience_genders is not None:
+        sets.append("audience_genders = ?")
+        vals.append(json.dumps(vocab.clean_tags(audience_genders, vocab.GENDERS)))
+    if audience_ages is not None:
+        sets.append("audience_ages = ?")
+        vals.append(json.dumps(vocab.clean_tags(audience_ages, vocab.AGE_BANDS)))
     if display_name is not None:
         name = " ".join(display_name.split())
         if not 2 <= len(name) <= 40:

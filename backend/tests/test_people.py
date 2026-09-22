@@ -82,7 +82,7 @@ def test_profile_only_keeps_known_interests_and_never_exposes_private_fields_to_
     assert client.get("/api/people/me", headers=h).json()["me"]["interests"] == ["hiking"]
     client.post("/api/people/attend", json={"place_key": "osm-node-1", "place_name": "Bar Um", "dest": "OPO", "lat": 41.15, "lng": -8.61}, headers=h)
     seen = client.get("/api/people/attendees", params={"place_key": "osm-node-1"}, headers=other).json()["people"][0]
-    assert set(seen) == {"id", "display_name", "bio", "interests", "languages", "home_city", "photo_url", "shared", "demo"}
+    assert set(seen) == {"id", "display_name", "bio", "interests", "languages", "home_city", "gender", "age_band", "photo_url", "shared", "demo"}
     assert email not in json.dumps(seen) and "birth" not in json.dumps(seen)
 
 
@@ -184,17 +184,39 @@ def test_keyword_reader_finds_activity_day_and_part(client):
     assert p["languages"] == ["Spanish"] and p["vibes"] == ["relaxed"]
 
 
-def test_requests_for_protected_traits_are_ignored_and_the_person_is_told(client):
+def test_gender_and_age_are_read_from_the_words_but_kept_out_of_the_summary(client):
     h, _, _ = person(client, "Ora")
-    r = looking(client, h, "Looking for women aged 25-30 to go hiking")
-    assert r.status_code == 200
-    assert any("do not filter people by gender, age" in n for n in r.json()["notes"])
-    assert r.json()["request"]["tags"] == ["hiking"]
-    assert "women" not in r.json()["request"]["summary"].lower()
+    r = looking(client, h, "Looking for women aged 25-30 to go hiking").json()
+    assert r["request"]["tags"] == ["hiking"] and r["request"]["want_genders"] == ["woman"] and r["request"]["want_ages"] == ["25-34"]
+    assert "women" not in r["request"]["summary"].lower() and "25" not in r["request"]["summary"]
+    assert r["notes"] == []
 
 
-def test_ordinary_words_do_not_trigger_the_protected_traits_note(client):
-    assert not vocab.mentions_sensitive_filter("explore the old town, then black coffee and a single malt tasting")
+def test_ethnicity_religion_sexuality_and_looks_are_never_filters_and_the_person_is_told(client):
+    h, _, _ = person(client, "Pia")
+    r = looking(client, h, "Only muslim guys for coffee, ideally attractive").json()
+    assert r["request"]["want_genders"] == ["man"] and r["request"]["want_ages"] == []
+    assert any("do not filter by ethnicity, religion, sexuality or looks" in n for n in r["notes"])
+    assert "muslim" not in json.dumps(r["request"]).lower() and "attractive" not in json.dumps(r["request"]).lower()
+
+
+@pytest.mark.parametrize("text,genders,ages", [
+    ("women aged 25-30 for hiking", ["woman"], ["25-34"]),
+    ("guys in their 30s for football", ["man"], ["25-34", "35-44"]),
+    ("men over 40", ["man"], ["35-44", "45-54", "55+"]),
+    ("someone under 30", [], ["18-24", "25-34"]),
+    ("non-binary folks for coffee", ["non-binary"], []),
+    ("live music 21-22 September", [], []),
+    ("explore the old town with black coffee", [], []),
+    ("women or men for a night out", ["woman", "man"], []),
+])
+def test_gender_and_age_detection(text, genders, ages):
+    assert vocab.detect_genders(text) == genders and vocab.detect_age_bands(text) == ages
+
+
+def test_ordinary_words_do_not_trigger_the_unsupported_filter_note():
+    assert not vocab.mentions_unsupported_filter("explore the old town, then black coffee and a single malt tasting")
+    assert vocab.mentions_unsupported_filter("only gay bars")
 
 
 def test_a_request_with_no_activity_is_refused_with_help(client):
@@ -374,3 +396,112 @@ def test_people_options_list_the_rules_and_the_vocabulary(client):
     body = client.get("/api/people/options").json()
     assert body["min_age"] == 18 and len(body["rules"]) >= 5 and "harassment" in body["report_reasons"]
     assert {"key": "live-music", "label": "Live music"} in body["activities"]
+
+
+# ---------------------------------------------------------------- gender and age filters (voluntary on both sides)
+
+def set_birth_year(uid, year):
+    with db.tx() as c:
+        c.execute("UPDATE users SET birth_year = ? WHERE id = ?", (year, uid))
+
+
+def profile(client, h, **fields):
+    assert client.patch("/api/people/me", json=fields, headers=h).status_code == 200
+
+
+def test_a_gender_search_returns_only_people_who_chose_to_share_that_gender(client):
+    seeker, _, _ = person(client, "Seeker")
+    w1, w1_id, _ = person(client, "Wren")
+    m1, m1_id, _ = person(client, "Milo")
+    quiet, quiet_id, _ = person(client, "Quill")           # shares no gender
+    profile(client, w1, gender="woman")
+    profile(client, m1, gender="man")
+    for h in (w1, m1, quiet):
+        looking(client, h, "Live music tonight")
+    women = looking(client, seeker, "Live music tonight with women").json()
+    assert ids(women["people"]) == {w1_id} and women["request"]["want_genders"] == ["woman"]
+    assert ids(looking(client, seeker, "Live music tonight").json()["people"]) == {w1_id, m1_id, quiet_id}   # no filter: everyone
+
+
+def test_the_persons_own_choice_beats_the_words(client):
+    seeker, _, _ = person(client, "Seeker")
+    w1, w1_id, _ = person(client, "Wren")
+    m1, m1_id, _ = person(client, "Milo")
+    profile(client, w1, gender="woman")
+    profile(client, m1, gender="man")
+    for h in (w1, m1):
+        looking(client, h, "Live music tonight")
+    body = {"text": "Live music tonight with women", "lat": PORTO[0], "lng": PORTO[1], "radius_m": 3000, "want_genders": []}
+    assert ids(client.post("/api/people/looking", json=body, headers=seeker).json()["people"]) == {w1_id, m1_id}
+    body["want_genders"] = ["man"]
+    assert ids(client.post("/api/people/looking", json=body, headers=seeker).json()["people"]) == {m1_id}
+
+
+def test_age_bands_filter_people_and_the_exact_age_is_never_shown(client):
+    seeker, _, _ = person(client, "Seeker")
+    young, young_id, _ = person(client, "Yara")
+    older, older_id, _ = person(client, "Otto")
+    set_birth_year(young_id, date.today().year - 22)
+    set_birth_year(older_id, date.today().year - 47)
+    profile(client, young, show_age=True)
+    for h in (young, older):
+        looking(client, h, "Coffee tonight")
+    res = looking(client, seeker, "Coffee tonight for people aged 18-24").json()
+    assert ids(res["people"]) == {young_id}
+    card = res["people"][0]
+    assert card["age_band"] == "18-24" and str(date.today().year - 22) not in json.dumps(card) and "birth" not in json.dumps(card)
+    everyone = looking(client, seeker, "Coffee tonight").json()["people"]
+    assert {p["id"]: p["age_band"] for p in everyone} == {young_id: "18-24", older_id: None}   # Otto did not choose to show his age
+
+
+def test_who_can_find_me_limits_are_honoured_everywhere(client):
+    woman, woman_id, _ = person(client, "Wendy")
+    man, man_id, _ = person(client, "Manny")
+    other_woman, other_id, _ = person(client, "Olga")
+    unshared, unshared_id, _ = person(client, "Uri")
+    profile(client, woman, gender="woman", audience_genders=["woman"])       # women only
+    profile(client, man, gender="man")
+    profile(client, other_woman, gender="woman")
+    for h in (woman, man, other_woman, unshared):
+        looking(client, h, "Coffee tonight")
+        attend(client, h, "osm-node-600")
+    for viewer, can_see in ((other_woman, True), (man, False), (unshared, False)):     # not sharing a gender cannot pass a gender limit
+        assert (woman_id in ids(looking(client, viewer, "Coffee tonight").json()["people"])) is can_see
+        assert (woman_id in ids(client.get("/api/people/attendees", params={"place_key": "osm-node-600"}, headers=viewer).json()["people"])) is can_see
+    assert client.post("/api/people/connect", json={"to_user": woman_id}, headers=man).status_code == 404
+    assert client.post("/api/people/connect", json={"to_user": woman_id}, headers=other_woman).status_code == 200
+    assert man_id in ids(looking(client, woman, "Coffee tonight").json()["people"])   # the limit works one way
+
+
+def test_audience_by_age_band_and_bad_values(client):
+    a, a_id, _ = person(client, "Ada")
+    b, b_id, _ = person(client, "Bo")
+    set_birth_year(a_id, date.today().year - 30)
+    set_birth_year(b_id, date.today().year - 60)
+    profile(client, a, audience_ages=["25-34", "not-a-band"])
+    assert client.get("/api/people/me", headers=a).json()["me"]["audience_ages"] == ["25-34"]
+    looking(client, a, "Coffee tonight")
+    assert a_id not in ids(looking(client, b, "Coffee tonight").json()["people"])       # Bo is 55+, Ada only wants 25-34
+    assert client.patch("/api/people/me", json={"gender": "robot"}, headers=a).status_code == 422
+    profile(client, a, gender=None)                                                        # clearing it works
+    assert client.get("/api/people/me", headers=a).json()["me"]["gender"] is None
+
+
+def test_people_options_list_genders_and_age_bands(client):
+    body = client.get("/api/people/options").json()
+    assert body["genders"] == ["woman", "man", "non-binary"] and body["age_bands"] == ["18-24", "25-34", "35-44", "45-54", "55+"]
+
+
+def test_a_database_made_before_the_filters_is_upgraded(tmp_path):
+    import sqlite3
+    conn = sqlite3.connect(tmp_path / "old.db")
+    conn.row_factory = sqlite3.Row
+    conn.execute("CREATE TABLE users (id INTEGER PRIMARY KEY, email TEXT)")
+    conn.execute("CREATE TABLE intents (id INTEGER PRIMARY KEY, text TEXT)")
+    conn.execute("INSERT INTO users (email) VALUES ('a@example.com')")
+    db._migrate(conn)
+    db._migrate(conn)  # running it twice is harmless
+    cols = {r["name"] for r in conn.execute("PRAGMA table_info(users)")} | {r["name"] for r in conn.execute("PRAGMA table_info(intents)")}
+    assert {"gender", "show_age", "audience_genders", "audience_ages", "want_genders", "want_ages"} <= cols
+    row = conn.execute("SELECT audience_genders, show_age FROM users").fetchone()
+    assert (row["audience_genders"], row["show_age"]) == ("[]", 0)

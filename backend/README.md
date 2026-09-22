@@ -21,7 +21,7 @@ Python wasn't available in the original environment.
 
 ## Live data (free, no keys) and optional upgrades
 
-For the 100 catalog destinations the backend uses free public sources: **Open-Meteo** (climate),
+For the 109 catalog destinations the backend uses free public sources: **Open-Meteo** (climate),
 **Wikipedia/Wikimedia** (sights and credited photos) and **OpenStreetMap** (hotels, restaurants). Flight and hotel
 **prices** are labelled estimates unless you add free **Amadeus** keys. An **OpenAI** key adds plain-English requests
 and grounded trip summaries. Put keys in `backend/.env` (copy `.env.example`; git-ignored). Full details:

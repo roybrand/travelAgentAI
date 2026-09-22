@@ -39,7 +39,7 @@ Related documents: [API reference (generated)](08-api-reference.md), [flows](01-
 
 | ID | Feature | Status | Powered by | Code |
 |---|---|---|---|---|
-| F-010 | 100 selectable destinations: 40 Europe, 30 Americas, 30 Asia and the Middle East | Built | Curated catalog | `app/live/catalog.py` |
+| F-010 | 109 selectable destinations: 40 Europe, 30 Americas, 30 Asia and the Middle East | Built | Curated catalog | `app/live/catalog.py` |
 | F-011 | Destination dropdowns (From and To) grouped by region | Built | React | `components/DestSelect.jsx` |
 | F-012 | Best time to go from five years of real weather, scored 1 to 5 per month | Built | Open-Meteo | `app/live/climate.py` |
 | F-013 | Season verdict for your dates (Ideal, Good, Fair, Off-season) with a better-window tip | Built | Open-Meteo | `app/mcp_tools/guides_data.py` |
@@ -130,7 +130,7 @@ Full description: [07 · Partner portal, deals and suppliers](07-partner-portal-
 | F-091 | Moderator can suspend a partner, hiding their deals and blocking sign-in | Built | SQLite | `POST /api/admin/partners/{id}/status` |
 | F-093 | **Docs that cannot drift**: the API reference is generated from the code, and tests fail if an endpoint, page, module, setting, rule or log event is undocumented | Built | `app/docsync.py`, `tests/test_docs_sync.py` | `docs/08-api-reference.md` |
 | F-102 | **Two separate processes**: "Describe your trip" and "Plan with the form" are different cards with their own button, state and result. The prompt never reads or changes the form; the form never uses the prompt or the saved profile. Anything the words do not say gets a fixed default, listed on the trip page | Optional | React, OpenAI | `pages/Home.jsx`, `state/TripContext.jsx` |
-| F-103 | **The words decide the place**: a city or country you name decides the destination, and a model pick that contradicts it is overridden. A country with several cities gives clickable choices; a city or country we do not cover (for example Egypt) is reported as "not one of our 100 cities yet" and never swapped for another place | Optional | OpenAI, catalog text scan | `app/live/llm.py`, `app/live/catalog.py` |
+| F-103 | **The words decide the place**: a city or country you name decides the destination, and a model pick that contradicts it is overridden. A country with several cities gives clickable choices; a city or country we do not cover (for example Egypt) is reported as "not one of our 109 cities yet" and never swapped for another place | Optional | OpenAI, catalog text scan | `app/live/llm.py`, `app/live/catalog.py` |
 | F-104 | **How I read your request** card on prompt-built trips: what came from your words and what was assumed. Form-built trips show no such card and no profile | Optional | React | `pages/Trip.jsx` |
 | F-096 | **Tonight**: the best clubs and bars in a city for a chosen night (today to two weeks ahead), with photos, opening hours, map and any live deal | Built | OpenStreetMap, Wikimedia Commons | `app/live/nightlife.py`, `pages/Tonight.jsx`, `GET /api/tonight` |
 | F-097 | Opening-hours reader: works out whether a venue is open between 20:00 and 06:00 that night from OpenStreetMap hours; unreadable or missing hours show as "not listed", never as closed | Built | Own parser, tested on common patterns | `app/live/nightlife.py` |
@@ -138,10 +138,40 @@ Full description: [07 · Partner portal, deals and suppliers](07-partner-portal-
 | F-099 | **Honest prices**: a price shows only when a partner deal (attached to the nearest venue within 100 m) or a Ticketmaster event publishes one. Otherwise: "No price published. Ask the venue." Nothing is estimated | Built | Partner deals, Ticketmaster | `app/live/nightlife.py` |
 | F-100 | Tonight ranking signals, stated openly on the page: open that night, open past midnight, club, well documented (Wikipedia), website, has a photo, near the centre, live deal. Closed venues are hidden and counted | Built | Own scoring | `app/live/nightlife.py` |
 | F-101 | "Best clubs tonight" call to action on the trip page when you like nightlife, and a Tonight tab in the top bar | Built | React | `pages/Trip.jsx`, `App.jsx` |
+| F-128 | **100 demo travelers** (20 each in Ibiza, Barcelona, Tel Aviv, Berlin and Paris) from 26 countries, women, men and non-binary people aged 18 to 68, with bios, hobbies, languages and interests. Every card is labelled "demo" | Built | Python | `app/social/demo_people.py`, `scripts/seed_people.py` |
+| F-129 | **AI-generated portraits** for the demo people: pictures of fictional adults made by OpenAI's image model from written descriptions (age, gender, look and setting vary), never a real person. Marked "AI" on every card. Where none was made, an illustrated avatar is used | Optional | OpenAI images, SVG | `scripts/generate_demo_photos.py`, `app/social/avatars.py`, `GET /api/people/demo-avatar/{id}` |
+| F-130 | **Static matches**: every demo profile starts with a night-life, sport, food, culture or nature request for today or tomorrow, and the night-life crowd is registered to real venues | Built | OpenStreetMap | `app/social/demo_people.py` |
+| F-131 | **Dynamic matches**: the pool posts fresh requests every day, and when a real person posts a request near one of the five cities, a few demo people who fit it (and any gender or age filter) post a matching one | Built | Own code | `app/social/demo_people.py`, `POST /api/people/looking` |
+| F-132 | **Automated demo chat**: a demo profile accepts at once and replies with canned lines. The chat shows a banner that it is automated | Built | Own code | `app/social/connect.py`, `pages/People.jsx` |
+| F-133 | **Ibiza** added as a destination (109 cities now) | Built | Catalog | `app/live/catalog.py` |
+| F-134 | **Tel Aviv is the default destination** in the search form | Built | React | `state/TripContext.jsx` |
+| F-135 | **Alerts / Radar**: good deals for your planned trip or your radius, and (signed in) people who match you, connection requests and new messages. Ranked, explained, and never ranked by payment | Built | Own code | `app/alerts.py`, `POST /api/alerts` |
+| F-136 | **The bell** in the top bar with a pulsing badge, a panel with the best alerts, and **pop-ups** that slide in when something new and good appears | Built | React, CSS | `components/AlertBell.jsx`, `state/AlertsContext.jsx` |
+| F-137 | **Radar page** (`/alerts`): tabs, settings (minimum discount, radius, deals, people, device notifications) and a highlight on what is new | Built | React | `pages/Alerts.jsx` |
+| F-138 | **Matching person alerts show the profile**: photo, shared interests, distance band, why it matched, "Say hi"; requests can be accepted in place; messages open the chat. "See profile" opens the full card in a closeable modal, fetched fresh so it still honours blocks and audience limits | Built | React | `components/AlertCard.jsx`, `pages/People.jsx`, `GET /api/people/{user_id}` |
+| F-139 | **Hot right now** strip on the trip page with the best deals for that trip | Built | React | `pages/Trip.jsx` |
+| F-140 | **RSS feed of deals** for any city, filtered by interests and discount, for feed readers and other apps | Built | RSS 2.0 | `GET /api/feed/deals.xml` |
+| F-141 | **Device notifications** for alerts, opt-in, shared 3-a-day cap and quiet hours (works while the app is open) | Built | Notifications API, service worker | `lib/notify.js` |
+| F-142 | **124 demo businesses** (8 each in Tel Aviv, Berlin, Barcelona, Paris, Ibiza; 3 each in 28 more cities including 8 in Australia), each with a standing deal, labelled "Demo" | Built | Python | `app/partners/demo_businesses.py`, `scripts/seed_demo.py` |
+| F-143 | **Dynamic deals**: expired demo deals are renewed daily and about 30 businesses post a "Tonight only" flash deal | Built | Python | `app/partners/demo_businesses.py` |
+| F-144 | Drawn illustrations for demo deals | Built | SVG | `GET /api/deals/art/{kind}/{seed}` |
+| F-127 | **Back button on every page**: goes to the page you came from (and says so, for example "Back to Tonight" after "Find places near me"), or home when the page was opened directly. Useful on phones and installed apps that have no browser back button | Built | React Router | `components/BackLink.jsx` |
+| F-126 | **Navigation bars on every page**: top tabs (Home, Your trip, Stays, Explore, Tonight, People, Deals, Nearby) with a "For businesses" link; an in-trip bar (Overview, Stays, Explore, Tonight, Deals) that sticks under the header on trip pages; a bottom bar on phones (Home, Trip, Tonight, People, Deals, Nearby); tabs get their own row on tablets instead of being clipped; and site links in the footer | Built | React Router, CSS | `App.jsx`, `styles.css` |
 | F-105 | **Home** tab first in the top bar on every page, alongside the logo link, to get back from any section | Built | React Router | `App.jsx` |
 | F-095 | **Start over**: a "New search" button in the top bar and on the trip page, a "Change this search" link, and a Reset button on the home form. Clears the trip and returns the form to its defaults; the traveler profile is kept until you forget it | Built | React state | `state/TripContext.jsx`, `App.jsx`, `pages/Trip.jsx`, `pages/Home.jsx` |
 | F-094 | Partner activity log written as markdown at runtime, without personal data | Built | `app/partners/activity.py` | `backend/logs/partner-activity.md` |
 | F-092 | Demo seed script with clearly-labelled fictional businesses, removable with one flag | Built | Python | `backend/scripts/seed_demo.py` |
+
+## G2. Day plan
+
+| ID | Feature | Status | Powered by | Code |
+|---|---|---|---|---|
+| F-145 | **Day plan tab**: a real day-by-day itinerary editor, separate from the trip overview, reached from the trip's sub-navigation | Built | React | `pages/DayPlan.jsx` |
+| F-146 | **Nothing is added without approval**: the plan starts empty; every sight, adventure or real place (museum, pub, etc.) appears only after the traveler taps "+ Add". No item is pre-selected | Built | React state | `state/TripContext.jsx` |
+| F-147 | **Move or remove any planned item** between days and between morning, afternoon, evening and night, or take it off the plan, at any time | Built | React | `pages/DayPlan.jsx` |
+| F-148 | New items are placed on the least-full day and a time of day guessed from their tags (nightlife → evening, museums → morning, etc.), so a quick "Add to my plan" from Explore is useful without a trip to the editor; the guess can always be moved | Built | Own code | `lib/dayplan.js` |
+| F-149 | The trip page's itinerary is generated **directly from the day plan** (no more even spacing across days); it shows the real day, time of day and detail for each approved item, and prompts the traveler to build a plan when nothing is approved yet | Built | React | `pages/Trip.jsx` |
+| F-150 | Suggestions grouped by "Matches what you like", Sights, Adventures and each real-place category the traveler asked for, so nothing already on the plan is offered twice | Built | React | `pages/DayPlan.jsx` |
 
 ## H. People (meeting other travelers)
 
@@ -155,14 +185,18 @@ Full description and the safety design: [09 · People and safety](09-people-and-
 | F-109 | **Register to places**: "I'm going" on any Tonight venue for a day, and a public count of who is going | Built | SQLite | `app/social/places.py`, `components/Going.jsx` |
 | F-110 | **See who is going**: profile cards of discoverable people at a place, never across a block | Built | SQLite | `components/Going.jsx` |
 | F-111 | **Find people by describing an activity**: the AI reads it into tags, day and vibe; a keyword reader is the fallback | Optional | OpenAI, own vocabulary | `app/social/intents.py` |
-| F-112 | **Matching** by shared activity, language, vibe, day, time of day and distance, plus places nearby where people are going. Never by gender, age, looks, ethnicity, religion or sexuality; such requests are ignored and the person is told | Built | Own scoring | `app/social/intents.py`, `app/social/vocab.py` |
+| F-112 | **Matching** by shared activity, language, vibe, day, time of day and distance, plus places nearby where people are going | Built | Own scoring | `app/social/intents.py` |
+| F-121 | **Gender and age filters** when finding people: say it in words ("women in their 30s") or pick chips. Only people who chose to share a gender are returned by a gender search; age uses age bands (18-24, 25-34, 35-44, 45-54, 55+), never exact ages | Built | Own detector, SQLite | `app/social/vocab.py`, `app/social/intents.py` |
+| F-122 | **Who can find me**: each person can limit their visibility by gender and age band (for example women only). It applies to searches, place lists and connection requests, and someone who has not shared that detail cannot pass the limit | Built | SQLite | `app/social/users.py` |
+| F-123 | **Voluntary details**: gender is optional and shown only if chosen; the age band is shown only if the person switches it on; the exact age and birth year are never shown | Built | Own code | `app/social/users.py`, `pages/People.jsx` |
+| F-124 | **No filters by ethnicity, religion, sexuality or looks.** A request that asks for them is told so and they are never applied or stored | Built | Own detector | `app/social/vocab.py` |
+| F-125 | Older databases are upgraded automatically when new columns are added | Built | SQLite | `app/partners/db.py` |
 | F-113 | **Location privacy**: requests keep a position rounded to about 1 km and end with their day; others see only "within 1 km" | Built | Own code | `app/social/intents.py` |
 | F-114 | **Consent-based chat**: one request with a short note, chat only after the other person accepts, mutual asks connect at once | Built | SQLite, polling | `app/social/connect.py`, `pages/People.jsx` |
 | F-115 | **Block and report** on every card and chat; blocks hide both people everywhere and close chats | Built | SQLite | `app/social/users.py`, `components/PersonCard.jsx` |
 | F-116 | **Moderator tools** at `/admin`: review photos, review reports, ban with immediate sign-out | Built | Admin token | `pages/Admin.jsx`, `/api/admin/people/*` |
 | F-117 | **Delete my account and data**: removes profile, photo, plans, requests and messages | Built | SQLite | `app/social/users.py` |
 | F-118 | Community rules and safety tips shown at sign-up and in the profile | Built | React | `pages/People.jsx` |
-| F-119 | Demo travelers for showing the feature, clearly labelled and removable | Built | Python | `backend/scripts/seed_people.py` |
 | F-120 | Home page lists load with retries, so an early page load while the server starts no longer leaves empty dropdowns | Built | React | `state/TripContext.jsx` |
 
 ## F. Quality and operations

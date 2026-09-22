@@ -1,11 +1,11 @@
-"""The 100 selectable destinations: 40 in Europe, 30 in the Americas, 30 in Asia (incl. the Middle East).
+"""The 109 selectable destinations: 41 in Europe, 30 in the Americas, 30 in Asia (incl. the Middle East), 8 in Australia.
 
 `code` is the IATA city/airport code (also what Amadeus expects). `cost` is a rough price level
 1 (cheap) to 4 (expensive) used only by the price ESTIMATOR. `wiki` overrides the Wikipedia article
 title when the plain city name is ambiguous. Coordinates are city centres.
 """
 
-EUROPE, AMERICAS, ASIA = "Europe", "Americas", "Asia"
+EUROPE, AMERICAS, ASIA, OCEANIA = "Europe", "Americas", "Asia", "Oceania"
 
 # (code, city, country, lat, lng, cost, wiki title or None)
 _EUROPE = [
@@ -38,6 +38,7 @@ _EUROPE = [
     ("DUB", "Dublin", "Ireland", 53.3498, -6.2603, 3, None),
     ("EDI", "Edinburgh", "United Kingdom", 55.9533, -3.1883, 3, None),
     ("ATH", "Athens", "Greece", 37.9838, 23.7275, 2, None),
+    ("IBZ", "Ibiza", "Spain", 38.9067, 1.4206, 3, "Ibiza"),
     ("JTR", "Santorini", "Greece", 36.3932, 25.4615, 3, None),
     ("IST", "Istanbul", "Turkey", 41.0082, 28.9784, 2, None),
     ("DBV", "Dubrovnik", "Croatia", 42.6507, 18.0944, 3, None),
@@ -117,10 +118,21 @@ _ASIA = [
     ("AMM", "Amman", "Jordan", 31.9454, 35.9284, 2, None),
 ]
 
+_OCEANIA = [
+    ("SYD", "Sydney", "Australia", -33.8688, 151.2093, 4, None),
+    ("MEL", "Melbourne", "Australia", -37.8136, 144.9631, 3, None),
+    ("BNE", "Brisbane", "Australia", -27.4698, 153.0251, 3, None),
+    ("PER", "Perth", "Australia", -31.9505, 115.8605, 3, "Perth, Western Australia"),
+    ("ADL", "Adelaide", "Australia", -34.9285, 138.6007, 3, None),
+    ("OOL", "Gold Coast", "Australia", -28.0167, 153.4000, 3, "Gold Coast, Queensland"),
+    ("CNS", "Cairns", "Australia", -16.9186, 145.7781, 3, None),
+    ("HBA", "Hobart", "Australia", -42.8821, 147.3272, 3, None),
+]
+
 
 def _build() -> list[dict]:
     out = []
-    for region, rows in ((EUROPE, _EUROPE), (AMERICAS, _AMERICAS), (ASIA, _ASIA)):
+    for region, rows in ((EUROPE, _EUROPE), (AMERICAS, _AMERICAS), (ASIA, _ASIA), (OCEANIA, _OCEANIA)):
         for code, city, country, lat, lng, cost, wiki in rows:
             out.append({
                 "code": code, "city": city, "country": country, "region": region,

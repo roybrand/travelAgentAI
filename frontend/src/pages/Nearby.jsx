@@ -8,6 +8,7 @@ import { useTrip } from "../state/TripContext.jsx";
 import { metres } from "../lib/format";
 import MapView from "../components/MapView.jsx";
 import Photo from "../components/Photo.jsx";
+import BackLink from "../components/BackLink.jsx";
 
 const STATUS_TEXT = {
   off: "Off. Nothing is requested from your device.",
@@ -42,6 +43,7 @@ export default function Nearby() {
 
   return (
     <div className="wrap page">
+      <BackLink fallback="/" />
       <div className="page-head">
         <div>
           <div className="eyebrow">Nearby now</div>

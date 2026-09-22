@@ -10,13 +10,13 @@ from app.ranking.score import score_hotels
 
 # ---------------------------------------------------------------- catalog
 
-def test_catalog_has_exactly_100_destinations_across_three_regions():
-    assert len(catalog.DESTINATIONS) == 100
-    assert len({d["code"] for d in catalog.DESTINATIONS}) == 100
+def test_catalog_has_exactly_109_destinations_across_four_regions():
+    assert len(catalog.DESTINATIONS) == 109
+    assert len({d["code"] for d in catalog.DESTINATIONS}) == 109
     by_region = {}
     for d in catalog.DESTINATIONS:
         by_region[d["region"]] = by_region.get(d["region"], 0) + 1
-    assert by_region == {"Europe": 40, "Americas": 30, "Asia": 30}
+    assert by_region == {"Europe": 41, "Americas": 30, "Asia": 30, "Oceania": 8}
 
 
 def test_catalog_entries_are_well_formed():
@@ -81,7 +81,7 @@ def test_flight_estimates_grow_with_distance_and_are_labelled_estimates():
     for o in near + far:
         assert o["price_source"] == "estimate" and o["total_price"] == o["price_per_traveler"] * 2
     # beyond nonstop range there are no direct options
-    assert all(o["stops"] > 0 for o in pricing.flight_options_estimate(catalog.BY_CODE["SYD" if "SYD" in catalog.BY_CODE else "SCL"], catalog.BY_CODE["TYO"], "2026-11-10", "2026-11-17", 1))
+    assert all(o["stops"] > 0 for o in pricing.flight_options_estimate(catalog.BY_CODE["SCL"], catalog.BY_CODE["TYO"], "2026-11-10", "2026-11-17", 1))
 
 
 # ---------------------------------------------------------------- OpenStreetMap

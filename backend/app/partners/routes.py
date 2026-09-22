@@ -2,13 +2,13 @@
 import asyncio
 from datetime import date
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Request
+from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response
 from pydantic import BaseModel, Field, ValidationError
 
 from app import config
 from app.live import catalog
 from app.live.http import cached, get_json
-from app.partners import accounts, activity, deals, security
+from app.partners import accounts, activity, deals, demo_businesses, security
 from app.suppliers import ticketmaster
 
 router = APIRouter()
@@ -70,6 +70,15 @@ def list_deals(dest: str, start: date | None = None, end: date | None = None, in
     ranked = deals.rank_deals(found, [i for i in interests.split(",") if i], [p for p in place_types.split(",") if p])
     deals.record_impressions([x["id"] for x in ranked])
     return {"destination": d["code"], "city": d["city"], "deals": ranked, "disclosure": DISCLOSURE}
+
+
+@router.get("/api/deals/art/{kind}/{seed}")
+def deal_art(kind: str, seed: int):
+    """The drawn picture used by DEMO deals: a colourful illustration for the category (not a photograph)."""
+    if kind not in deals.CATEGORIES or not 0 <= seed <= 100_000:
+        raise HTTPException(status_code=404, detail="Not found.")
+    return Response(demo_businesses.art_svg(kind, seed), media_type="image/svg+xml",
+                    headers={"Cache-Control": "public, max-age=86400", "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'"})
 
 
 @router.post("/api/deals/{deal_id}/click")

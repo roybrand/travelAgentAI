@@ -137,6 +137,7 @@ export const people = {
   login: (body) => request("/api/people/login", { method: "POST", body }),
   logout: (token) => request("/api/people/logout", { method: "POST", token }).catch(() => {}),
   me: (token) => request("/api/people/me", { token }),
+  get: (token, id) => request(`/api/people/${id}`, { token }),
   update: (token, body) => request("/api/people/me", { method: "PATCH", token, body }),
   photo: (token, image) => request("/api/people/me/photo", { method: "POST", token, body: { image } }),
   removePhoto: (token) => request("/api/people/me/photo", { method: "DELETE", token }),

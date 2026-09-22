@@ -14,6 +14,7 @@ FastAPI, LangGraph and MCP.
 | [07 · Partner portal, deals and suppliers](07-partner-portal-and-deals.md) | How do businesses add deals, how are they reviewed and kept honest, and how do Ticketmaster events and Travelpayouts fares plug in? |
 | [08 · API reference](08-api-reference.md) | Generated from the code: every endpoint and who can call it, page routes, nearby rules, and settings. Never edit by hand |
 | [09 · People and safety](09-people-and-safety.md) | How travelers register to places, find people for an activity, and chat, and every safety rule built into it |
+| [10 · Alerts and demo businesses](10-alerts-and-demo-businesses.md) | How the radar finds good deals and matching people for you, how alerts reach you (bell, pop-ups, RSS, notifications), and the 124 labelled demo businesses |
 | [03 · Technology and models](03-technology-and-models.md) | What does each technology do, and how do the data, scoring, pros/cons and guide models work? Includes a worked scoring example |
 
 ## The system in one picture
@@ -41,7 +42,7 @@ Orange = simulated or curated data source. Everything else is working code.
 
 ## Status at a glance
 
-- **Live (free sources, no keys):** 100 destinations across Europe, the Americas and Asia with real weather (Open-Meteo), sights and credited photos (Wikipedia/Wikimedia), and real hotels and restaurants (OpenStreetMap).
+- **Live (free sources, no keys):** 109 destinations across Europe, the Americas and Asia with real weather (Open-Meteo), sights and credited photos (Wikipedia/Wikimedia), and real hotels and restaurants (OpenStreetMap).
 - **Optional upgrades:** Amadeus keys for real flight and hotel prices; an OpenAI key for plain-English requests and grounded trip summaries.
 - **Working:** multi-page React app with photos, maps and charts, REST API with validation, LangGraph orchestration, three MCP tool servers (flights, hotels, destination guides), weighted ranking with a plain-language rationale, computed pros and cons, best-time-to-go assessment, 212 passing tests.
 - **Estimated (labelled):** flight and hotel prices when no Amadeus key is set. Free data has no live prices or guest reviews.
