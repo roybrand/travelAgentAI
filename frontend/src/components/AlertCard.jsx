@@ -47,7 +47,7 @@ function PersonAlert({ a, compact }) {
   const answer = async (accept) => {
     try {
       await people.respond(token, a.connection_id, accept);
-      setState(accept ? "You are connected. Say hello in your Inbox." : "Declined.");
+      setState(accept ? "You are connected." : "Declined.");
       refresh();
     } catch (e) {
       setState(e.message);
@@ -76,7 +76,11 @@ function PersonAlert({ a, compact }) {
         {a.kind === "message" && <Link className="btn primary sm" to={a.link}>Open chat</Link>}
         {a.kind === "person" && compact && <Link className="btn primary sm" to={a.link}>See profile</Link>}
         {a.kind === "request" && compact && !state && <Link className="btn ghost sm" to={a.link}>Open inbox</Link>}
-        {state && <p className="fine">{state}</p>}
+        {state && (
+          <p className="fine">
+            {state} {state.startsWith("You are connected") && <Link to="/people?tab=inbox">Open Inbox →</Link>}
+          </p>
+        )}
       </div>
     </article>
   );

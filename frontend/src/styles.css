@@ -322,6 +322,8 @@ li.done .tick::after { content: ""; width: 5px; height: 9px; border: solid #0329
 .rate-bar { height: 6px; border-radius: 99px; background: rgba(255, 255, 255, 0.07); overflow: hidden; }
 .rate-bar i { display: block; height: 100%; background: linear-gradient(90deg, #14b8a6, #2dd4bf); border-radius: 99px; }
 .tags { display: flex; flex-wrap: wrap; gap: 6px; }
+.stay-detail { grid-template-rows: auto auto auto; }
+.stay-map { border-top: 1px solid var(--line); }
 .mapcard { position: relative; }
 .map { width: 100%; background: #0b1420; border-radius: 0; z-index: 1; }
 .nomap { height: 100%; min-height: 260px; display: grid; place-content: center; text-align: center; gap: 4px; padding: 24px; color: var(--muted); }

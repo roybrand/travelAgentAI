@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import { people } from "../api";
 import { usePeople } from "../state/PeopleContext.jsx";
 
@@ -62,6 +63,7 @@ function SafetyMenu({ person, onDone }) {
 export default function PersonCard({ person, extra, compact = false, showActions = true }) {
   const { token, options } = usePeople();
   const [note, setNote] = useState("");
+  const [connected, setConnected] = useState(false);
   const [asking, setAsking] = useState(false);
   const [msg, setMsg] = useState("");
   const [state, setState] = useState("idle"); // idle | sending | sent | error
@@ -72,7 +74,8 @@ export default function PersonCard({ person, extra, compact = false, showActions
     try {
       const r = await people.connect(token, person.id, msg);
       setState("sent");
-      setNote(r.status === "accepted" ? "You are connected. Open your Inbox to chat." : "Request sent. You can chat once they accept.");
+      setConnected(r.status === "accepted");
+      setNote(r.status === "accepted" ? "You are connected." : "Request sent. You can chat once they accept.");
     } catch (e) {
       setState("error");
       setNote(e.message);
@@ -105,7 +108,11 @@ export default function PersonCard({ person, extra, compact = false, showActions
                 <button className="btn ghost sm" onClick={() => setAsking(false)}>Cancel</button>
               </div>
             )}
-            {note && <p className={state === "error" ? "err" : "fine"}>{note}</p>}
+            {note && (
+              <p className={state === "error" ? "err" : "fine"}>
+                {note} {state === "sent" && <Link to="/people?tab=inbox">{connected ? "Open your Inbox to chat →" : "Track it in your Inbox →"}</Link>}
+              </p>
+            )}
             <SafetyMenu person={person} />
           </div>
         )}

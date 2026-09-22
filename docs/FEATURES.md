@@ -172,6 +172,7 @@ Full description: [07 · Partner portal, deals and suppliers](07-partner-portal-
 | F-148 | New items are placed on the least-full day and a time of day guessed from their tags (nightlife → evening, museums → morning, etc.), so a quick "Add to my plan" from Explore is useful without a trip to the editor; the guess can always be moved | Built | Own code | `lib/dayplan.js` |
 | F-149 | The trip page's itinerary is generated **directly from the day plan** (no more even spacing across days); it shows the real day, time of day and detail for each approved item, and prompts the traveler to build a plan when nothing is approved yet | Built | React | `pages/Trip.jsx` |
 | F-150 | Suggestions grouped by "Matches what you like", Sights, Adventures and each real-place category the traveler asked for, so nothing already on the plan is offered twice | Built | React | `pages/DayPlan.jsx` |
+| F-151 | **"Your stay, in detail"** on the trip overview: photo previews, guest rating or star class, nightly and total price with its source (live/estimated/demo), distance from the centre and nearby bars/restaurants/beach, amenities, and a map pin, for the currently chosen hotel | Built | React, Leaflet | `components/StayDetail.jsx`, `pages/Trip.jsx` |
 
 ## H. People (meeting other travelers)
 

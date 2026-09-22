@@ -8,6 +8,7 @@ import AlertCard from "../components/AlertCard.jsx";
 import { TAG_LABEL } from "../lib/constants";
 import { MONTHS, duration, longDate, money, shortDate } from "../lib/format";
 import { qualityLabel, stayPhotos } from "../lib/stay";
+import StayDetail from "../components/StayDetail.jsx";
 import { PLACE_TYPE_LABEL } from "../lib/profile";
 import { PART_LABEL, PARTS } from "../lib/dayplan";
 import CountUp from "../components/CountUp.jsx";
@@ -135,6 +136,14 @@ export default function Trip() {
             <span className="kpi-v sm">{chosenItems.length} planned</span>
             <span className="kpi-s">{expCost ? `${money(expCost)} est.` : "prices vary"} · <Link to="/plan">edit</Link></span>
           </div>
+        </motion.section>
+
+        <motion.section {...rise()}>
+          <div className="section-head row">
+            <h2>Your stay, in detail</h2>
+            <span className="muted">{trip.isBest ? "Agent's best match" : "Your choice"} · <Link to="/stays">compare other stays</Link></span>
+          </div>
+          <StayDetail hotel={hotel} interests={req.interests} nights={it.nights} />
         </motion.section>
 
         {it.ai?.summary && (

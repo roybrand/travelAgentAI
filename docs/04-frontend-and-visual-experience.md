@@ -106,6 +106,7 @@ All screens are driven by the single `POST /api/plan-trip` response.
 | Trip total and per-person cost | `itinerary.flight`, `hotel_options[]`, guide item `cost` | Recomputed live when you change stay or plan |
 | Donut: flights / stay / experiences | Same three components | Experiences are per-person estimates x travelers |
 | Itinerary timeline | `flight`, selected hotel, planned experiences | Experiences spread over the free days |
+| "Your stay, in detail" card on the Trip page | Same `hotel_options[]` entry as the Stay cards below, for the currently chosen hotel | Photo previews, quality, nightly/total price with source, distance and nearby bars/restaurants/beach, amenities and a map pin, without leaving the overview |
 | Pros and cons | `itinerary.pros`, `cons`, `rationale` | Computed from the search, see [03](03-technology-and-models.md#pros-and-cons-model) |
 | Season chart, verdict, best window | `guide.months`, `guide.climate`, `guide.timing` | Live weather (Open-Meteo) |
 | Stays comparison chart | `hotel_options[].price_per_night`, `hotel_price_stats.avg` | Bars vs the average line |

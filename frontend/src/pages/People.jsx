@@ -284,7 +284,10 @@ function Chat({ chat, onClose, onChanged }) {
       const r = await people.messages(token, chat.connection_id, last.current);
       if (r.messages.length) {
         last.current = r.messages[r.messages.length - 1].id;
-        setMessages((m) => [...m, ...r.messages]);
+        setMessages((m) => {
+          const known = new Set(m.map((x) => x.id));
+          return [...m, ...r.messages.filter((x) => !known.has(x.id))];
+        });
       }
     } catch (e) {
       if (e.status === 404) onClose();
@@ -385,6 +388,7 @@ function Inbox({ openId }) {
     await people.respond(token, id, accept).catch((e) => setError(e.message));
     load();
   };
+  const closeChat = useCallback(() => setOpen(null), []);
 
   if (!data) return <p className="muted">{error || "Loading…"}</p>;
   return (
@@ -419,7 +423,7 @@ function Inbox({ openId }) {
         </ul>
         {data.outgoing.length > 0 && <p className="fine">Waiting for an answer from: {data.outgoing.map((o) => o.person.display_name).join(", ")}.</p>}
       </section>
-      {open && <Chat chat={open} onClose={() => setOpen(null)} onChanged={load} />}
+      {open && <Chat chat={open} onClose={closeChat} onChanged={load} />}
     </div>
   );
 }
@@ -610,9 +614,10 @@ function PersonModal({ id, onClose }) {
 export default function People() {
   const { token, me } = usePeople();
   const [params, setParams] = useSearchParams();
-  const [tab, setTab] = useState(["find", "inbox", "profile"].includes(params.get("tab")) ? params.get("tab") : "find");
+  const tab = ["find", "inbox", "profile"].includes(params.get("tab")) ? params.get("tab") : "find";
   const personId = params.get("person");
   const closePerson = () => { const p = new URLSearchParams(params); p.delete("person"); setParams(p); };
+  const goTab = (k) => { const p = new URLSearchParams(params); p.set("tab", k); setParams(p); };
   if (!token || !me) return token ? <div className="wrap page"><p className="muted">Loading…</p></div> : <Landing />;
   return (
     <div className="wrap page">
@@ -624,7 +629,7 @@ export default function People() {
           <p className="muted">Find people for an activity, see who is going to a place, and chat once you both agree.</p>
         </div>
         <div className="tabs-inline">
-          {TABS.map(([k, l]) => <button key={k} className={tab === k ? "on" : ""} onClick={() => setTab(k)}>{l}</button>)}
+          {TABS.map(([k, l]) => <button key={k} className={tab === k ? "on" : ""} onClick={() => goTab(k)}>{l}</button>)}
         </div>
       </div>
       {tab === "find" && <Find />}
