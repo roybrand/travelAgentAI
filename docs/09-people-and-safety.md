@@ -24,10 +24,15 @@ flowchart LR
     D -->|"no"| X["Nothing is shared"]
     C --> B["Block or report<br/>at any time"]
     CH --> B
+    CH --> K["'Meet safely' link<br/>share plan with a friend,<br/>no sign-in to view"]
+    H -.->|"push, if subscribed"| N["Device notification<br/>even if Wayfinder is closed"]
+    D -.->|"push, if subscribed"| N
 
     style D fill:#78350f,color:#fff
     style B fill:#7f1d1d,color:#fff
     style CH fill:#0f766e,color:#fff
+    style K fill:#0f766e,color:#fff
+    style N fill:#1e3a8a,color:#fff
 ```
 
 ## 2. The safety rules built into the code
@@ -37,13 +42,16 @@ flowchart LR
 | Minors | Sign-up needs a birth year showing 18 or older, and a ticked box accepting the rules. This is self-declared. It is not identity verification |
 | Unwanted contact | Nobody can message anyone. A person sends one request with a short note, and chat opens only if the other person accepts. Asking someone who already asked you connects you |
 | Harassment | Block and Report are on every profile card and in every chat. Blocking hides both people from each other everywhere and closes the chat. Reports go to a moderator queue, and a ban ends the person's sessions at once |
+| A harmful profile before a moderator gets to it | **Auto-hide pending review**: a profile is hidden from search, place lists and new contact the moment a report names "under 18" or "unsafe behaviour", or once two different people have an open report against it. It is not a ban — the person can still sign in and use existing chats, and it lifts automatically once every open report against them is resolved. See `app/social/connect.py::_recompute_review` |
+| Meeting a stranger in person | **"Meet safely" check-ins**: from any chat, either person can create a link with the place, time and who they are meeting, to send to a friend outside the app. No sign-in is needed to view it, and it never carries an exact location, email or phone number. It expires 12 hours after the planned time, or the moment its owner ends it |
 | Fake or unsafe photos | A photo is shown to others only after approval. With an OpenAI key it is checked by OpenAI's free moderation endpoint. Without one it waits in the moderator queue. Rejected photos are deleted. The address of a photo is a random 128-bit name |
 | Bad messages | Messages and notes are checked by moderation when a key is set. Length limits and rate limits apply. Any message can be reported |
 | Stalking and location | Only place-level facts are shared ("going to X on Tuesday"). A request stores a position rounded to about 1 km and expires with its day. Others see "within 1 km", never coordinates. Live position is never shared |
 | Filters and discrimination | Searching by gender or age band is supported, and it is voluntary on both sides: only people who chose to share a gender are returned by a gender search, and every person can limit who may find them (for example women only). Filters by ethnicity, religion, sexuality or looks are not offered; a request that asks for them is told so and they are never applied |
 | Data | Emails, birth years, exact ages and exact locations are never shown to other people. A person can hide their profile, and can delete their account, photo, plans, requests and messages for good. The activity log holds no names, emails or coordinates |
 | Scams | The rules tell people never to send money. Reports of "spam or scam" are a category |
-| Under 18 discovered | "under 18" is a report reason. A moderator can ban the account |
+| Under 18 discovered | "under 18" is a report reason. It hides the profile at once (see above), and a moderator can ban the account |
+| A push notification on a lock screen | Push previews carry a sender's display name and the first line of a message, the same as any other messaging app's lock-screen preview. Anyone worried about that can turn the "Notify me on this device" toggle off, or use their phone's own setting to hide notification content |
 
 ## 3. How matching works
 
@@ -76,7 +84,7 @@ up to two weeks ahead.
 At `/admin`, with the admin token:
 
 - **Profile photos waiting for review:** approve or reject.
-- **Open reports:** dismiss, or ban. The list shows how many reports are open against each person.
+- **Open reports:** dismiss, or ban. The list shows how many reports are open against each person, and marks "Auto-hidden" when the profile is already hidden pending this review (see auto-hide, above). Dismissing every open report against a person un-hides them; banning ends their account.
 
 ## 6. What is not built, and what you must do before real users
 
@@ -84,8 +92,8 @@ At `/admin`, with the admin token:
 - **Chat uses polling** every few seconds, not push. Notifications for new requests and messages are not built.
 - **No age verification** beyond the declaration. Depending on your country, a legal review of how you handle age is wise.
 - **Privacy policy and terms** must be written and shown at sign-up. Storing photos, messages and locations makes you a data controller under GDPR and similar laws.
-- **Moderation capacity:** someone must review photos and reports every day, or turn on the OpenAI key so photos are checked automatically.
-- **Emergency information:** add local emergency numbers and a "trusted contact" feature before wide launch.
+- **Moderation capacity:** someone must review photos and reports every day, or turn on the OpenAI key so photos are checked automatically. Auto-hide (above) buys time, not a substitute for review.
+- **Emergency information:** local emergency numbers are not shown in the app yet. A "trusted contact" who is told *before* a meetup, not just handed a link after asking, would need a proper contacts feature; today's check-in link (above) covers the "tell a friend" habit the safety rules already ask for, but relies on the person actually sending it.
 - **Scale:** SQLite and local photo files suit a prototype. Move to Postgres and object storage before real traffic.
 - **The pool starts empty.** Until people join, matches are empty. See the demo pool below for a labelled set of 100 made-up travelers.
 
@@ -104,7 +112,30 @@ their thirties, and so on down to 55+). Each has a bio, hobbies, languages, inte
 
 Demo profiles live in the same database as real people. **Do not seed them in a real launch**, or remove them first.
 
-## 8. Settings
+## 8. Real push notifications
 
-No new environment variables. It uses `OPENAI_API_KEY` (moderation and reading requests), `ADMIN_TOKEN` (the moderator page)
-and `WAYFINDER_DB` (photos live in a `people_photos` folder next to the database file).
+A "Notify me on this device" toggle in the People profile subscribes this browser to real Web Push (RFC 8291
+message encryption, RFC 8292 VAPID) -- the one place Wayfinder reaches a device while it is fully closed, not
+just backgrounded. Off by default; `GET /api/config` reports `push: false` until `VAPID_PUBLIC_KEY`,
+`VAPID_PRIVATE_KEY` and `VAPID_SUBJECT` are all set (`python scripts/generate_vapid_keys.py` makes a free pair
+in seconds -- it is not a paid or billed credential).
+
+- **Tied to the account, not the browser tab.** A subscription belongs to a signed-in Wayfinder Person
+  (`push_subscriptions.user_id`), so a push can be sent from anywhere in the backend that knows *who*, at any
+  time, not only while that person's page happens to be open and polling.
+- **What triggers it:** a new connection request, a request you sent being accepted, and a new chat message.
+  All three fire from the real write in `app/social/connect.py`, not a separate poller.
+- **No SDK.** Message encryption and the VAPID JSON Web Token are built directly on `cryptography`'s
+  primitives (`app/social/push.py`), the same approach as `app/partners/stripe_gateway.py` for payments.
+- **Demo profiles are silently skipped**, since they have no device of their own to notify, and a human who
+  messages one already sees the automated reply immediately in the UI.
+- **Stale subscriptions clean themselves up:** a 404 or 410 from the push service (the browser un-subscribed,
+  or the subscription expired) removes the row so it is never retried.
+- Only a title, a short body and a destination URL are ever sent -- never a coordinate, an email or a phone number.
+
+## 9. Settings
+
+`OPENAI_API_KEY` (moderation and reading requests), `ADMIN_TOKEN` (the moderator page), `STRIPE_SECRET_KEY` /
+`STRIPE_WEBHOOK_SECRET` (Featured deal payments, not People-specific but documented in doc 07),
+`VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` / `VAPID_SUBJECT` (push, above), and `WAYFINDER_DB` (photos live in a
+`people_photos` folder next to the database file).

@@ -1,13 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { people } from "../api";
+import { people, push as pushApi } from "../api";
 import { usePeople } from "../state/PeopleContext.jsx";
 import { useTrip } from "../state/TripContext.jsx";
 import { longDate } from "../lib/format";
 import { resizeImage } from "../lib/profile";
+import { currentSubscription, pushSupported, subscribeThisDevice, unsubscribeThisDevice } from "../lib/push";
 import DestSelect from "../components/DestSelect.jsx";
 import PersonCard, { Avatar } from "../components/PersonCard.jsx";
 import BackLink from "../components/BackLink.jsx";
+import ChangePasswordForm from "../components/ChangePassword.jsx";
 
 const TABS = [["find", "Find people"], ["inbox", "Inbox"], ["profile", "My profile"]];
 
@@ -337,8 +339,90 @@ function Chat({ chat, onClose, onChanged }) {
         <input value={draft} maxLength={500} onChange={(e) => setDraft(e.target.value)} placeholder="Write a message" />
         <button className="btn primary sm">Send</button>
       </form>
+      <CheckinPanel connectionId={chat.connection_id} />
       <PersonCard person={chat.person} compact showActions={false} extra={<ChatSafety person={chat.person} onDone={() => { onChanged(); onClose(); }} />} />
     </section>
+  );
+}
+
+function toLocalInputValue(d) {
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+/** "Meet safely": create a link with the plan (place, time, who with) to send outside the app to someone
+ * who isn't coming along, so somebody else knows where you meant to be. */
+function CheckinPanel({ connectionId }) {
+  const { token } = usePeople();
+  const [open, setOpen] = useState(false);
+  const [active, setActive] = useState([]);
+  const [place, setPlace] = useState("");
+  const [when, setWhen] = useState(() => toLocalInputValue(new Date(Date.now() + 2 * 3600 * 1000)));
+  const [note, setNote] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [copiedId, setCopiedId] = useState(null);
+
+  const load = useCallback(() => {
+    people.checkins(token).then((r) => setActive(r.checkins.filter((c) => c.connection_id === connectionId))).catch(() => {});
+  }, [token, connectionId]);
+  useEffect(load, [load]);
+
+  const create = async (e) => {
+    e.preventDefault();
+    setBusy(true);
+    setError("");
+    try {
+      await people.checkin(token, { connection_id: connectionId, place_text: place, meet_at: new Date(when).toISOString(), note });
+      setPlace("");
+      setNote("");
+      setOpen(false);
+      load();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const end = async (id) => {
+    await people.endCheckin(token, id).catch(() => {});
+    load();
+  };
+
+  const copy = (id, url) => {
+    navigator.clipboard?.writeText(url).then(() => { setCopiedId(id); setTimeout(() => setCopiedId(null), 2000); }).catch(() => {});
+  };
+
+  return (
+    <div className="checkin-panel">
+      {active.map((c) => {
+        const url = `${window.location.origin}/safety/${c.token}`;
+        return (
+          <div key={c.id} className="checkin-active">
+            <span>🛡️ Meeting at <b>{c.place_text}</b>, {new Date(c.meet_at).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}.</span>
+            <span className="form-actions">
+              <button type="button" className="linkbtn" onClick={() => copy(c.id, url)}>{copiedId === c.id ? "Copied!" : "Copy link for a friend"}</button>
+              <button type="button" className="linkbtn danger" onClick={() => end(c.id)}>End check-in</button>
+            </span>
+          </div>
+        );
+      })}
+      {!open && <button type="button" className="linkbtn" onClick={() => setOpen(true)}>🛡️ Share meetup details with a friend</button>}
+      {open && (
+        <form className="checkin-form" onSubmit={create}>
+          <p className="fine">Tell a friend where you will be. They get a link with no sign-in needed, and never your exact location.</p>
+          <input required maxLength={200} value={place} onChange={(e) => setPlace(e.target.value)} placeholder="Where, e.g. Rooftop bar on Dizengoff St" />
+          <input required type="datetime-local" value={when} onChange={(e) => setWhen(e.target.value)} />
+          <input maxLength={300} value={note} onChange={(e) => setNote(e.target.value)} placeholder="Note (optional), e.g. back by midnight" />
+          {error && <p className="error" role="alert">{error}</p>}
+          <span className="form-actions">
+            <button className="btn primary sm" disabled={busy}>{busy ? "Creating…" : "Create link"}</button>
+            <button type="button" className="btn ghost sm" onClick={() => setOpen(false)}>Cancel</button>
+          </span>
+        </form>
+      )}
+    </div>
   );
 }
 
@@ -437,6 +521,64 @@ const PHOTO_TEXT = {
   rejected: "That photo was not accepted. Please upload a clear photo of yourself.",
 };
 
+function NotificationToggle() {
+  const { token } = usePeople();
+  const [state, setState] = useState("checking"); // checking | off | on | unsupported
+  const [pushOn, setPushOn] = useState(false);
+  const [publicKey, setPublicKey] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    if (!pushSupported()) return setState("unsupported");
+    Promise.all([pushApi.publicKey().catch(() => ({ enabled: false, public_key: null })), currentSubscription()])
+      .then(([info, sub]) => {
+        setPushOn(info.enabled);
+        setPublicKey(info.public_key);
+        setState(sub ? "on" : "off");
+      });
+  }, []);
+
+  const turnOn = async () => {
+    setBusy(true);
+    setError("");
+    try {
+      if (!publicKey) throw new Error("Notifications are not turned on for this app yet.");
+      await subscribeThisDevice(publicKey, (sub) => pushApi.subscribe(token, sub));
+      setState("on");
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const turnOff = async () => {
+    setBusy(true);
+    setError("");
+    try {
+      await unsubscribeThisDevice((endpoint) => pushApi.unsubscribe(token, endpoint));
+      setState("off");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (state === "unsupported") return null;
+  return (
+    <section className="card pad">
+      <h2 className="card-title">Notifications</h2>
+      <label className="check">
+        <input type="checkbox" checked={state === "on"} disabled={busy || state === "checking"} onChange={() => (state === "on" ? turnOff() : turnOn())} />
+        <span><b>Notify me on this device.</b> New messages and connection requests, even when Wayfinder is closed.</span>
+      </label>
+      {error && <p className="error" role="alert">{error}</p>}
+      {!pushOn && state === "off" && <p className="fine">Not switched on for this app yet.</p>}
+      <p className="fine">Only your name and a short preview are ever sent, never your location, email or phone.</p>
+    </section>
+  );
+}
+
 function Profile() {
   const { token, me, plans, blocked, options, refresh, signOut } = usePeople();
   const fileRef = useRef(null);
@@ -491,6 +633,12 @@ function Profile() {
 
   return (
     <div className="profile-grid">
+      {me.under_review && (
+        <p className="notice full-span" role="status">
+          Your profile is temporarily hidden from search and new contact while we review a report against it. You can still use your account,
+          including existing chats. This is not a ban, and it lifts automatically once a moderator has looked at it.
+        </p>
+      )}
       <form className="card pad" onSubmit={save}>
         <h2 className="card-title">My profile</h2>
         <div className="photo-row">
@@ -564,8 +712,10 @@ function Profile() {
           <h2 className="card-title">Staying safe</h2>
           <Rules rules={options?.rules} />
         </section>
+        <NotificationToggle />
         <section className="card pad">
           <h2 className="card-title">Account</h2>
+          <ChangePasswordForm onChange={(cur, next) => people.changePassword(token, cur, next)} onDone={signOut} />
           <div className="form-actions">
             <button className="btn ghost sm" onClick={signOut}>Sign out</button>
             <button className="btn ghost sm danger-btn" onClick={remove}>Delete my account and data</button>

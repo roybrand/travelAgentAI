@@ -164,7 +164,9 @@ travelAgentAi/
 │   │   │   ├── security.py      scrypt passwords, hashed tokens and keys, rate limiter
 │   │   │   ├── accounts.py      Sign-up, sessions, API keys, suspension
 │   │   │   ├── deals.py         Deal validation, moderation, payment-blind ranking
-│   │   │   ├── routes.py        The partner, moderation, feed, deals and events endpoints
+│   │   │   ├── featured.py      Featured deal placements: the one thing money buys, kept out of ranking (see stripe_gateway.py)
+│   │   │   ├── stripe_gateway.py  Optional real payment (Stripe Checkout + webhook signature verification), no SDK
+│   │   │   ├── routes.py        The partner, moderation, feed, deals, events and payments endpoints
 │   │   │   ├── demo_businesses.py  The labelled pool of 124 demo businesses, their daily deals and drawn pictures
 │   │   │   └── activity.py      Runtime log of partner events (backend/logs/partner-activity.md)
 │   │   ├── social/              Wayfinder People, see doc 09
@@ -176,7 +178,9 @@ travelAgentAi/
 │   │   │   ├── vocab.py         The fixed lists of activities, languages, vibes, genders and age bands, and the gender and age detectors
 │   │   │   ├── demo_people.py   The labelled pool of 100 demo travelers: seeding, daily requests, dynamic matching, automated replies
 │   │   │   ├── avatars.py       Illustrated avatars (SVG) for demo profiles
-│   │   │   └── routes.py        The /api/people and /api/admin/people endpoints
+│   │   │   ├── safety.py        "Meet safely" check-in links: share a planned meetup outside the app, no sign-in to view
+│   │   │   ├── push.py          Optional real Web Push (RFC 8291/8292), no SDK: subscriptions, encryption, and the send itself
+│   │   │   └── routes.py        The /api/people, /api/push, /api/safety and /api/admin/people endpoints
 │   │   ├── alerts.py            The radar: deal, person, request and message alerts, and the RSS feed
 │   │   ├── suppliers/           Optional real-time adapters: ticketmaster.py (events), travelpayouts.py (fares)
 │   │   ├── docsync.py           Generates docs/08-api-reference.md from the code

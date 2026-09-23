@@ -1,7 +1,106 @@
 import { useCallback, useEffect, useState } from "react";
+import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { admin as api, adminPeople } from "../api";
 import DealCard from "../components/DealCard.jsx";
 import BackLink from "../components/BackLink.jsx";
+
+const CHART_TOOLTIP = { background: "#0d1826", border: "1px solid #24364d", borderRadius: 10 };
+const CHART_ITEM = { color: "#e8eef6" };
+const AXIS_MUTED = { fill: "#8ea2b9", fontSize: 11 };
+
+function DailyChart({ title, data, color }) {
+  const gid = `an-${title.replace(/[^a-zA-Z0-9]/g, "")}`;
+  return (
+    <div className="card pad">
+      <h3 className="card-title">{title}</h3>
+      <ResponsiveContainer width="100%" height={140}>
+        <AreaChart data={data} margin={{ top: 6, right: 8, left: 0, bottom: 0 }}>
+          <defs>
+            <linearGradient id={gid} x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor={color} stopOpacity={0.35} />
+              <stop offset="100%" stopColor={color} stopOpacity={0} />
+            </linearGradient>
+          </defs>
+          <XAxis dataKey="day" tickLine={false} axisLine={false} tick={AXIS_MUTED} tickFormatter={(d) => d.slice(5)} minTickGap={24} />
+          <YAxis hide allowDecimals={false} />
+          <Tooltip cursor={{ stroke: "#24364d" }} contentStyle={CHART_TOOLTIP} itemStyle={CHART_ITEM} labelStyle={AXIS_MUTED} />
+          <Area type="monotone" dataKey="count" name="Count" stroke={color} strokeWidth={2} fill={`url(#${gid})`} dot={false} isAnimationActive={false} />
+        </AreaChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
+
+/** A plain HTML/CSS bar list rather than a chart library bar chart: simpler, and every step -- including a
+ * genuine zero -- always shows its own row, its own bar (even a zero-width one) and its own number. */
+function FunnelChart({ title, steps }) {
+  const max = Math.max(1, ...steps.map((s) => s.count));
+  return (
+    <div className="card pad">
+      <h3 className="card-title">{title}</h3>
+      <div className="funnel-rows">
+        {steps.map((s) => (
+          <div className="funnel-row" key={s.label}>
+            <span className="funnel-label">{s.label}</span>
+            <span className="funnel-bar-track">
+              <span className="funnel-bar" style={{ width: `${(s.count / max) * 100}%` }} />
+            </span>
+            <span className="funnel-count">{s.count}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function Analytics({ token }) {
+  const [data, setData] = useState(null);
+  const [days, setDays] = useState(30);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    api.analytics(token, days).then(setData).catch((e) => setError(e.message));
+  }, [token, days]);
+
+  return (
+    <section className="analytics-section">
+      <div className="page-head">
+        <div>
+          <div className="eyebrow">Investor view</div>
+          <h2 className="h2">Analytics</h2>
+        </div>
+        <div className="chips">
+          {[7, 30, 90].map((d) => <button key={d} type="button" className="chip" aria-pressed={days === d} onClick={() => setDays(d)}>{d} days</button>)}
+        </div>
+      </div>
+      {error && <p className="error" role="alert">{error}</p>}
+      {data && (
+        <>
+          <div className="stat-row analytics-kpis">
+            <div className="card stat"><b>{data.kpis.people_registered}</b><span>People registered</span></div>
+            <div className="card stat"><b>{data.kpis.partners_registered}</b><span>Businesses registered</span></div>
+            <div className="card stat"><b>{data.kpis.deals_submitted}</b><span>Deals submitted</span></div>
+            <div className="card stat"><b>{data.kpis.connections_requested}</b><span>Connections requested</span></div>
+            <div className="card stat"><b>{data.kpis.messages_sent}</b><span>Messages sent</span></div>
+            <div className="card stat"><b>{data.kpis.reports_filed}</b><span>Reports filed</span></div>
+          </div>
+          <div className="analytics-grid">
+            <DailyChart title="People registrations / day" data={data.daily.people_registered} color="#2dd4bf" />
+            <DailyChart title="Messages sent / day" data={data.daily.messages_sent} color="#f5c76a" />
+          </div>
+          <div className="analytics-grid">
+            <FunnelChart title="People funnel" steps={data.people_funnel} />
+            <FunnelChart title="Partner funnel" steps={data.partner_funnel} />
+          </div>
+          <p className="fine">
+            Self-hosted: built entirely from events already in the activity log. No vendor, no cookies, no cross-site tracking. There is no
+            visit-level tracking, so each funnel step is its own real count in the window, not a strict per-visitor conversion rate.
+          </p>
+        </>
+      )}
+    </section>
+  );
+}
 
 const KEY = "wf.admin.v1";
 const read = () => {
@@ -122,6 +221,9 @@ export default function Admin() {
         </div>
         <button className="btn ghost" onClick={() => { write(""); setToken(""); }}>Sign out</button>
       </div>
+
+      <Analytics token={token} />
+
       {error && <p className="error" role="alert">{error}</p>}
       {pending?.length === 0 && <div className="card pad empty"><b>Nothing to review.</b><p className="muted">New and edited deals appear here.</p></div>}
       <div className="review-list">
@@ -155,7 +257,10 @@ export default function Admin() {
             <tbody>
               {reports.map((r) => (
                 <tr key={r.id}>
-                  <td><b>{r.target_name}</b><small>{r.reason} · {r.open_against} open against this person</small>{r.detail && <small>“{r.detail}”</small>}{r.message && <small>Message: “{r.message}”</small>}</td>
+                  <td>
+                    <b>{r.target_name}</b>{r.target_under_review && <span className="src-badge warn">Auto-hidden</span>}
+                    <small>{r.reason} · {r.open_against} open against this person</small>{r.detail && <small>“{r.detail}”</small>}{r.message && <small>Message: “{r.message}”</small>}
+                  </td>
                   <td className="row-actions">
                     <button className="linkbtn" onClick={() => act(() => adminPeople.resolve(token, r.id, false))}>Dismiss</button>
                     <button className="linkbtn danger" onClick={() => window.confirm(`Ban ${r.target_name}?`) && act(() => adminPeople.resolve(token, r.id, true))}>Ban</button>

@@ -2,7 +2,7 @@
 import base64
 import itertools
 import json
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 
 import pytest
 
@@ -56,6 +56,33 @@ def test_only_adults_who_accept_the_rules_can_register(client):
     assert signup(client, password="short")[0].status_code == 400
     r, email = signup(client)
     assert signup(client, email=email)[0].status_code == 409
+
+
+def test_a_commonly_leaked_password_is_refused_even_though_it_is_long_enough(client):
+    r, _ = signup(client, password="administrator")
+    assert r.status_code == 400 and "common" in r.json()["detail"].lower()
+
+
+def test_login_is_rate_limited_per_account_across_different_addresses(client):
+    _, email = signup(client)
+    for _ in range(8):
+        client.post("/api/people/login", json={"email": email, "password": "wrong-password-1"})
+    r = client.post("/api/people/login", json={"email": email, "password": "correct-horse-battery"})
+    assert r.status_code == 429  # locked out even with the right password, and even "from" a fresh test client
+
+
+def test_changing_my_password_signs_out_every_session_and_the_new_password_works(client):
+    r, email = signup(client)
+    h = {"Authorization": f"Bearer {r.json()['token']}"}
+    other_session = client.post("/api/people/login", json={"email": email, "password": "correct-horse-battery"}).json()["token"]
+    assert client.post("/api/people/me/password", json={"current_password": "wrong", "new_password": "a-new-password-1"}, headers=h).status_code == 401
+    assert client.post("/api/people/me/password", json={"current_password": "correct-horse-battery", "new_password": "short"}, headers=h).status_code == 400
+    r = client.post("/api/people/me/password", json={"current_password": "correct-horse-battery", "new_password": "a-new-password-1"}, headers=h)
+    assert r.status_code == 200
+    assert client.get("/api/people/me", headers=h).status_code == 401  # this session ended too
+    assert client.get("/api/people/me", headers={"Authorization": f"Bearer {other_session}"}).status_code == 401
+    assert client.post("/api/people/login", json={"email": email, "password": "correct-horse-battery"}).status_code == 401
+    assert client.post("/api/people/login", json={"email": email, "password": "a-new-password-1"}).status_code == 200
 
 
 def test_sign_in_and_out_and_auth_is_required(client):
@@ -350,6 +377,51 @@ def test_blocking_closes_the_chat_and_hides_both_people(client):
     assert client.get("/api/people/me", headers=b).json()["blocked"] == []
 
 
+def test_a_checkin_link_shows_the_plan_with_no_sign_in_and_can_be_ended(client):
+    a, a_id, b, b_id = two_people(client)
+    cid = client.post("/api/people/connect", json={"to_user": b_id, "message": "hi"}, headers=a).json()["id"]
+    client.post(f"/api/people/connections/{cid}/respond", json={"accept": True}, headers=b)
+    meet_at = (datetime.now(timezone.utc) + timedelta(hours=2)).isoformat()
+    r = client.post("/api/people/checkins", json={"connection_id": cid, "place_text": "Rooftop bar, Rua X", "meet_at": meet_at, "note": "back by midnight"}, headers=a)
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["other_name"] == "Amy" and body["place_text"] == "Rooftop bar, Rua X"
+    pub = client.get(f"/api/safety/{body['token']}")
+    assert pub.status_code == 200
+    assert pub.json() == {"my_name": "Zed", "other_name": "Amy", "other_photo_url": None, "place_text": "Rooftop bar, Rua X",
+                          "meet_at": pub.json()["meet_at"], "note": "back by midnight", "revoked": False, "expired": False}
+    assert {c["id"] for c in client.get("/api/people/checkins", headers=a).json()["checkins"]} == {body["id"]}
+    assert client.delete(f"/api/people/checkins/{body['id']}", headers=a).status_code == 200
+    assert client.get("/api/people/checkins", headers=a).json()["checkins"] == []
+    assert client.get(f"/api/safety/{body['token']}").json()["revoked"] is True
+
+
+def test_checkin_without_a_connection_uses_a_generic_name(client):
+    a, a_id, b, b_id = two_people(client)
+    meet_at = (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()
+    r = client.post("/api/people/checkins", json={"place_text": "Main square", "meet_at": meet_at}, headers=a)
+    assert r.status_code == 200 and r.json()["other_name"] == "someone I met on Wayfinder"
+
+
+def test_checkin_requires_my_own_accepted_connection(client):
+    a, a_id, b, b_id = two_people(client)
+    cid = client.post("/api/people/connect", json={"to_user": b_id}, headers=a).json()["id"]  # still pending
+    meet_at = (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()
+    r = client.post("/api/people/checkins", json={"connection_id": cid, "place_text": "Cafe", "meet_at": meet_at}, headers=a)
+    assert r.status_code == 404
+
+
+def test_checkin_validation_and_limits(client):
+    a, a_id, b, b_id = two_people(client)
+    too_far = (datetime.now(timezone.utc) + timedelta(days=30)).isoformat()
+    assert client.post("/api/people/checkins", json={"place_text": "x", "meet_at": too_far}, headers=a).status_code == 422
+    assert client.get("/api/safety/not-a-real-token").status_code == 404
+    ok_time = (datetime.now(timezone.utc) + timedelta(hours=1)).isoformat()
+    for _ in range(5):
+        assert client.post("/api/people/checkins", json={"place_text": "Cafe", "meet_at": ok_time}, headers=a).status_code == 200
+    assert client.post("/api/people/checkins", json={"place_text": "Cafe", "meet_at": ok_time}, headers=a).status_code == 429
+
+
 def test_messages_are_limited_in_length_and_must_not_be_empty(client):
     a, _, b, b_id = two_people(client)
     cid = client.post("/api/people/connect", json={"to_user": b_id}, headers=a).json()["id"]
@@ -370,6 +442,42 @@ def test_reports_reach_the_moderator_and_a_ban_ends_the_account(client):
     assert client.get("/api/people/me", headers=b).status_code == 401          # signed out at once
     email = users.get_row(b_id)["email"]
     assert client.post("/api/people/login", json={"email": email, "password": "correct-horse-battery"}).status_code == 403
+
+
+def test_a_profile_is_auto_hidden_after_two_people_report_it_and_reappears_once_dismissed(client):
+    a, a_id, b, b_id = two_people(client)
+    c, c_id, _ = person(client, "Cara")
+    looking(client, b, "Coffee tonight")
+    assert b_id in ids(looking(client, a, "Coffee tonight").json()["people"])
+    client.post("/api/people/report", json={"user_id": b_id, "reason": "spam or scam"}, headers=a)
+    assert client.get(f"/api/people/{b_id}", headers=c).status_code == 200      # one report is not enough
+    client.post("/api/people/report", json={"user_id": b_id, "reason": "spam or scam"}, headers=c)
+    assert users.get_row(b_id)["under_review"] == 1
+    assert client.get(f"/api/people/{b_id}", headers=a).status_code == 404
+    assert b_id not in ids(looking(client, a, "Coffee tonight").json()["people"])
+    assert client.post("/api/people/connect", json={"to_user": b_id}, headers=a).status_code == 404
+    reports = [r for r in client.get("/api/admin/people/reports", headers=ADMIN).json()["reports"] if r["target_id"] == b_id]
+    assert reports and all(r["target_under_review"] for r in reports)
+    for r in reports:
+        assert client.post(f"/api/admin/people/reports/{r['id']}/resolve", json={"ban": False}, headers=ADMIN).status_code == 200
+    assert users.get_row(b_id)["under_review"] == 0
+    assert client.get(f"/api/people/{b_id}", headers=a).status_code == 200
+
+
+def test_an_under_18_report_hides_a_profile_from_a_single_reporter(client):
+    a, a_id, b, b_id = two_people(client)
+    client.post("/api/people/report", json={"user_id": b_id, "reason": "under 18"}, headers=a)
+    assert users.get_row(b_id)["under_review"] == 1
+    assert client.get(f"/api/people/{b_id}", headers=a).status_code == 404
+
+
+def test_someone_under_review_cannot_send_new_connection_requests(client):
+    a, a_id, b, b_id = two_people(client)
+    c, c_id, _ = person(client, "Cara")
+    client.post("/api/people/report", json={"user_id": a_id, "reason": "harassment"}, headers=b)
+    client.post("/api/people/report", json={"user_id": a_id, "reason": "harassment"}, headers=c)
+    assert users.get_row(a_id)["under_review"] == 1
+    assert client.post("/api/people/connect", json={"to_user": b_id}, headers=a).status_code == 403
 
 
 def test_deleting_an_account_removes_everything(client):

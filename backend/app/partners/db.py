@@ -60,6 +60,22 @@ CREATE TABLE IF NOT EXISTS deals (
 );
 CREATE INDEX IF NOT EXISTS idx_deals_lookup ON deals (status, dest, valid_to);
 
+-- Featured deal placements: a partner pays (real Stripe Checkout) to pin an approved deal in a labelled
+-- "Featured" strip for a city for a week. The only thing money buys; deals.rank_deals never sees it.
+CREATE TABLE IF NOT EXISTS featured_deals (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    deal_id INTEGER NOT NULL REFERENCES deals(id) ON DELETE CASCADE,
+    partner_id INTEGER NOT NULL REFERENCES partners(id) ON DELETE CASCADE,
+    session_id TEXT NOT NULL UNIQUE,
+    status TEXT NOT NULL DEFAULT 'pending',
+    amount_cents INTEGER NOT NULL,
+    currency TEXT NOT NULL,
+    starts_at TEXT,
+    ends_at TEXT,
+    created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_featured_active ON featured_deals (status, ends_at);
+
 -- People: travelers who meet at places (see app/social). Kept in the same file, separate from partners.
 CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -138,6 +154,17 @@ CREATE TABLE IF NOT EXISTS messages (
     created_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_messages_conn ON messages (connection_id, id);
+-- Web Push subscriptions, tied to a Wayfinder People account -- the one durable identity in this app, and
+-- the natural place for "notify me even when the app is closed" to live.
+CREATE TABLE IF NOT EXISTS push_subscriptions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    endpoint TEXT NOT NULL UNIQUE,
+    p256dh TEXT NOT NULL,
+    auth TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_push_user ON push_subscriptions (user_id);
 CREATE TABLE IF NOT EXISTS blocks (
     blocker_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     blocked_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -154,13 +181,42 @@ CREATE TABLE IF NOT EXISTS reports (
     status TEXT NOT NULL DEFAULT 'open',
     created_at TEXT NOT NULL
 );
+
+-- "Meet safely": a link a person can share outside the app (a friend, a family member) with what they told us
+-- about a planned meetup. Deliberately coarse: a place description they typed, not coordinates.
+CREATE TABLE IF NOT EXISTS safety_checkins (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    token TEXT NOT NULL UNIQUE,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    connection_id INTEGER REFERENCES connections(id) ON DELETE SET NULL,
+    other_name TEXT NOT NULL,
+    other_photo_url TEXT,
+    place_text TEXT NOT NULL,
+    meet_at TEXT NOT NULL,
+    note TEXT NOT NULL DEFAULT '',
+    revoked INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL,
+    expires_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_checkin_token ON safety_checkins (token);
+
+-- A queryable mirror of the activity log (see app/partners/activity.py): the same fixed-vocabulary events,
+-- grouped by day for charts instead of only readable as markdown. Never a name, email or coordinate -- the
+-- same promise the markdown log already makes.
+CREATE TABLE IF NOT EXISTS analytics_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    event TEXT NOT NULL,
+    day TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_analytics_event_day ON analytics_events (event, day);
 """
 
 # Columns added after the first release. CREATE TABLE IF NOT EXISTS never alters an existing table, so these are
 # added to databases created earlier.
 _ADDED_COLUMNS = {
     "users": {"gender": "TEXT", "show_age": "INTEGER NOT NULL DEFAULT 0", "audience_genders": "TEXT NOT NULL DEFAULT '[]'",
-              "audience_ages": "TEXT NOT NULL DEFAULT '[]'"},
+              "audience_ages": "TEXT NOT NULL DEFAULT '[]'", "under_review": "INTEGER NOT NULL DEFAULT 0"},
     "intents": {"want_genders": "TEXT NOT NULL DEFAULT '[]'", "want_ages": "TEXT NOT NULL DEFAULT '[]'"},
 }
 

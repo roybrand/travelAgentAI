@@ -43,8 +43,9 @@ def register(email: str, password: str, display_name: str, birth_year: int, agre
         raise UserError("Enter a valid email address.")
     if not 2 <= len(name) <= 40:
         raise UserError("Your display name must be 2 to 40 characters.")
-    if len(password) < security.MIN_PASSWORD:
-        raise UserError(f"Use a password of at least {security.MIN_PASSWORD} characters.")
+    weak = security.is_weak_password(password)
+    if weak:
+        raise UserError(weak)
     try:
         with db.tx() as c:
             cur = c.execute(
@@ -109,7 +110,7 @@ def row_to_me(row) -> dict:
         "photo_url": photo_url(row), "photo_status": row["photo_status"], "visible": bool(row["visible"]),
         "gender": row["gender"], "show_age": bool(row["show_age"]), "age_band": band_of(row),
         "audience_genders": json.loads(row["audience_genders"]), "audience_ages": json.loads(row["audience_ages"]),
-        "status": row["status"], "created_at": row["created_at"],
+        "status": row["status"], "under_review": bool(row["under_review"]), "created_at": row["created_at"],
     }
 
 
@@ -127,6 +128,12 @@ def card(row, shared: list[str] | None = None) -> dict:
         "age_band": band_of(row) if row["show_age"] else None,
         "photo_url": photo_url(row) if approved else None, "shared": shared or [], "demo": bool(row["demo"]),
     }
+
+
+def findable(row) -> bool:
+    """False while a profile is auto-hidden pending moderator review (see connect.report), even if the
+    person's own 'visible' setting is on. They can still sign in and use their account meanwhile."""
+    return bool(row["visible"]) and not bool(row["under_review"])
 
 
 def allowed(viewer, candidate) -> bool:
@@ -196,6 +203,20 @@ def update(user_id: int, display_name=None, bio=None, interests=None, languages=
     if sets:
         with db.tx() as c:
             c.execute(f"UPDATE users SET {', '.join(sets)} WHERE id = ?", (*vals, user_id))
+
+
+def change_password(user_id: int, current_password: str, new_password: str) -> None:
+    """Change my password. Ends every session (including this one) so a stolen token stops working too;
+    the caller signs in again with the new password."""
+    with db.tx() as c:
+        row = c.execute("SELECT password_hash FROM users WHERE id = ?", (user_id,)).fetchone()
+        if not row or not security.verify_password(current_password, row["password_hash"]):
+            raise UserError("Your current password is wrong.", 401)
+        weak = security.is_weak_password(new_password)
+        if weak:
+            raise UserError(weak)
+        c.execute("UPDATE users SET password_hash = ? WHERE id = ?", (security.hash_password(new_password), user_id))
+        c.execute("DELETE FROM user_sessions WHERE user_id = ?", (user_id,))
 
 
 def delete_account(user_id: int, password: str) -> None:

@@ -231,6 +231,10 @@ Copy [backend/.env.example](../backend/.env.example) to `backend/.env` and fill 
 | `AMADEUS_BASE_URL` | Amadeus environment | test (free) |
 | `TICKETMASTER_API_KEY` | Live events and parties (free key) | off |
 | `TRAVELPAYOUTS_TOKEN` | Recent real flight fares (free affiliate signup) | off |
+| `STRIPE_SECRET_KEY` | Enables real payment for Featured deal placements (free test-mode account) | off |
+| `STRIPE_WEBHOOK_SECRET` | Required alongside it, to trust Stripe's "payment completed" webhook | off |
+| `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` | Enables real push notifications for messages and connection requests, even while closed. Generate a free pair: `python scripts/generate_vapid_keys.py` | off |
+| `VAPID_SUBJECT` | Required alongside them: a contact address (`mailto:...`) push services may use if something is wrong | off |
 | `ADMIN_TOKEN` | Unlocks the moderation page `/admin` | moderation off |
 | `WAYFINDER_DB` | Where partner accounts and deals are stored | `backend/data/partners.db` |
 | `WAYFINDER_OFFLINE` | `1` disables every network call and uses built-in demo data | `0` |

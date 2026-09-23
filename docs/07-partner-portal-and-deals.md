@@ -75,8 +75,25 @@ The discount travelers see is **computed by us** from the two prices. The busine
 | No fake urgency | "Ends today" is shown as information and nudges rank only slightly (DYN-12). Stock is shown only as "per the business" |
 | Real prices only | The usual price is the business's claim, flagged to reviewers when large (60%+) or missing |
 | A bad partner can be stopped | Suspending a partner hides their deals and blocks sign-in at once |
+| Money can buy visibility, never rank | A Featured placement (below) is a real payment, but it only ever appears in its own separate, labelled strip. It is never an input to `rank_deals` |
 
 Ranking score: `1.0 + 0.4 per matching tag (max 2) + real discount (max 0.5) - distance penalty`.
+
+### Featured deal placements
+
+The one thing money buys: a partner pays **$19 for 7 days** (Stripe Checkout, test mode until a live key is
+configured) to pin one of their own **approved** deals in a "★ Featured this week" strip for a destination.
+
+- The strip is always separate from, and shown alongside, the ranked deals list below it -- paying for it never
+  reorders or filters that list, and both the strip and the badge say so.
+- Payment is confirmed by Stripe's webhook, not by the checkout redirect (a person can close the tab; the webhook
+  is the source of truth). The webhook's signature is verified (`app/partners/stripe_gateway.py`, manual
+  HMAC-SHA256, no SDK) before anything in its body is trusted, and marking a session paid is idempotent, since
+  Stripe retries webhook delivery.
+- Off by default: `GET /api/config` reports `payments: false` until `STRIPE_SECRET_KEY` and
+  `STRIPE_WEBHOOK_SECRET` are both set in `backend/.env`. The dashboard's "Feature" button is visible but disabled,
+  with an explanation, until then -- the same pattern as every other optional paid integration in this app.
+- We never see or store a card number: Stripe hosts the payment page.
 
 ## 5. Accounts and security
 
@@ -87,8 +104,9 @@ Ranking score: `1.0 + 0.4 per matching tag (max 2) + real discount (max 0.5) - d
 - Moderation is switched off until `ADMIN_TOKEN` is set in `backend/.env`. It is compared in constant time.
 - Data lives in a SQLite file, `backend/data/partners.db` (git-ignored). The schema is plain SQL, so moving to Postgres later is a driver change.
 
-**Not built yet:** email verification (there is no mail service), password reset, payment or invoicing, and
+**Not built yet:** email verification (there is no mail service), password reset, invoicing, refunds, and
 multi-user teams per business. Until email verification exists, the moderator is the check that a business is real.
+Featured placements (below) are the one payment flow that is built; regular deal listing is still free.
 
 ## 6. API
 
@@ -104,6 +122,9 @@ multi-user teams per business. Until email verification exists, the moderator is
 | `POST /api/partners/deals/{id}/pause` | Business | Pause or resume |
 | `GET /api/partners/geocode?q=&dest=` | Business | Street address to coordinates (OpenStreetMap) |
 | `POST /api/partners/api-key` | Business | New feed key |
+| `GET /api/deals/featured?dest=OPO` | Public | Currently-paid Featured deals for a city |
+| `POST /api/partners/deals/{id}/feature` | Business | Start payment to feature one of my own approved deals (returns a Stripe Checkout URL) |
+| `POST /api/payments/stripe/webhook` | Stripe | Confirms a Featured-placement payment; signature-verified |
 | `POST /api/partner-feed` (header `X-API-Key`) | Business system | Bulk create or update, up to 100 per call |
 | `GET /api/admin/deals`, `POST .../approve`, `.../reject` | Moderator (`X-Admin-Token`) | Review queue |
 | `GET /api/admin/partners`, `POST .../status` | Moderator | See and suspend partners |
@@ -114,7 +135,8 @@ updates it instead of restarting review.
 ## 7. Where deals appear
 
 - **Trip page:** "Partner deals for your trip", limited to deals that overlap the trip dates, best match first.
-- **Deals page (`/deals`):** any city, filters by category, an optional "only for my trip dates" switch, and a map.
+- **Deals page (`/deals`):** a "★ Featured this week" strip first (if any), then any city, filters by category, an
+  optional "only for my trip dates" switch, and a map. The Featured strip and the ranked list below it never mix.
 - **Nearby now:** deals within walking range, only when the traveler has switched Nearby on (rules DYN-11 and DYN-12).
   This works even offline, because deals come from our own database.
 

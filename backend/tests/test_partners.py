@@ -81,6 +81,32 @@ def test_register_validation_and_duplicate(client):
     assert client.post("/api/partners/register", json={**base, "email": "new2@example.com", "city": "Atlantis"}).status_code == 400
 
 
+def test_a_commonly_leaked_password_is_refused_even_though_it_is_long_enough(client):
+    r = client.post("/api/partners/register", json={"name": "X Bar", "email": "weakpw@example.com", "password": "administrator", "business_type": "bar", "city": "OPO"})
+    assert r.status_code == 400 and "common" in r.json()["detail"].lower()
+
+
+def test_login_is_rate_limited_per_account_across_different_addresses(client):
+    _, email = signup(client)
+    for _ in range(8):
+        client.post("/api/partners/login", json={"email": email, "password": "wrong-password-1"})
+    r = client.post("/api/partners/login", json={"email": email, "password": "correct-horse-battery"})
+    assert r.status_code == 429
+
+
+def test_changing_my_password_signs_out_every_session_and_the_new_password_works(client):
+    h, email = signup(client)
+    other_session = client.post("/api/partners/login", json={"email": email, "password": "correct-horse-battery"}).json()["token"]
+    assert client.post("/api/partners/change-password", json={"current_password": "wrong", "new_password": "a-new-password-1"}, headers=h).status_code == 401
+    assert client.post("/api/partners/change-password", json={"current_password": "correct-horse-battery", "new_password": "short"}, headers=h).status_code == 400
+    r = client.post("/api/partners/change-password", json={"current_password": "correct-horse-battery", "new_password": "a-new-password-1"}, headers=h)
+    assert r.status_code == 200
+    assert client.get("/api/partners/me", headers=h).status_code == 401
+    assert client.get("/api/partners/me", headers={"Authorization": f"Bearer {other_session}"}).status_code == 401
+    assert client.post("/api/partners/login", json={"email": email, "password": "correct-horse-battery"}).status_code == 401
+    assert client.post("/api/partners/login", json={"email": email, "password": "a-new-password-1"}).status_code == 200
+
+
 def test_portal_endpoints_need_a_session(client):
     assert client.get("/api/partners/me").status_code == 401
     assert client.post("/api/partners/deals", json=deal_body()).status_code == 401

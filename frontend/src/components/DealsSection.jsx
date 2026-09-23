@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { fetchEvents } from "../api";
+import { fetchEvents, fetchFeaturedDeals } from "../api";
 import DealCard, { EventCard } from "./DealCard.jsx";
 
 export const DISCLOSURE =
@@ -7,6 +7,28 @@ export const DISCLOSURE =
 
 export function DealsGrid({ deals }) {
   return <div className="deal-grid">{deals.map((d) => <DealCard key={d.id} deal={d} />)}</div>;
+}
+
+/** A business paid to appear here for a destination. Always its own labelled strip, above the payment-blind
+ * ranked list -- never merged into it, and paying for this never moves anything in that list. */
+export function FeaturedStrip({ dest }) {
+  const [deals, setDeals] = useState([]);
+  useEffect(() => {
+    if (!dest) return undefined;
+    let live = true;
+    fetchFeaturedDeals(dest).then((r) => live && setDeals(r.deals)).catch(() => live && setDeals([]));
+    return () => {
+      live = false;
+    };
+  }, [dest]);
+  if (deals.length === 0) return null;
+  return (
+    <section className="featured-strip">
+      <h2 className="card-title">★ Featured this week</h2>
+      <div className="deal-grid">{deals.map((d) => <DealCard key={d.id} deal={d} />)}</div>
+      <p className="fine">These businesses paid for this placement. It is a separate strip and never changes how the deals below are ranked.</p>
+    </section>
+  );
 }
 
 /** Live events for a city and date range. Renders nothing unless the server has a Ticketmaster key. */

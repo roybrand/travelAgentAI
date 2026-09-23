@@ -150,7 +150,7 @@ def exists() -> bool:
 
 
 def _demo_rows(c, city: str | None = None):
-    rows = c.execute("SELECT * FROM users WHERE demo = 1 AND status = 'active' AND visible = 1").fetchall()
+    rows = c.execute("SELECT * FROM users WHERE demo = 1 AND status = 'active' AND visible = 1 AND under_review = 0").fetchall()
     return [r for r in rows if city is None or city_of(r) == city]
 
 

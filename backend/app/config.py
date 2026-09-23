@@ -10,6 +10,11 @@ Secrets live in backend/.env (never committed). Copy .env.example to .env and fi
     AMADEUS_BASE_URL=https://test.api.amadeus.com   # default; use the production URL once approved
     TICKETMASTER_API_KEY=...         # optional: live events and parties (free at developer.ticketmaster.com)
     TRAVELPAYOUTS_TOKEN=...          # optional: recent real flight fares (free affiliate signup at travelpayouts.com)
+    STRIPE_SECRET_KEY=...            # optional: real payment for Featured deal placements (free test-mode account at stripe.com)
+    STRIPE_WEBHOOK_SECRET=...        # required alongside it, to trust Stripe's "payment completed" webhook
+    VAPID_PUBLIC_KEY=...             # optional: real push notifications for messages and connection requests
+    VAPID_PRIVATE_KEY=...            # generate a free pair: python scripts/generate_vapid_keys.py
+    VAPID_SUBJECT=mailto:you@example.com   # required alongside the keys; a contact address for push services
     ADMIN_TOKEN=...                  # required to use the moderation page (/admin); pick a long random string
     WAYFINDER_DB=...                 # optional: path of the partner/deals SQLite file (default backend/data/partners.db)
 
@@ -72,6 +77,23 @@ def ticketmaster_key() -> str | None:
 
 def travelpayouts_token() -> str | None:
     return None if offline() else (os.environ.get("TRAVELPAYOUTS_TOKEN") or None)
+
+
+def stripe_secret_key() -> str | None:
+    return None if offline() else (os.environ.get("STRIPE_SECRET_KEY") or None)
+
+
+def stripe_webhook_secret() -> str | None:
+    return None if offline() else (os.environ.get("STRIPE_WEBHOOK_SECRET") or None)
+
+
+def vapid_keys() -> tuple[str, str, str] | None:
+    """(public, private, subject), or None until all three are set. Offline mode disables it like every
+    other network-touching feature, even though sending a push is not "spending credits"."""
+    if offline():
+        return None
+    pub, priv, sub = os.environ.get("VAPID_PUBLIC_KEY"), os.environ.get("VAPID_PRIVATE_KEY"), os.environ.get("VAPID_SUBJECT")
+    return (pub, priv, sub) if pub and priv and sub else None
 
 
 def admin_token() -> str | None:

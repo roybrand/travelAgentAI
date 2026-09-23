@@ -15,6 +15,7 @@ import Deals from "./pages/Deals.jsx";
 import Tonight from "./pages/Tonight.jsx";
 import People from "./pages/People.jsx";
 import Alerts from "./pages/Alerts.jsx";
+import SafetyCheckin from "./pages/SafetyCheckin.jsx";
 import { AlertBell, AlertToasts } from "./components/AlertBell.jsx";
 import Partners from "./pages/Partners.jsx";
 import Admin from "./pages/Admin.jsx";
@@ -86,6 +87,7 @@ function BottomNav() {
     ["/people", "People", "👥", false],
     ["/deals", "Deals", "🏷️", false],
     ["/nearby", "Nearby", "📍", false],
+    ["/partners", "Business", "🏢", false],
   ];
   return (
     <nav className="bottomnav" aria-label="Main">
@@ -145,6 +147,7 @@ function Footer() {
         <Link to="/nearby">Nearby</Link>
         <Link to="/partners">For businesses</Link>
         <Link to="/credits">Credits</Link>
+        <Link to="/admin">Admin</Link>
       </nav>
       <div>
         <b>Wayfinder AI</b> · LangGraph orchestration · MCP tool servers · FastAPI · React
@@ -186,6 +189,7 @@ export default function App() {
             <Route path="/tonight" element={<Tonight />} />
             <Route path="/people" element={<People />} />
             <Route path="/alerts" element={<Alerts />} />
+            <Route path="/safety/:token" element={<SafetyCheckin />} />
             <Route path="/partners" element={<Partners />} />
             <Route path="/admin" element={<Admin />} />
             <Route path="/credits" element={<Credits />} />

@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { fetchDeals } from "../api";
 import { useTrip } from "../state/TripContext.jsx";
 import DestSelect from "../components/DestSelect.jsx";
-import { DealsGrid, DISCLOSURE, EventsBlock } from "../components/DealsSection.jsx";
+import { DealsGrid, DISCLOSURE, EventsBlock, FeaturedStrip } from "../components/DealsSection.jsx";
 import MapView from "../components/MapView.jsx";
 import { CATEGORY_ICON } from "../components/DealCard.jsx";
 import BackLink from "../components/BackLink.jsx";
@@ -59,6 +59,8 @@ export default function Deals() {
           <DestSelect value={dest} onChange={(c) => { setDest(c); setForm((f) => ({ ...f, destination: c })); }} destinations={destinations} />
         </label>
       </div>
+
+      <FeaturedStrip dest={dest} />
 
       <div className="chips deal-filters">
         <button className="chip" aria-pressed={category === ""} onClick={() => setCategory("")}>All</button>

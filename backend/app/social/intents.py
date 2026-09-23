@@ -156,7 +156,7 @@ def find(user_id: int, intent) -> dict:
     with db.tx() as c:
         rows = c.execute(
             "SELECT i.*, u.id AS uid FROM intents i JOIN users u ON u.id = i.user_id WHERE i.status = 'open' AND i.day = ? AND i.user_id != ? "
-            "AND u.visible = 1 AND u.status = 'active' AND i.lat BETWEEN ? AND ?",
+            "AND u.visible = 1 AND u.under_review = 0 AND u.status = 'active' AND i.lat BETWEEN ? AND ?",
             (intent["day"], user_id, intent["lat"] - dlat - 0.02, intent["lat"] + dlat + 0.02)).fetchall()
     scored = []
     for r in rows:

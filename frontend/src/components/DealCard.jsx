@@ -13,6 +13,12 @@ export function PartnerBadge() {
   return <span className="badge partner" title="Set by the business and reviewed by us. Never ranked by payment.">Partner deal</span>;
 }
 
+/** Marks a deal shown in the Featured strip: the business paid for this placement. It never affects the
+ * payment-blind ranking used everywhere else -- Featured is always its own separate, labelled strip. */
+export function FeaturedBadge() {
+  return <span className="badge gold" title="This business paid to appear in the Featured strip. It never changes how deals are ranked.">★ Featured</span>;
+}
+
 function priceText(n, currency) {
   return new Intl.NumberFormat("en-GB", { style: "currency", currency, minimumFractionDigits: Number.isInteger(n) ? 0 : 2, maximumFractionDigits: 2 }).format(n);
 }
@@ -22,11 +28,13 @@ export default function DealCard({ deal, preview = false }) {
   const open = () => {
     if (!preview && deal.id) trackDealClick(deal.id);
   };
+  const aiPhoto = deal.photo_url?.startsWith("/api/deals/business-photo/");
   return (
     <article className="card deal">
       <Photo src={deal.photo_url} alt={deal.title} className="deal-photo">
         {!deal.photo_url && <span className="rec-icon">{CATEGORY_ICON[deal.category] || "🏷️"}</span>}
-        <span className="badges"><PartnerBadge /></span>
+        <span className="badges"><PartnerBadge />{deal.featured && <FeaturedBadge />}</span>
+        {aiPhoto && <i className="ai-mark" title="An AI photo of a generic, fictional venue for this category — not a photograph of this business">AI</i>}
         {deal.discount_pct >= 10 && <span className="badge deal deal-pct">−{deal.discount_pct}%</span>}
       </Photo>
       <div className="deal-body">

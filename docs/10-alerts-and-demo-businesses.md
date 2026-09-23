@@ -65,7 +65,8 @@ On the Radar page: deals on or off, people on or off, the smallest discount to a
 
 - **Where:** 8 each in Tel Aviv, Berlin, Barcelona, Paris and Ibiza; 3 each in 20 more cities (London, Lisbon, Rome, Amsterdam, Madrid, Athens, Istanbul, Dubai, New York, Miami, Mexico City, Rio, Buenos Aires, Tokyo, Bangkok, Singapore, Seoul, Los Angeles, Copenhagen, Vienna); and 3 each in 8 Australian cities (Sydney, Melbourne, Brisbane, Perth, Adelaide, Gold Coast, Cairns, Hobart).
 - **What:** restaurants, bars, clubs, tours, activities, spas, hotels and car rental, each with a standing deal that runs for weeks or months, so a trip a few months away still finds deals.
-- **Labelled:** every name starts with "Demo ·", emails end in `@wayfinder.invalid`, booking links point at example.com, and the deal pictures are drawn illustrations.
+- **Labelled:** every name starts with "Demo ·", emails end in `@wayfinder.invalid`, and booking links point at example.com.
+- **Pictures:** an AI photo of a generic, fictional venue for the category (restaurant, bar, party, tour, activity, spa, hotel, car rental), marked "AI" on the card -- `python scripts/generate_demo_business_photos.py`, four varied photos per category, reused across every deal in it. Falls back to a drawn illustration for any category with none generated.
 - **Dynamic:** every day (and when the server starts) expired deals are renewed and about 30 businesses post a **"Tonight only"** flash deal.
 - **Remove:** `python scripts/seed_demo.py --remove`. `--refresh` posts today's deals by hand.
 
@@ -73,7 +74,9 @@ Demo businesses live in the same database as real ones. **Do not seed them in a 
 
 ## 6. What is not built
 
-- Background push to a closed phone or browser (needs a push service).
 - Email or SMS alerts.
 - Alerts for events from Ticketmaster (the adapter exists, but alerts use partner deals only).
 - A per-alert "snooze" or per-business mute.
+
+Background push to a closed phone or browser is now built -- see
+[09 · People and safety §8](09-people-and-safety.md).

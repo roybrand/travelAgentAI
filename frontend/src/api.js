@@ -101,6 +101,7 @@ export async function request(path, { method = "GET", body, token, admin } = {})
 const qs = (o) => new URLSearchParams(Object.entries(o).filter(([, v]) => v !== undefined && v !== null && v !== "")).toString();
 
 export const fetchDeals = (params) => request(`/api/deals?${qs(params)}`);
+export const fetchFeaturedDeals = (dest) => request(`/api/deals/featured?${qs({ dest })}`);
 export const fetchDealOptions = () => request("/api/deals/options");
 export const fetchEvents = (params) => request(`/api/events?${qs(params)}`);
 export const trackDealClick = (id) => request(`/api/deals/${id}/click`, { method: "POST" }).catch(() => {});
@@ -116,9 +117,12 @@ export const partner = {
   end: (token, id) => request(`/api/partners/deals/${id}`, { method: "DELETE", token }),
   apiKey: (token) => request("/api/partners/api-key", { method: "POST", token }),
   geocode: (token, q, dest) => request(`/api/partners/geocode?${qs({ q, dest })}`, { token }),
+  feature: (token, id, success_url, cancel_url) => request(`/api/partners/deals/${id}/feature`, { method: "POST", token, body: { success_url, cancel_url } }),
+  changePassword: (token, current_password, new_password) => request("/api/partners/change-password", { method: "POST", token, body: { current_password, new_password } }),
 };
 
 export const admin = {
+  analytics: (token, days = 30) => request(`/api/admin/analytics/summary?days=${days}`, { admin: token }),
   pending: (token) => request("/api/admin/deals", { admin: token }),
   approve: (token, id) => request(`/api/admin/deals/${id}/approve`, { method: "POST", admin: token }),
   reject: (token, id, reason) => request(`/api/admin/deals/${id}/reject`, { method: "POST", admin: token, body: { reason } }),
@@ -156,7 +160,20 @@ export const people = {
   block: (token, user_id) => request("/api/people/block", { method: "POST", token, body: { user_id } }),
   unblock: (token, user_id) => request("/api/people/unblock", { method: "POST", token, body: { user_id } }),
   report: (token, body) => request("/api/people/report", { method: "POST", token, body }),
+  checkin: (token, body) => request("/api/people/checkins", { method: "POST", token, body }),
+  checkins: (token) => request("/api/people/checkins", { token }),
+  endCheckin: (token, id) => request(`/api/people/checkins/${id}`, { method: "DELETE", token }),
+  changePassword: (token, current_password, new_password) => request("/api/people/me/password", { method: "POST", token, body: { current_password, new_password } }),
 };
+
+export const push = {
+  publicKey: () => request("/api/push/public-key"),
+  subscribe: (token, sub) => request("/api/push/subscribe", { method: "POST", token, body: sub }),
+  unsubscribe: (token, endpoint) => request("/api/push/unsubscribe", { method: "POST", token, body: { endpoint } }),
+};
+
+/** A "meet safely" check-in link, readable by anyone who has it — no sign-in. */
+export const fetchCheckin = (token) => request(`/api/safety/${token}`);
 
 export const adminPeople = {
   photos: (token) => request("/api/admin/people/photos", { admin: token }),

@@ -518,6 +518,7 @@ li.done .tick::after { content: ""; width: 5px; height: 9px; border: solid #0329
 .deal-filters { margin-bottom: 20px; align-items: center; }
 .chip-check { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: 13.5px; margin-left: 6px; }
 .deals-events { margin-top: 30px; display: grid; gap: 14px; }
+.featured-strip { display: grid; gap: 12px; margin-bottom: 26px; padding-bottom: 22px; border-bottom: 1px solid var(--line); }
 .card.empty { display: grid; gap: 8px; justify-items: start; }
 .narrow { max-width: 520px; }
 
@@ -536,6 +537,17 @@ li.done .tick::after { content: ""; width: 5px; height: 9px; border: solid #0329
 .form-actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 12px; }
 .head-actions { display: flex; gap: 10px; }
 .stat-row { display: grid; grid-template-columns: repeat(5, 1fr); gap: 14px; margin-bottom: 18px; }
+.analytics-section { margin-bottom: 28px; padding-bottom: 22px; border-bottom: 1px solid var(--line); }
+.analytics-kpis { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+.analytics-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
+@media (max-width: 900px) { .analytics-grid { grid-template-columns: 1fr; } }
+.funnel-rows { display: grid; gap: 10px; margin-top: 4px; }
+.funnel-row { display: grid; grid-template-columns: 150px 1fr 28px; align-items: center; gap: 10px; }
+.funnel-label { color: var(--muted); font-size: 12.5px; text-align: right; }
+.funnel-bar-track { height: 20px; border-radius: 6px; background: rgba(255, 255, 255, 0.05); overflow: hidden; }
+.funnel-bar { display: block; height: 100%; min-width: 2px; border-radius: 6px; background: var(--teal); }
+.funnel-count { color: var(--text); font-size: 13px; font-weight: 600; }
+@media (max-width: 640px) { .funnel-row { grid-template-columns: 110px 1fr 24px; } .funnel-label { font-size: 11.5px; } }
 .stat { padding: 16px 18px; display: grid; gap: 2px; }
 .stat b { font-size: 28px; letter-spacing: -0.03em; }
 .stat span { color: var(--muted); font-size: 13px; }
@@ -633,6 +645,15 @@ li.done .tick::after { content: ""; width: 5px; height: 9px; border: solid #0329
 .chat-form { display: flex; gap: 8px; padding: 10px 16px; border-top: 1px solid var(--line); }
 .chat-form input { flex: 1; background: rgba(6, 12, 20, 0.7); border: 1px solid var(--line); border-radius: 10px; padding: 9px 12px; color: var(--text); }
 .profile-grid { display: grid; grid-template-columns: 1.3fr 1fr; gap: 20px; align-items: start; }
+.full-span { grid-column: 1 / -1; }
+.checkin-panel { padding: 10px 16px; border-top: 1px solid var(--line); display: grid; gap: 8px; }
+.checkin-active { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; justify-content: space-between; padding: 8px 10px; border-radius: 10px; background: rgba(45, 212, 191, 0.08); border: 1px solid rgba(45, 212, 191, 0.25); font-size: 13.5px; }
+.checkin-form { display: grid; gap: 8px; }
+.change-password { display: grid; gap: 10px; max-width: 360px; margin-top: 10px; }
+.checkin-form input { background: rgba(6, 12, 20, 0.7); border: 1px solid var(--line); border-radius: 10px; padding: 9px 12px; color: var(--text); }
+.checkin-view { display: grid; gap: 12px; }
+.checkin-facts { display: grid; gap: 10px; padding: 14px; border-radius: 12px; background: var(--surface-2); }
+.checkin-row { display: flex; gap: 10px; align-items: center; }
 .profile-side { display: grid; gap: 16px; }
 .photo-row { display: flex; gap: 16px; align-items: center; margin-bottom: 14px; }
 .danger-btn { color: var(--bad); border-color: rgba(248, 113, 113, 0.5); }
@@ -688,6 +709,8 @@ li.done .tick::after { content: ""; width: 5px; height: 9px; border: solid #0329
   .bottomnav a.active { color: #8ff3e4; background: rgba(45, 212, 191, 0.12); }
   .app { padding-bottom: 68px; }
   .toasts { bottom: 78px; }
+  .trip-body { padding-bottom: 24px; }
+  .footer { margin-top: 20px; padding-top: 20px; }
 }
 
 .backlink { display: inline-flex; align-items: center; gap: 6px; background: none; border: 1px solid var(--line); border-radius: 999px; padding: 6px 14px; margin: 0 0 14px; color: var(--muted); font-size: 13.5px; font-weight: 600; cursor: pointer; }
@@ -766,7 +789,7 @@ li.done .tick::after { content: ""; width: 5px; height: 9px; border: solid #0329
 .toast-text span { color: var(--muted); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .toast-x { position: absolute; top: 6px; right: 8px; background: none; border: 0; color: var(--muted); font-size: 20px; cursor: pointer; }
 @media (max-width: 760px) {
-  .alert-toasts { top: 62px; right: 10px; left: 10px; width: auto; }
+  .alert-toasts { top: 150px; right: 10px; left: 10px; width: auto; }
   .alert-card.deal:not(.compact) { grid-template-columns: 1fr; }
   .alert-grid { grid-template-columns: 1fr; }
   .alert-panel { position: fixed; left: 8px; right: 8px; top: 60px; width: auto; }

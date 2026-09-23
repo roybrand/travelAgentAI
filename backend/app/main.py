@@ -14,7 +14,8 @@ from .mcp_tools.client import MCPToolClient
 from .partners.routes import router as partner_router
 from .social.routes import router as people_router
 from .social import demo_people
-from .partners import demo_businesses
+from .partners import demo_businesses, stripe_gateway
+from .social import push
 from .alerts import router as alerts_router
 from .suppliers import ticketmaster, travelpayouts
 from .schemas import BuildRequest, NearbyRequest, ParseRequest, TripRequest
@@ -63,7 +64,9 @@ def _index_file() -> Path:
 
 @app.get("/", include_in_schema=False)
 async def index():
-    return FileResponse(_index_file())
+    # Never cached: the file's own name never changes across rebuilds (unlike the hashed JS/CSS it references),
+    # so a cached copy of this exact page can silently keep pointing a browser at an old build.
+    return FileResponse(_index_file(), headers={"Cache-Control": "no-cache"})
 
 
 for _route in SPA_ROUTES:
@@ -103,6 +106,8 @@ async def get_config():
         "amadeus": bool(config.amadeus_credentials()),
         "ticketmaster": ticketmaster.enabled(),
         "travelpayouts": travelpayouts.enabled(),
+        "payments": stripe_gateway.enabled(),
+        "push": push.enabled(),
         "admin": bool(config.admin_token()),
         "offline": config.offline(),
         "destinations": len(catalog.DESTINATIONS),

@@ -22,8 +22,9 @@ def register(name: str, email: str, password: str, business_type: str, city: str
         raise AccountError("Business name must be 2 to 80 characters.")
     if not EMAIL.match(email):
         raise AccountError("Enter a valid email address.")
-    if len(password) < security.MIN_PASSWORD:
-        raise AccountError(f"Use a password of at least {security.MIN_PASSWORD} characters.")
+    weak = security.is_weak_password(password)
+    if weak:
+        raise AccountError(weak)
     dest = catalog.resolve(city)
     if not dest:
         raise AccountError("Choose your city from the list.")
@@ -79,6 +80,20 @@ def partner_for_api_key(key: str) -> dict | None:
     with db.tx() as c:
         row = c.execute("SELECT * FROM partners WHERE api_key_hash = ?", (security.sha256(key),)).fetchone()
     return _public(row) if row and row["status"] == "active" else None
+
+
+def change_password(partner_id: int, current_password: str, new_password: str) -> None:
+    """Change my password. Ends every session (including this one) so a stolen token stops working too;
+    the caller signs in again with the new password."""
+    with db.tx() as c:
+        row = c.execute("SELECT password_hash FROM partners WHERE id = ?", (partner_id,)).fetchone()
+        if not row or not security.verify_password(current_password, row["password_hash"]):
+            raise AccountError("Your current password is wrong.", 401)
+        weak = security.is_weak_password(new_password)
+        if weak:
+            raise AccountError(weak)
+        c.execute("UPDATE partners SET password_hash = ? WHERE id = ?", (security.hash_password(new_password), partner_id))
+        c.execute("DELETE FROM sessions WHERE partner_id = ?", (partner_id,))
 
 
 def rotate_api_key(partner_id: int) -> str:

@@ -224,4 +224,40 @@ npm run dev          # http://localhost:5173
 If `frontend/dist` does not exist, FastAPI falls back to the simple single-file page in
 `backend/app/static/`, so the API is always demo-able.
 
+---
+
+## 8. Native apps (Android and iOS)
+
+The same React app is wrapped with [Capacitor](https://capacitorjs.com) into real native projects, so it can ship
+through Google Play and the App Store as well as the browser/PWA (F-153). `frontend/capacitor.config.json` points
+`webDir` at `dist`, so a native build is just the production web build copied into a thin native shell.
+
+```
+cd frontend
+npm run build
+npx cap sync          # copies dist/ into android/ and ios/, and updates native plugin config
+```
+
+**Android** builds locally with a portable JDK 17 and the Android command-line SDK tools (platform-tools,
+`platforms;android-34`, `build-tools;34.0.0`) — no Android Studio install required:
+
+```
+cd android
+$env:JAVA_HOME = "<path to a JDK 17>"
+$env:ANDROID_HOME = "<path to the Android SDK>"
+.\gradlew.bat assembleDebug        # -> android/app/build/outputs/apk/debug/app-debug.apk
+```
+
+`android/local.properties` (machine-specific `sdk.dir`) is git-ignored, same as `android/build/` and `.gradle/`;
+recreate it locally by pointing `sdk.dir` at your SDK.
+
+**iOS** needs Xcode, which only runs on macOS — the `ios/` project exists so it's ready to open with
+`npx cap open ios` on a Mac, but it cannot be built from this Windows/Linux repo.
+
+**A corporate network with TLS-inspecting proxies will break Gradle's own downloads** (the Gradle distribution
+itself, then every Maven dependency): Java validates certificates against its own trust store, not the OS one, so
+it will not trust a proxy's re-signed certificate even where the OS and browsers do. Fixing this means either
+building on a network without TLS interception, or trusting that proxy's root CA in the JDK's `cacerts` — a
+deliberate, security-relevant choice for whoever runs the build to make, not something to do silently.
+
 Map tiles and nothing else need the internet. Photos, charts and all data work offline.

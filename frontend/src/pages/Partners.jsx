@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { fetchDealOptions, partner as api } from "../api";
 import { useTrip } from "../state/TripContext.jsx";
 import { TAG_LABEL } from "../lib/constants";
@@ -8,6 +8,7 @@ import { PLACE_TYPE_LABEL } from "../lib/profile";
 import DealCard from "../components/DealCard.jsx";
 import DestSelect from "../components/DestSelect.jsx";
 import BackLink from "../components/BackLink.jsx";
+import ChangePasswordForm from "../components/ChangePassword.jsx";
 
 const TOKEN_KEY = "wf.partner.v1";
 const loadToken = () => {
@@ -83,7 +84,7 @@ function Landing({ onAuth, options }) {
             <li><b>We review it.</b> Usually the same day. Approved deals go live and are ranked by how well they fit each traveler.</li>
             <li><b>See the results.</b> Views and clicks for every deal, and a feed API if you have many.</li>
           </ol>
-          <p className="fine">Deals are labelled “Partner deal” everywhere. We never rank a deal higher because of who you are or what you pay.</p>
+          <p className="fine">Deals are labelled "Partner deal" everywhere. We never rank a deal higher because of who you are or what you pay. Want extra visibility? Pin an approved deal in the Featured strip for a small weekly fee, a separate, labelled spot that never changes the ranking above it.</p>
         </div>
         <form className="card pad auth" onSubmit={submit}>
           <div className="tabs-inline">
@@ -317,6 +318,38 @@ function ApiKeyPanel({ token, has }) {
   );
 }
 
+function FeatureCell({ token, deal, endsAt, options, onDone }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  if (deal.status !== "approved") return null;
+  if (endsAt) {
+    return <small className="fine">★ Featured until {longDate(endsAt.slice(0, 10))}</small>;
+  }
+  const price = options ? new Intl.NumberFormat("en-US", { style: "currency", currency: options.featured_currency.toUpperCase() }).format(options.featured_price_cents / 100) : "";
+  const start = async () => {
+    setBusy(true);
+    setError("");
+    try {
+      const origin = window.location.origin;
+      const r = await api.feature(token, deal.id, `${origin}/partners?featured=success`, `${origin}/partners?featured=cancel`);
+      window.location.href = r.checkout_url;
+    } catch (e) {
+      setError(e.message);
+      setBusy(false);
+    }
+  };
+  return (
+    <span>
+      <button className="linkbtn" disabled={busy || !options?.payments_enabled}
+        title={options?.payments_enabled ? `Pin this deal in the Featured strip for ${options.featured_days} days. Never affects ranking.` : "Payments are not turned on yet"}
+        onClick={start}>
+        {busy ? "Starting…" : `★ Feature — ${price}/${options?.featured_days || 7}d`}
+      </button>
+      {error && <small className="reject">{error}</small>}
+    </span>
+  );
+}
+
 function Dashboard({ token, onSignOut }) {
   const [me, setMe] = useState(null);
   const [options, setOptions] = useState(null);
@@ -324,12 +357,20 @@ function Dashboard({ token, onSignOut }) {
   const [adding, setAdding] = useState(false);
   const [note, setNote] = useState("");
   const [error, setError] = useState("");
+  const [params, setParams] = useSearchParams();
 
   const load = useCallback(() => {
     api.me(token).then(setMe).catch((e) => (e.status === 401 ? onSignOut() : setError(e.message)));
   }, [token, onSignOut]);
   useEffect(load, [load]);
   useEffect(() => void fetchDealOptions().then(setOptions).catch(() => {}), []);
+
+  useEffect(() => {
+    const featuredResult = params.get("featured");
+    if (!featuredResult) return;
+    setNote(featuredResult === "success" ? "Payment received. Your deal is featured as soon as Stripe confirms it (usually within seconds)." : "Featuring cancelled. No payment was taken.");
+    setParams((p) => { p.delete("featured"); return p; }, { replace: true });
+  }, [params, setParams]);
 
   if (!me) return <div className="wrap page"><p className="muted">{error || "Loading…"}</p></div>;
   const { totals } = me;
@@ -386,7 +427,7 @@ function Dashboard({ token, onSignOut }) {
         {me.deals.length > 0 && (
           <div className="table-wrap">
             <table className="table">
-              <thead><tr><th>Deal</th><th>Status</th><th>Valid until</th><th>Shown</th><th>Clicks</th><th /></tr></thead>
+              <thead><tr><th>Deal</th><th>Status</th><th>Valid until</th><th>Shown</th><th>Clicks</th><th>Featured</th><th /></tr></thead>
               <tbody>
                 {me.deals.map((d) => {
                   const [text, tone] = statusOf(d);
@@ -401,6 +442,7 @@ function Dashboard({ token, onSignOut }) {
                       <td>{longDate(d.valid_to)}</td>
                       <td>{d.impressions}</td>
                       <td>{d.clicks}</td>
+                      <td><FeatureCell token={token} deal={d} endsAt={me.featured?.[d.id]} options={options} onDone={load} /></td>
                       <td className="row-actions">
                         {d.status !== "ended" && <button className="linkbtn" onClick={() => { setEditing(d); setAdding(false); setNote(""); window.scrollTo({ top: 0, behavior: "smooth" }); }}>Edit</button>}
                         {d.status === "approved" && <button className="linkbtn" onClick={() => act(() => api.pause(token, d.id, !d.paused))}>{d.paused ? "Resume" : "Pause"}</button>}
@@ -416,6 +458,10 @@ function Dashboard({ token, onSignOut }) {
       </section>
 
       <ApiKeyPanel token={token} has={me.partner.has_api_key} />
+      <section className="card pad">
+        <h2 className="card-title">Account</h2>
+        <ChangePasswordForm onChange={(cur, next) => api.changePassword(token, cur, next)} onDone={onSignOut} />
+      </section>
       <p className="fine">Questions about a review decision? Reply to the email you signed up with. See <Link to="/deals">how deals look to travelers</Link>.</p>
     </div>
   );

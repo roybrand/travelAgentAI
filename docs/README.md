@@ -16,6 +16,7 @@ FastAPI, LangGraph and MCP.
 | [09 · People and safety](09-people-and-safety.md) | How travelers register to places, find people for an activity, and chat, and every safety rule built into it |
 | [10 · Alerts and demo businesses](10-alerts-and-demo-businesses.md) | How the radar finds good deals and matching people for you, how alerts reach you (bell, pop-ups, RSS, notifications), and the 124 labelled demo businesses |
 | [03 · Technology and models](03-technology-and-models.md) | What does each technology do, and how do the data, scoring, pros/cons and guide models work? Includes a worked scoring example |
+| [Production checklist](PRODUCTION_CHECKLIST.md) | Exactly what to do, in order, to take this from a working prototype to a live product: secrets, hosting, backups, legal, payments, monitoring |
 
 ## The system in one picture
 
@@ -49,7 +50,10 @@ Orange = simulated or curated data source. Everything else is working code.
 - **Simulated:** only the offline demo fallback, used when the live sources are unreachable.
 - **Curated:** hand-written highlights and typical costs for Naples, Lisbon, Tokyo and Dubai.
 - **Partner side:** businesses sign up, post deals, and a moderator approves them; deals show on the trip page, the deals page and Nearby, always labelled and never ranked by payment. See [07](07-partner-portal-and-deals.md).
-- **Not yet built:** email verification, payments, traveler accounts, rental car search, background push to a closed phone, a native mobile app. See the [roadmap](02-architecture.md#9-roadmap).
+- **Wayfinder People:** traveler accounts, chat, "meet safely" check-ins, auto-hide on reports, and real push notifications even while closed. See [09](09-people-and-safety.md).
+- **Real payment:** Featured deal placements via Stripe Checkout — the one thing money buys, kept out of ranking. See [07](07-partner-portal-and-deals.md#featured-deal-placements).
+- **Self-hosted analytics** at `/admin`: signups, connections, messages and two funnels, no vendor.
+- **Not yet built:** email verification, password reset, rental car search, a native mobile app (Capacitor projects exist but are unshipped). See the [production checklist](PRODUCTION_CHECKLIST.md) and the [roadmap](02-architecture.md#9-roadmap).
 
 ## Run it
 

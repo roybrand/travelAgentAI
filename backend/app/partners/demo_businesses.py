@@ -1,10 +1,13 @@
 """DEMO businesses: 124 made-up partners with live deals across the world, so deals, alerts and the RSS feed can be shown
 before real businesses join.
 
-Everything is labelled: partner names start with "Demo · ", emails end in @wayfinder.invalid, the deal pictures are
-drawn illustrations (see /api/deals/art), and "Get this deal" opens a simulated business page of our own
-(/api/deals/preview) rather than a real website, clearly marked as a demo. Deals go through the same tables and
-ranking as real ones, and are approved on creation so they show at once.
+Everything is labelled: partner names start with "Demo · ", emails end in @wayfinder.invalid, and "Get this deal"
+opens a simulated business page of our own (/api/deals/preview) rather than a real website, clearly marked as a
+demo. Deals go through the same tables and ranking as real ones, and are approved on creation so they show at once.
+
+Deal pictures: an AI photo of a generic, fictional venue for the category when one has been generated (see
+scripts/generate_demo_business_photos.py, marked "AI" in the app), otherwise a drawn illustration
+(see /api/deals/art). Neither is a photograph of any real business.
 
 STATIC: 124 businesses (8 each in Tel Aviv, Berlin, Barcelona, Paris and Ibiza, 3 each in 20 more cities, and 3 each in
 8 Australian cities), each with a standing deal that runs for weeks or months, so trips a few months away still find deals. DYNAMIC: each day expired deals are renewed and about 30 businesses post a "Tonight only" flash deal.
@@ -14,11 +17,14 @@ import random
 import time
 from datetime import date, datetime, timedelta, timezone
 from html import escape
+from pathlib import Path
 
+from app import config
 from app.live import catalog
 from app.partners import db, deals, security
 
 SEED = 4242
+PHOTO_VARIANTS = 4  # AI photos per category, see scripts/generate_demo_business_photos.py
 EMAIL_PREFIX = "demo-biz-"
 EMAIL_DOMAIN = "wayfinder.invalid"
 MAIN = ["TLV", "BER", "BCN", "PAR", "IBZ"]
@@ -108,6 +114,22 @@ def _art(kind: str, seed: int) -> str:
     return f"/api/deals/art/{kind}/{seed}"
 
 
+def business_photo_dir() -> Path:
+    d = config.db_path().parent / "demo_business_photos"
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def _photo_for(kind: str, seed: int) -> str:
+    """An AI photo of a generic, fictional venue for this category, if one has been generated (see
+    scripts/generate_demo_business_photos.py); otherwise the drawn illustration. Deterministic per seed, so a
+    given deal keeps the same picture across refreshes."""
+    variant = (seed % PHOTO_VARIANTS) + 1
+    if any((business_photo_dir() / f"{kind}_{variant}.{ext}").exists() for ext in ("webp", "png")):
+        return f"/api/deals/business-photo/{kind}/{variant}"
+    return _art(kind, seed)
+
+
 def _insert_deal(partner_id: int, d: deals.DealIn, photo: str) -> int:
     """Create through the normal path, approve it, and attach the drawn picture and a simulated business page
     (partners normally supply an https photo and their own booking link; a demo business has neither)."""
@@ -138,7 +160,7 @@ def seed(count: int = 124) -> dict:
                             (email, name, kind, city, shared_hash, now)).lastrowid
         lat, lng = _center_point(rng, city)
         d = _deal_in(rng, kind, city, lat, lng, f"{city.lower()}-{i + 1}")
-        _insert_deal(pid, d, _art(kind, i + 1))
+        _insert_deal(pid, d, _photo_for(kind, i + 1))
         made[city] = made.get(city, 0) + 1
     refresh(force=True)
     return made
@@ -169,10 +191,10 @@ def refresh(force: bool = False, today: date | None = None) -> int:
         prng = random.Random(f"{SEED}-{p['id']}-{today.isoformat()}")
         lat, lng = _center_point(prng, city)
         if p["id"] not in live:
-            _insert_deal(p["id"], _deal_in(prng, kind, city, lat, lng, f"{city.lower()}-{p['id']}-r", today=today), _art(kind, p["id"] + 500))
+            _insert_deal(p["id"], _deal_in(prng, kind, city, lat, lng, f"{city.lower()}-{p['id']}-r", today=today), _photo_for(kind, p["id"] + 500))
             made += 1
         if p["id"] in flash_ids and p["id"] not in flashed:
-            _insert_deal(p["id"], _deal_in(prng, kind, city, lat, lng, f"{city.lower()}-{p['id']}-f", flash=True, today=today), _art(kind, p["id"] + 900))
+            _insert_deal(p["id"], _deal_in(prng, kind, city, lat, lng, f"{city.lower()}-{p['id']}-f", flash=True, today=today), _photo_for(kind, p["id"] + 900))
             made += 1
     return made
 

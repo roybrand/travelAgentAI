@@ -15,6 +15,26 @@ from fastapi import HTTPException
 SESSION_SECONDS = 7 * 24 * 3600
 MIN_PASSWORD = 10
 
+# The most commonly leaked passwords (from public breach-corpus frequency lists), checked at registration and
+# when changing a password. A short, offline, no-network denylist -- not a policy substitute for length.
+COMMON_PASSWORDS = frozenset({
+    "123456789", "1234567890", "password", "password1", "password123", "qwertyuiop", "1q2w3e4r5t",
+    "1qaz2wsx3edc", "letmein123", "welcome123", "iloveyou1", "trustno1a", "dragon1234", "monkey1234",
+    "football1", "baseball1", "superman1", "princess1", "sunshine1", "master1234", "shadow1234",
+    "michael123", "jennifer1", "computer1", "qwerty123", "abc123456", "1234567890a", "changeme1",
+    "administrator", "letmeinnow", "passw0rd1", "p@ssw0rd1", "temppassword", "temporary1",
+    "newpassword", "testpassword", "testpassword1", "wayfinder123", "wayfinder1234",
+})
+
+
+def is_weak_password(password: str) -> str | None:
+    """None if the password is acceptable, else a message explaining why not."""
+    if len(password) < MIN_PASSWORD:
+        return f"Use a password of at least {MIN_PASSWORD} characters."
+    if password.lower() in COMMON_PASSWORDS:
+        return "That password is too common. Please choose a less guessable one."
+    return None
+
 
 def hash_password(password: str) -> str:
     salt = secrets.token_bytes(16)

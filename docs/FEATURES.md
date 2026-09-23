@@ -122,9 +122,14 @@ Full description: [07 · Partner portal, deals and suppliers](07-partner-portal-
 | F-083 | Partner deals on the trip page, limited to the trip dates | Built | LangGraph node | `app/nodes.py`, `pages/Trip.jsx` |
 | F-084 | "Partner deal" badge and disclosure on every partner deal, everywhere | Built | React | `components/DealCard.jsx` |
 | F-085 | **Payment-blind ranking**: match, real discount and distance only; a test proves paid status changes nothing | Built | `rank_deals` | `app/partners/deals.py` |
+| F-156 | **Featured deal placements**: a partner pays to pin one of their own approved deals in a labelled "Featured this week" strip for a destination, for 7 days. The only thing money buys -- a real Stripe Checkout payment, but the placement is a separate strip, never merged into or reordering `rank_deals`' payment-blind results, and this is stated on the strip itself | Optional | Stripe Checkout | `app/partners/featured.py`, `GET /api/deals/featured` |
+| F-157 | **Stripe Checkout + webhook**, no SDK: a hosted payment page (we never see a card number), confirmed by a signature-verified webhook (manual HMAC-SHA256 per Stripe's documented scheme) before anything is trusted | Optional | Stripe (free test-mode account) | `app/partners/stripe_gateway.py`, `POST /api/payments/stripe/webhook` |
+| F-158 | Partner dashboard shows a "Feature — $19/7 days" action per approved deal, or "Featured until <date>" once paid; disabled with an explanation when payments are not configured | Built | React | `pages/Partners.jsx` |
+| F-159 | "★ Featured" badge on a deal card in the Featured strip, with a tooltip explaining it never affects ranking | Built | React | `components/DealCard.jsx` |
 | F-086 | Partner deals pushed on Nearby now (rules DYN-11, DYN-12), including in offline mode | Built | Own database | `app/live/nearby.py` |
 | F-087 | Device notifications limited to 3 a day, optional quiet hours (10 pm to 8 am), shown through the service worker | Built | Service worker, Notifications API | `state/NearbyContext.jsx`, `public/sw.js` |
 | F-088 | Installable app: manifest, icons and service worker | Built | PWA (needs HTTPS or localhost) | `public/manifest.webmanifest` |
+| F-153 | **Native app projects** (Android and iOS) wrapping the same React app via Capacitor, so it can also ship through Google Play and the App Store instead of only the browser/PWA. The Android project builds locally with a portable JDK 17 and Android SDK (no Android Studio required); the iOS project needs Xcode on a Mac, which this repo cannot provide | Built | Capacitor | `capacitor.config.json`, `android/`, `ios/` |
 | F-089 | **Live events and parties** on the deals page, trip page and Nearby (rule DYN-13) | Optional | Ticketmaster Discovery API (free key) | `app/suppliers/ticketmaster.py` |
 | F-090 | **Recent real flight fares**, labelled "Recent fares", ahead of estimates | Optional | Travelpayouts data API (free token) | `app/suppliers/travelpayouts.py` |
 | F-091 | Moderator can suspend a partner, hiding their deals and blocking sign-in | Built | SQLite | `POST /api/admin/partners/{id}/status` |
@@ -154,7 +159,8 @@ Full description: [07 · Partner portal, deals and suppliers](07-partner-portal-
 | F-141 | **Device notifications** for alerts, opt-in, shared 3-a-day cap and quiet hours (works while the app is open) | Built | Notifications API, service worker | `lib/notify.js` |
 | F-142 | **124 demo businesses** (8 each in Tel Aviv, Berlin, Barcelona, Paris, Ibiza; 3 each in 28 more cities including 8 in Australia), each with a standing deal, labelled "Demo" | Built | Python | `app/partners/demo_businesses.py`, `scripts/seed_demo.py` |
 | F-143 | **Dynamic deals**: expired demo deals are renewed daily and about 30 businesses post a "Tonight only" flash deal | Built | Python | `app/partners/demo_businesses.py` |
-| F-144 | Drawn illustrations for demo deals | Built | SVG | `GET /api/deals/art/{kind}/{seed}` |
+| F-144 | Drawn illustrations for demo deals, used until an AI photo exists for that category (see F-167) | Built | SVG | `GET /api/deals/art/{kind}/{seed}` |
+| F-167 | **AI photos for demo deals**: a realistic photo of a generic, fictional venue per category (restaurant, bar, party, tour, activity, spa, hotel, car rental; 4 varied photos each), generated once and reused across every demo deal of that category. Marked "AI" on the card, exactly like the AI demo-people portraits. Falls back to the drawn illustration for any category with none generated | Optional | OpenAI images | `scripts/generate_demo_business_photos.py`, `GET /api/deals/business-photo/{kind}/{variant}` |
 | F-152 | **Simulated business pages**: a demo deal's "Get this deal" opens a small page of our own for that fictional business (name, category art, the deal, a disabled "Book now"), clearly labelled as a demo, instead of a dead link. Real partners always link to their own https:// site | Built | Python | `app/partners/demo_businesses.py` (`preview_html`), `GET /api/deals/preview/{deal_id}` |
 | F-127 | **Back button on every page**: goes to the page you came from (and says so, for example "Back to Tonight" after "Find places near me"), or home when the page was opened directly. Useful on phones and installed apps that have no browser back button | Built | React Router | `components/BackLink.jsx` |
 | F-126 | **Navigation bars on every page**: top tabs (Home, Your trip, Stays, Explore, Tonight, People, Deals, Nearby) with a "For businesses" link; an in-trip bar (Overview, Stays, Explore, Tonight, Deals) that sticks under the header on trip pages; a bottom bar on phones (Home, Trip, Tonight, People, Deals, Nearby); tabs get their own row on tablets instead of being clipped; and site links in the footer | Built | React Router, CSS | `App.jsx`, `styles.css` |
@@ -200,6 +206,11 @@ Full description and the safety design: [09 · People and safety](09-people-and-
 | F-117 | **Delete my account and data**: removes profile, photo, plans, requests and messages | Built | SQLite | `app/social/users.py` |
 | F-118 | Community rules and safety tips shown at sign-up and in the profile | Built | React | `pages/People.jsx` |
 | F-120 | Home page lists load with retries, so an early page load while the server starts no longer leaves empty dropdowns | Built | React | `state/TripContext.jsx` |
+| F-154 | **Auto-hide pending review**: a profile is hidden from search, place lists and new contact at once when a report names "under 18" or "unsafe behaviour", or once two different people have an open report against it. Not a ban: the person keeps existing chats and can appeal; it lifts automatically once every open report is resolved. The admin reports list marks it "Auto-hidden" | Built | SQLite | `app/social/connect.py`, `app/social/users.py` |
+| F-155 | **"Meet safely" check-ins**: from an open chat, create a link with the planned place, time and who with, to send outside the app to someone who is not coming — a friend, a housemate. Viewable with no sign-in; never an exact location, email or phone number; expires after the meetup or when ended early | Built | SQLite | `app/social/safety.py`, `GET /api/safety/{token}`, `pages/SafetyCheckin.jsx` |
+| F-160 | **Real push notifications** for new messages, connection requests and accepted requests, delivered even while Wayfinder is fully closed (not just backgrounded) — the one place a subscription lives against a stable identity, a Wayfinder People account. No SDK: message encryption (RFC 8291) and VAPID (RFC 8292) built directly on `cryptography`'s primitives | Optional | Web Push, VAPID | `app/social/push.py`, `POST /api/push/subscribe` |
+| F-161 | Push fires from real events already in the code — a new request, an acceptance, a message — never from a separate poller; demo profiles are silently skipped since they have no device to notify | Built | Own code | `app/social/connect.py` |
+| F-162 | "Notify me on this device" toggle in the People profile; subscribes via the service worker's Push API and hands the subscription to the account, or unsubscribes and tells the server | Built | Push API, Service Worker | `pages/People.jsx`, `public/sw.js` |
 
 ## F. Quality and operations
 
@@ -208,6 +219,10 @@ Full description and the safety design: [09 · People and safety](09-people-and-
 | F-070 | Automated tests that never use the network or spend credits | Built | pytest, `WAYFINDER_OFFLINE=1` | `backend/tests/` |
 | F-071 | Secrets in a git-ignored `.env`; nothing is sent to the browser | Built | `app/config.py` | `backend/.env.example` |
 | F-072 | Photo pipeline for the four showcase cities | Built | Wikimedia Commons | `backend/scripts/fetch_photos.py` |
+| F-163 | **Self-hosted analytics**: every event already in the activity log (signups, deals, connections, messages, reports) is mirrored into a queryable table; an admin dashboard shows KPIs, daily charts and two funnels (People, Partners). No vendor, no cookies, no cross-site tracking, no new instrumentation call sites — it reuses the one existing `activity.record` choke point | Built | SQLite | `app/partners/activity.py`, `GET /api/admin/analytics/summary`, `pages/Admin.jsx` |
+| F-164 | **Common-password denylist** at registration and password change, alongside the minimum length | Built | Own list | `app/partners/security.py` |
+| F-165 | **Per-account login rate limiting**, alongside the existing per-address limit — throttles a distributed guessing attempt against one email from many addresses | Built | Own limiter | `app/social/routes.py`, `app/partners/routes.py` |
+| F-166 | **Change my password** (People and Partners): requires the current password, ends every session including the current one, so sign-in again is required with the new password | Built | scrypt | `POST /api/people/me/password`, `POST /api/partners/change-password`, `components/ChangePassword.jsx` |
 | F-073 | Diagrams and documentation for every layer | Built | Mermaid | `docs/` |
 
 ---
@@ -262,8 +277,13 @@ passwords. It is git-ignored. A test fails if an event is added to the code with
 | `intent.created` | A traveler posted a looking-for-people request |
 | `connection.requested` | A traveler asked to connect with someone |
 | `connection.accepted` | A connection request was accepted and a chat opened |
+| `message.sent` | A traveler sent a chat message (not counting an automated demo reply) |
 | `report.filed` | A traveler reported someone |
 | `report.dismissed` | A moderator dismissed a report |
+| `profile.auto_hidden` | A profile was automatically hidden from search and new contact after reports, pending review |
+| `checkin.created` | A traveler created a "meet safely" check-in link to share outside the app |
+| `deal.feature_started` | A partner began payment to feature a deal |
+| `deal.featured` | A featured-placement payment was confirmed by Stripe |
 
 ### The runtime log
 

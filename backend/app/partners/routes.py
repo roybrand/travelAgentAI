@@ -3,13 +3,13 @@ import asyncio
 from datetime import date
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response
-from fastapi.responses import HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse
 from pydantic import BaseModel, Field, ValidationError
 
 from app import config
 from app.live import catalog
 from app.live.http import cached, get_json
-from app.partners import accounts, activity, deals, demo_businesses, security
+from app.partners import accounts, activity, deals, demo_businesses, featured, security, stripe_gateway
 from app.suppliers import ticketmaster
 
 router = APIRouter()
@@ -56,6 +56,8 @@ def deal_options():
         "categories": [{"key": k, "label": v[0], "needs_location": k not in deals.NO_LOCATION} for k, v in deals.CATEGORIES.items()],
         "tags": sorted(deals.ALLOWED_TAGS), "currencies": ["GBP", "EUR", "USD"],
         "max_discount_pct": deals.MAX_DISCOUNT_PCT, "disclosure": DISCLOSURE,
+        "featured_price_cents": featured.PRICE_CENTS, "featured_currency": featured.CURRENCY, "featured_days": featured.DAYS,
+        "payments_enabled": stripe_gateway.enabled(),
     }
 
 
@@ -73,6 +75,17 @@ def list_deals(dest: str, start: date | None = None, end: date | None = None, in
     return {"destination": d["code"], "city": d["city"], "deals": ranked, "disclosure": DISCLOSURE}
 
 
+@router.get("/api/deals/featured")
+def list_featured(dest: str):
+    """Deals a business paid to feature this week for a destination. A separate, clearly labelled slot --
+    never mixed into or reordering the payment-blind list above."""
+    d = catalog.resolve(dest)
+    if not d:
+        raise HTTPException(status_code=404, detail="Unknown destination.")
+    return {"destination": d["code"], "city": d["city"], "deals": featured.active_for_city(d["code"]),
+            "disclosure": "A business paid to appear here. It never changes how the deals above are ranked."}
+
+
 @router.get("/api/deals/art/{kind}/{seed}")
 def deal_art(kind: str, seed: int):
     """The drawn picture used by DEMO deals: a colourful illustration for the category (not a photograph)."""
@@ -80,6 +93,19 @@ def deal_art(kind: str, seed: int):
         raise HTTPException(status_code=404, detail="Not found.")
     return Response(demo_businesses.art_svg(kind, seed), media_type="image/svg+xml",
                     headers={"Cache-Control": "public, max-age=86400", "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'"})
+
+
+@router.get("/api/deals/business-photo/{kind}/{variant}")
+def deal_business_photo(kind: str, variant: int):
+    """An AI-generated photo of a generic, fictional venue for a DEMO deal's category (see
+    scripts/generate_demo_business_photos.py). Not a photograph of any real business."""
+    if kind not in deals.CATEGORIES or not 1 <= variant <= demo_businesses.PHOTO_VARIANTS:
+        raise HTTPException(status_code=404, detail="Not found.")
+    for ext, media in (("webp", "image/webp"), ("png", "image/png")):
+        path = demo_businesses.business_photo_dir() / f"{kind}_{variant}.{ext}"
+        if path.exists():
+            return FileResponse(path, media_type=media, headers={"Cache-Control": "public, max-age=86400", "X-Content-Type-Options": "nosniff"})
+    raise HTTPException(status_code=404, detail="Not found.")
 
 
 @router.get("/api/deals/preview/{deal_id}", response_class=HTMLResponse)
@@ -149,8 +175,10 @@ def register(body: RegisterIn, request: Request):
 
 @router.post("/api/partners/login")
 def login(body: LoginIn, request: Request):
-    """Sign in a partner. Rate limited."""
+    """Sign in a partner. Rate limited per address and, separately, per account -- so a distributed
+    guessing attempt against one email from many addresses is throttled too."""
     security.limit(f"login:{_client_ip(request)}", 15, 600)
+    security.limit(f"login-acct:{body.email.strip().lower()}", 8, 900)
     try:
         partner = accounts.login(body.email, body.password)
     except accounts.AccountError as exc:
@@ -178,7 +206,23 @@ def me(partner: dict = Depends(current_partner)):
         "impressions": sum(d["impressions"] for d in mine),
         "clicks": sum(d["clicks"] for d in mine),
     }
-    return {"partner": partner, "totals": totals, "deals": mine}
+    return {"partner": partner, "totals": totals, "deals": mine, "featured": featured.mine(partner["id"])}
+
+
+class ChangePasswordIn(BaseModel):
+    current_password: str = Field(max_length=200)
+    new_password: str = Field(max_length=200)
+
+
+@router.post("/api/partners/change-password")
+def change_password(body: ChangePasswordIn, partner: dict = Depends(current_partner)):
+    """Change my password. Ends every session, including this one -- sign in again with the new password."""
+    security.limit(f"change-pw:{partner['id']}", 10, 3600)
+    try:
+        accounts.change_password(partner["id"], body.current_password, body.new_password)
+    except accounts.AccountError as exc:
+        _raise(exc)
+    return {"ok": True}
 
 
 @router.post("/api/partners/api-key")
@@ -226,6 +270,39 @@ def end_deal(deal_id: int, partner: dict = Depends(current_partner)):
         raise HTTPException(status_code=404, detail="Deal not found.")
     activity.record("deal.ended", deal=deal_id, partner=partner["id"])
     return {"ok": True}
+
+
+class FeatureIn(BaseModel):
+    success_url: str = Field(max_length=400)
+    cancel_url: str = Field(max_length=400)
+
+
+@router.post("/api/partners/deals/{deal_id}/feature")
+def feature_deal(deal_id: int, body: FeatureIn, partner: dict = Depends(current_partner)):
+    """Start payment to pin one of my own approved deals in the Featured strip for a week. Returns a Stripe
+    Checkout URL to redirect to; the placement only takes effect once the webhook confirms payment."""
+    security.limit(f"feature:{partner['id']}", 20, 3600)
+    try:
+        result = featured.start_checkout(partner["id"], deal_id, body.success_url, body.cancel_url)
+    except featured.FeaturedError as exc:
+        raise HTTPException(status_code=exc.status, detail=str(exc)) from exc
+    activity.record("deal.feature_started", deal=deal_id, partner=partner["id"])
+    return result
+
+
+@router.post("/api/payments/stripe/webhook")
+async def stripe_webhook(request: Request):
+    """Stripe calls this when a Featured-placement checkout completes. The signature is verified before
+    anything in the body is trusted (see stripe_gateway.verify_webhook)."""
+    payload = await request.body()
+    event = stripe_gateway.verify_webhook(payload, request.headers.get("stripe-signature", ""))
+    if not event:
+        raise HTTPException(status_code=400, detail="Invalid or unconfigured webhook signature.")
+    if event.get("type") == "checkout.session.completed":
+        session = event.get("data", {}).get("object", {})
+        if featured.mark_paid(session.get("id", "")):
+            activity.record("deal.featured", deal=session.get("metadata", {}).get("deal_id"))
+    return {"received": True}
 
 
 @router.get("/api/partners/geocode")
@@ -312,6 +389,41 @@ def admin_reject(deal_id: int, body: ReviewIn):
         raise HTTPException(status_code=404, detail="That deal is not waiting for review.")
     activity.record("deal.rejected", deal=deal_id)
     return {"ok": True}
+
+
+@router.get("/api/admin/analytics/summary", dependencies=[Depends(admin_required)])
+def admin_analytics(days: int = 30):
+    """Self-hosted analytics: signups, activation and engagement, built entirely from events already in the
+    activity log (see app/partners/activity.py). No vendor, no cookies, no cross-site tracking. There is no
+    visit-level tracking, so this is a funnel of real actions, not a strict per-visitor conversion rate."""
+    days = max(7, min(days, 90))
+    kpis = {
+        "people_registered": activity.total_since(["user.registered"], days),
+        "partners_registered": activity.total_since(["partner.registered"], days),
+        "deals_submitted": activity.total_since(["deal.submitted"], days),
+        "connections_requested": activity.total_since(["connection.requested"], days),
+        "messages_sent": activity.total_since(["message.sent"], days),
+        "reports_filed": activity.total_since(["report.filed"], days),
+    }
+    daily = {
+        "people_registered": activity.daily_series(["user.registered"], days),
+        "connections_requested": activity.daily_series(["connection.requested"], days),
+        "messages_sent": activity.daily_series(["message.sent"], days),
+    }
+    people_funnel = activity.funnel([
+        ("Registered", ["user.registered"]),
+        ("Posted a looking-for request", ["intent.created"]),
+        ("Sent a connection request", ["connection.requested"]),
+        ("Had a request accepted", ["connection.accepted"]),
+        ("Sent a message", ["message.sent"]),
+    ], days)
+    partner_funnel = activity.funnel([
+        ("Registered", ["partner.registered"]),
+        ("Submitted a deal", ["deal.submitted"]),
+        ("Deal approved", ["deal.approved"]),
+        ("Paid to feature a deal", ["deal.featured"]),
+    ], days)
+    return {"days": days, "kpis": kpis, "daily": daily, "people_funnel": people_funnel, "partner_funnel": partner_funnel}
 
 
 @router.get("/api/admin/partners", dependencies=[Depends(admin_required)])

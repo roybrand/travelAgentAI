@@ -15,6 +15,10 @@ prototype to a live product with real-time prices and business-pushed deals.
 | Flight and stay **prices** | Labelled estimates |
 | Amadeus, Ticketmaster and Travelpayouts adapters | Written and unit-tested, never run against real keys |
 | Business accounts, deals database, partner portal, moderation, feed API | **Built** (see [07](07-partner-portal-and-deals.md)), on SQLite |
+| Real payment: Featured deal placements | **Built** (Stripe Checkout, no SDK), off until a Stripe key is set — the first real revenue line |
+| Real push notifications, even while closed | **Built** (Web Push, RFC 8291/8292, no SDK), off until a VAPID key pair is set |
+| Self-hosted analytics (signups, connections, messages, funnels) | **Built**, in `/admin`, no vendor |
+| Auth hardening: common-password denylist, per-account rate limiting, change password | **Built** |
 | Hosting, HTTPS, domain, company | **Not done** |
 | OpenAI key | In `backend/.env`. It was pasted in chat, so **rotate it** |
 
@@ -156,8 +160,11 @@ Steps in this document marked "build" now exist in the app. See [07 · Partner p
 | Partner sign-up, deal form, moderation, feed API, dashboard | Company, bank, domain, business email |
 | Deals on the trip page, deals page and Nearby, always labelled | Applications to Travelpayouts, Awin, Impact, Amadeus, Duffel, Ticketmaster |
 | Ticketmaster events and Travelpayouts fares (need free keys) | Getting the keys and testing the adapters with them |
-| Installable app and device notifications while the app is open | HTTPS hosting, and true background Web Push for a closed phone |
+| Installable app, and **real background Web Push for a closed phone** (see [09 §8](09-people-and-safety.md#8-real-push-notifications)) | HTTPS hosting (Web Push needs it in production; localhost is exempt) |
+| **Featured deal payments** (real Stripe Checkout, see [07](07-partner-portal-and-deals.md#featured-deal-placements)) | A live Stripe account, and Stripe Connect if you later want to pay out to partners directly |
+| **Self-hosted analytics dashboard** in `/admin` (signups, connections, messages, two funnels) | A real marketing/acquisition channel to point it at -- there is still no visit-level tracking |
+| **Change my password**, a common-password denylist, per-account login rate limiting | Email verification and password *reset* (both need an email service, which does not exist yet) |
 | SQLite storage | Postgres and backups once real partners join |
-| A moderator check on every deal | Email verification, password reset, and someone to do the reviewing |
+| A moderator check on every deal | Someone to do the reviewing |
 
 The company, applications and calls are yours, and this document is the checklist for them.

@@ -1,6 +1,6 @@
 """HTTP API for Wayfinder People: accounts, profiles, places, finding people, connections, chat and safety."""
 import asyncio
-from datetime import date
+from datetime import date, datetime
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from fastapi.responses import FileResponse, Response
@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field
 
 from app.partners import activity, db, security
 from app.partners.routes import admin_required
-from app.social import avatars, connect, demo_people, intents, places, users, vocab
+from app.social import avatars, connect, demo_people, intents, places, push, safety, users, vocab
 
 router = APIRouter()
 
@@ -89,8 +89,10 @@ def register(body: SignUp, request: Request):
 
 @router.post("/api/people/login")
 def login(body: SignIn, request: Request):
-    """Sign in a traveler. Rate limited."""
+    """Sign in a traveler. Rate limited per address and, separately, per account -- so a distributed
+    guessing attempt against one email from many addresses is throttled too."""
     security.limit(f"people-login:{_ip(request)}", 15, 600)
+    security.limit(f"people-login-acct:{body.email.strip().lower()}", 8, 900)
     try:
         user = users.login(body.email, body.password)
     except users.UserError as exc:
@@ -118,7 +120,7 @@ def person(user_id: int, user: dict = Depends(current_user)):
     """One person's profile card, for opening from a match alert. The same visibility rules as search apply: still
     active and findable, not someone who blocked or was blocked, and within their audience limits."""
     row = users.get_row(user_id)
-    if (not row or row["status"] != "active" or not row["visible"] or user_id in users.hidden_ids(user["id"])
+    if (not row or row["status"] != "active" or not users.findable(row) or user_id in users.hidden_ids(user["id"])
             or not users.allowed(user, row)):
         raise HTTPException(status_code=404, detail="Profile not found.")
     return users.card(row)
@@ -197,6 +199,22 @@ def demo_avatar(user_id: int):
                     headers={"Cache-Control": "public, max-age=86400", "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'"})
 
 
+class ChangePasswordIn(BaseModel):
+    current_password: str = Field(max_length=200)
+    new_password: str = Field(max_length=200)
+
+
+@router.post("/api/people/me/password")
+def change_password(body: ChangePasswordIn, user: dict = Depends(current_user)):
+    """Change my password. Ends every session, including this one -- sign in again with the new password."""
+    security.limit(f"people-change-pw:{user['id']}", 10, 3600)
+    try:
+        users.change_password(user["id"], body.current_password, body.new_password)
+    except users.UserError as exc:
+        _fail(exc)
+    return {"ok": True}
+
+
 class DeleteIn(BaseModel):
     password: str = Field(max_length=200)
 
@@ -209,6 +227,39 @@ def delete_me(body: DeleteIn, user: dict = Depends(current_user)):
     except users.UserError as exc:
         _fail(exc)
     activity.record("user.deleted")
+    return {"ok": True}
+
+
+# ---------------------------------------------------------------- push notifications
+
+@router.get("/api/push/public-key")
+def push_public_key():
+    """Whether real push is switched on, and the VAPID public key a browser needs to subscribe with."""
+    return {"enabled": push.enabled(), "public_key": push.public_key()}
+
+
+class PushSubscribeIn(BaseModel):
+    endpoint: str = Field(max_length=2000)
+    p256dh: str = Field(max_length=200)
+    auth: str = Field(max_length=100)
+
+
+@router.post("/api/push/subscribe")
+def push_subscribe(body: PushSubscribeIn, user: dict = Depends(current_user)):
+    """Register this browser for real push notifications (new messages, connection requests), even while
+    Wayfinder is fully closed. Tied to my People account, so it follows me, not just this one tab."""
+    push.subscribe(user["id"], body.endpoint, body.p256dh, body.auth)
+    return {"ok": True}
+
+
+class PushUnsubscribeIn(BaseModel):
+    endpoint: str = Field(max_length=2000)
+
+
+@router.post("/api/push/unsubscribe")
+def push_unsubscribe(body: PushUnsubscribeIn, user: dict = Depends(current_user)):
+    """Stop push notifications on this browser."""
+    push.unsubscribe(user["id"], body.endpoint)
     return {"ok": True}
 
 
@@ -392,7 +443,8 @@ class ReportIn(BaseModel):
 
 @router.post("/api/people/report")
 def report(body: ReportIn, request: Request, user: dict = Depends(current_user)):
-    """Report a person (optionally a message) to the moderators."""
+    """Report a person (optionally a message) to the moderators. A profile that draws a serious report, or
+    reports from more than one person, is hidden from search and new contact at once, pending review."""
     security.limit(f"people-report:{user['id']}", 20, 86400)
     try:
         rid = connect.report(user["id"], body.user_id, body.reason, body.detail, body.message_id)
@@ -400,6 +452,50 @@ def report(body: ReportIn, request: Request, user: dict = Depends(current_user))
         _fail(exc)
     activity.record("report.filed", reason=body.reason)
     return {"id": rid, "note": "Thank you. A moderator will review this. You can also block the person."}
+
+
+class CheckinIn(BaseModel):
+    connection_id: int | None = None
+    place_text: str = Field(max_length=200)
+    meet_at: datetime = Field()
+    note: str = Field(default="", max_length=300)
+
+
+@router.post("/api/people/checkins")
+def create_checkin(body: CheckinIn, user: dict = Depends(current_user)):
+    """'Meet safely': create a link with a planned meetup's place, time and who with, to share outside the app
+    with someone who is not going, such as a friend or a housemate. It expires after the meetup."""
+    security.limit(f"people-checkin:{user['id']}", 30, 3600)
+    try:
+        checkin = safety.create(user["id"], body.connection_id, body.place_text, body.meet_at, body.note)
+    except safety.SafetyError as exc:
+        _fail(exc)
+    activity.record("checkin.created")
+    return checkin
+
+
+@router.get("/api/people/checkins")
+def list_checkins(user: dict = Depends(current_user)):
+    """My active 'meet safely' check-ins."""
+    return {"checkins": safety.mine(user["id"])}
+
+
+@router.delete("/api/people/checkins/{checkin_id}")
+def end_checkin(checkin_id: int, user: dict = Depends(current_user)):
+    """End a check-in early, for example once you are home safe."""
+    if not safety.end(user["id"], checkin_id):
+        raise HTTPException(status_code=404, detail="Not found.")
+    return {"ok": True}
+
+
+@router.get("/api/safety/{token}")
+def public_checkin(token: str):
+    """A 'meet safely' check-in, for anyone holding the link (no sign-in needed) -- meant for a friend outside
+    Wayfinder to see the plan. Never an exact location, email or phone number."""
+    view = safety.public_view(token)
+    if not view:
+        raise HTTPException(status_code=404, detail="This check-in link is not valid.")
+    return view
 
 
 # ---------------------------------------------------------------- moderation (admin token)
