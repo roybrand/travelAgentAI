@@ -3,6 +3,7 @@ import asyncio
 from datetime import date
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response
+from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field, ValidationError
 
 from app import config
@@ -79,6 +80,16 @@ def deal_art(kind: str, seed: int):
         raise HTTPException(status_code=404, detail="Not found.")
     return Response(demo_businesses.art_svg(kind, seed), media_type="image/svg+xml",
                     headers={"Cache-Control": "public, max-age=86400", "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'"})
+
+
+@router.get("/api/deals/preview/{deal_id}", response_class=HTMLResponse)
+def deal_preview(deal_id: int):
+    """A simulated business page for a DEMO deal's "Get this deal" link: a small, self-contained page for that
+    fictional business, clearly labelled, since there is no real website to send anyone to."""
+    row = deals.row(deal_id)
+    if not row or not demo_businesses.is_demo_email(row["partner_email"]):
+        raise HTTPException(status_code=404, detail="Not found.")
+    return HTMLResponse(demo_businesses.preview_html(row), headers={"Cache-Control": "public, max-age=300"})
 
 
 @router.post("/api/deals/{deal_id}/click")

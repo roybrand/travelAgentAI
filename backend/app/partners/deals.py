@@ -283,6 +283,13 @@ def near(lat: float, lng: float, radius_m: int, today: date | None = None, limit
     return [_shape(r, today) for r in rows]
 
 
+def row(deal_id: int):
+    """The raw row (with the partner's name and email joined in), for internal use only -- never returned as JSON,
+    since the partner's email is not public."""
+    with db.tx() as c:
+        return c.execute(f"{_SELECT} WHERE d.id = ?", (deal_id,)).fetchone()
+
+
 def record_impressions(ids: list[int]) -> None:
     if ids:
         with db.tx() as c:

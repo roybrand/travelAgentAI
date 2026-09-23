@@ -26,6 +26,7 @@ For what each feature means and who it is for, see the [feature registry](FEATUR
 | GET | `/api/deals` | Public | Approved partner deals for a destination, ranked by match to the traveler. |
 | GET | `/api/deals/art/{kind}/{seed}` | Public | The drawn picture used by DEMO deals: a colourful illustration for the category (not a photograph). |
 | GET | `/api/deals/options` | Public | The category, tag and currency lists for the deal form, and the public disclosure text. |
+| GET | `/api/deals/preview/{deal_id}` | Public | A simulated business page for a DEMO deal's "Get this deal" link: a small, self-contained page for that fictional business, clearly labelled, since there is no real website to send anyone to. |
 | POST | `/api/deals/{deal_id}/click` | Public | Count one click on a deal's booking link (shown to the business as a result). |
 | GET | `/api/destinations` | Public | The 109 selectable destinations (Europe, Americas, Asia, Australia). |
 | GET | `/api/events` | Public | Live events near a destination during the trip (needs a free Ticketmaster key). |

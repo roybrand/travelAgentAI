@@ -92,7 +92,7 @@ def test_a_trip_gets_good_deals_for_its_dates_best_match_first(client):
     assert any("During your trip to Tel Aviv" in a["reason"] for a in found)
     assert found == sorted(found, key=lambda a: (-a["priority"], -a["score"]))
     top = found[0]
-    assert top["title"] and top["badge"].startswith("−") and top["image"].startswith("/api/deals/art/") and top["deal"]["url"].startswith("https://")
+    assert top["title"] and top["badge"].startswith("−") and top["image"].startswith("/api/deals/art/") and top["deal"]["url"].startswith("/api/deals/preview/")
 
 
 def test_interest_matches_are_explained_and_ranked_up(client):

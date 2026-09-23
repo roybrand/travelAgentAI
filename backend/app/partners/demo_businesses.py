@@ -1,8 +1,9 @@
 """DEMO businesses: 124 made-up partners with live deals across the world, so deals, alerts and the RSS feed can be shown
 before real businesses join.
 
-Everything is labelled: partner names start with "Demo · ", emails end in @wayfinder.invalid, booking links point at
-example.com, and the deal pictures are drawn illustrations (see /api/deals/art). Deals go through the same tables and
+Everything is labelled: partner names start with "Demo · ", emails end in @wayfinder.invalid, the deal pictures are
+drawn illustrations (see /api/deals/art), and "Get this deal" opens a simulated business page of our own
+(/api/deals/preview) rather than a real website, clearly marked as a demo. Deals go through the same tables and
 ranking as real ones, and are approved on creation so they show at once.
 
 STATIC: 124 businesses (8 each in Tel Aviv, Berlin, Barcelona, Paris and Ibiza, 3 each in 20 more cities, and 3 each in
@@ -12,6 +13,7 @@ Nothing runs unless demo businesses exist. Remove them with `python scripts/seed
 import random
 import time
 from datetime import date, datetime, timedelta, timezone
+from html import escape
 
 from app.live import catalog
 from app.partners import db, deals, security
@@ -107,11 +109,12 @@ def _art(kind: str, seed: int) -> str:
 
 
 def _insert_deal(partner_id: int, d: deals.DealIn, photo: str) -> int:
-    """Create through the normal path, approve it, and attach the drawn picture (partners normally supply https photos)."""
+    """Create through the normal path, approve it, and attach the drawn picture and a simulated business page
+    (partners normally supply an https photo and their own booking link; a demo business has neither)."""
     did = deals.create(partner_id, d)
     deals.review(did, True)
     with db.tx() as c:
-        c.execute("UPDATE deals SET photo_url = ? WHERE id = ?", (photo, did))
+        c.execute("UPDATE deals SET photo_url = ?, url = ? WHERE id = ?", (photo, f"/api/deals/preview/{did}", did))
     return did
 
 
@@ -196,3 +199,62 @@ def art_svg(kind: str, seed: int) -> str:
         f'<rect width="400" height="240" fill="url(#g)"/>{circles}'
         f'<text x="200" y="146" font-size="92" text-anchor="middle">{emoji}</text></svg>'
     )
+
+
+# ---------------------------------------------------------------- simulated business page
+
+def preview_html(row) -> str:
+    """A small, self-contained landing page for a demo business, so "Get this deal" opens something real (if
+    fictional) instead of a dead link. Every real partner supplies their own https:// booking link instead."""
+    emoji, hue = _ART.get(row["category"], ("🏷️", 200))
+    label = deals.CATEGORIES.get(row["category"], (row["category"].title(),))[0]
+    city = catalog.BY_CODE.get(row["dest"], {}).get("city", row["dest"])
+    sym = {"GBP": "£", "EUR": "€", "USD": "$"}.get(row["currency"], "")
+    price, ref = row["price"], row["reference_price"]
+    pct = deals.discount_pct(price, ref)
+    price_html = f'<span class="price">{sym}{price:g}</span>'
+    if ref:
+        price_html += f'<span class="was">{sym}{ref:g}</span>'
+    if pct:
+        price_html += f'<span class="pct">−{pct}%</span>'
+    note = f'<p class="line">{escape(row["price_note"])}</p>' if row["price_note"] else ""
+    name, title, desc, terms = (escape(row[k]) for k in ("partner_name", "title", "description", "terms"))
+    return f"""<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{name}</title>
+<style>
+  body {{ margin: 0; background: #0a1220; color: #e8eef6; font: 16px/1.5 -apple-system, "Segoe UI", sans-serif; }}
+  .banner {{ background: #1c1408; color: #f5c76a; text-align: center; padding: 8px 16px; font-size: 13px; border-bottom: 1px solid rgba(245, 199, 106, .3); }}
+  .hero {{ background: linear-gradient(135deg, hsl({hue} 70% 20%), hsl({(hue + 50) % 360} 65% 12%)); padding: 48px 24px 32px; text-align: center; }}
+  .hero .emoji {{ font-size: 64px; }}
+  .hero h1 {{ margin: 8px 0 2px; font-size: 28px; letter-spacing: -0.02em; }}
+  .hero .sub {{ color: #9fb0c3; }}
+  .wrap {{ max-width: 560px; margin: -20px auto 40px; padding: 0 16px; }}
+  .card {{ background: #101d2f; border: 1px solid #24364d; border-radius: 16px; padding: 24px; }}
+  .price {{ font-size: 32px; font-weight: 800; }}
+  .was {{ color: #6b7c90; text-decoration: line-through; margin-left: 8px; }}
+  .pct {{ display: inline-block; background: #f5c76a; color: #3b2a04; font-weight: 700; padding: 2px 10px; border-radius: 999px; font-size: 13px; margin-left: 8px; vertical-align: middle; }}
+  .line {{ color: #9fb0c3; font-size: 13.5px; margin: 6px 0 0; }}
+  .terms {{ color: #6b7c90; font-size: 12.5px; margin-top: 18px; }}
+  button {{ width: 100%; padding: 14px; margin-top: 20px; border-radius: 10px; border: none; background: rgba(45, 212, 191, .15); color: #6b7c90; font-size: 16px; font-weight: 600; cursor: not-allowed; }}
+  .fine {{ text-align: center; color: #6b7c90; font-size: 12.5px; margin-top: 10px; }}
+  a {{ color: #2dd4bf; }}
+  .back {{ display: block; text-align: center; margin: 24px 0 0; }}
+</style></head>
+<body>
+<div class="banner">Demo business &mdash; a simulated page for testing Wayfinder. Not a real company; no booking happens here.</div>
+<div class="hero"><div class="emoji">{emoji}</div><h1>{name}</h1><div class="sub">{escape(label)} &middot; {escape(city)}</div></div>
+<div class="wrap">
+  <div class="card">
+    <h2>{title}</h2>
+    <p>{desc}</p>
+    <div>{price_html}</div>
+    {note}
+    <p class="line">Valid until {row["valid_to"]}.</p>
+    <button disabled>Book now</button>
+    <p class="fine">This is a demo. No real booking happens here.</p>
+    <p class="terms">{terms}</p>
+  </div>
+  <a class="back" href="/deals?dest={row["dest"]}">&larr; Back to Wayfinder</a>
+</div>
+</body></html>"""
