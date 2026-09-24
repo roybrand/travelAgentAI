@@ -1,12 +1,12 @@
 import { useEffect, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { Link, NavLink, Route, Routes, useLocation, useNavigate } from "react-router-dom";
+import { Link, NavLink, Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { checkHealth } from "./api";
 import { useNearby } from "./state/NearbyContext.jsx";
 import { useTrip } from "./state/TripContext.jsx";
 import Home from "./pages/Home.jsx";
 import Trip from "./pages/Trip.jsx";
-import DayPlan from "./pages/DayPlan.jsx";
+import Book from "./pages/Book.jsx";
 import Trips from "./pages/Trips.jsx";
 import Stays from "./pages/Stays.jsx";
 import Explore from "./pages/Explore.jsx";
@@ -47,7 +47,6 @@ function Header() {
         {trip && (
           <>
             <NavLink to="/trip">Your trip</NavLink>
-            <NavLink to="/plan">Day plan</NavLink>
             <NavLink to="/stays">Stays</NavLink>
             <NavLink to="/explore">Explore</NavLink>
           </>
@@ -85,7 +84,7 @@ function BottomNav() {
   const items = [
     ["/", "Home", "🏠", true],
     ...(savedTrips.length ? [["/trips", "Trips", "🗂️", true]] : []),
-    ...(trip ? [["/trip", "Trip", "🧳", false], ["/plan", "Plan", "🗓️", false]] : []),
+    ...(trip ? [["/trip", "Trip", "🧳", false]] : []),
     ["/tonight", "Tonight", "🌙", false],
     ["/people", "People", "👥", false],
     ["/deals", "Deals", "🏷️", false],
@@ -108,15 +107,15 @@ function BottomNav() {
 function TripNav() {
   const { trip, cityName } = useTrip();
   const { pathname } = useLocation();
-  if (!trip || !["/trip", "/plan", "/stays", "/explore"].includes(pathname)) return null;
+  if (!trip || !["/trip", "/stays", "/explore", "/book"].includes(pathname)) return null;
   return (
     <nav className="subnav" aria-label="This trip">
       <div className="wrap subnav-in">
         <span className="subnav-title">🧳 {cityName(trip.req.destination)}</span>
-        <NavLink to="/trip">Overview</NavLink>
-        <NavLink to="/plan">Day plan</NavLink>
+        <NavLink to="/trip">Itinerary</NavLink>
         <NavLink to="/stays">Stays</NavLink>
         <NavLink to="/explore">Explore</NavLink>
+        <NavLink to="/book">Book</NavLink>
         <NavLink to="/tonight">Tonight</NavLink>
         <NavLink to="/deals">Deals</NavLink>
       </div>
@@ -185,7 +184,8 @@ export default function App() {
           <Routes location={location}>
             <Route path="/" element={<Home />} />
             <Route path="/trip" element={<Trip />} />
-            <Route path="/plan" element={<DayPlan />} />
+            <Route path="/plan" element={<Navigate to="/trip" replace />} />
+            <Route path="/book" element={<Book />} />
             <Route path="/trips" element={<Trips />} />
             <Route path="/stays" element={<Stays />} />
             <Route path="/explore" element={<Explore />} />

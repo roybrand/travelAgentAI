@@ -54,7 +54,7 @@ export default function SaveTripBar() {
           <b className="savebar-name">{tripTitle(savedTrip, cityName)}</b>
           {!saveError && <span className="muted savebar-time">day plan included · updated {timeOf(savedTrip.updatedAt)}</span>}
           <button className="btn ghost sm" onClick={startEdit}>{savedTrip.name ? "✎ Rename" : "✎ Name this trip"}</button>
-          {onTripsPage ? <Link to="/plan" className="linkbtn">Open day plan →</Link> : <Link to="/trips" className="linkbtn">My trips →</Link>}
+          {onTripsPage ? <Link to="/trip" className="linkbtn">Open itinerary →</Link> : <Link to="/trips" className="linkbtn">My trips →</Link>}
         </>
       ) : (
         <>

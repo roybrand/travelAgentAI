@@ -22,6 +22,10 @@ For what each feature means and who it is for, see the [feature registry](FEATUR
 | GET | `/api/admin/people/reports` | Admin token | Open reports against people, with how many are open against each person. |
 | POST | `/api/admin/people/reports/{report_id}/resolve` | Admin token | Close a report, optionally banning the person (their sessions end at once). |
 | POST | `/api/alerts` | Partner sign-in | Deals for a planned trip or a radius, and (when signed in to People) matches, requests and messages. |
+| POST | `/api/bookings` | Public | Book the trip -- as a demo: nothing is reserved with any airline or hotel and nothing is charged. Returns a reference, confirmation codes and a manage token (shown once) for viewing or cancelling it. |
+| POST | `/api/bookings/checkout` | Public | A traveler opened checkout for a trip. Counted for the booking funnel only; nothing is stored about them. |
+| GET | `/api/bookings/{reference}` | Public | A demo booking's status, for whoever holds its manage token. |
+| POST | `/api/bookings/{reference}/cancel` | Public | Cancel a demo booking. The demo always refunds in full; a real one would follow each supplier's rules. |
 | POST | `/api/build-trip` | Public | Trip fields plus a traveler profile (keywords, interests, place types) from free text and/or a photo. |
 | GET | `/api/config` | Public | What is switched on, so the UI can show or hide features and label data sources honestly. |
 | GET | `/api/deals` | Public | Approved partner deals for a destination, ranked by match to the traveler. |
@@ -97,6 +101,7 @@ For what each feature means and who it is for, see the [feature registry](FEATUR
 | `/` |
 | `/trip` |
 | `/plan` |
+| `/book` |
 | `/trips` |
 | `/stays` |
 | `/explore` |

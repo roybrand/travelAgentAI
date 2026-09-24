@@ -67,10 +67,11 @@ def test_admin_analytics_route_needs_the_admin_token_and_shapes_the_summary(clie
     assert r.status_code == 200
     body = r.json()
     assert body["days"] == 30
-    assert set(body["kpis"]) == {"people_registered", "partners_registered", "deals_submitted", "connections_requested", "messages_sent", "reports_filed"}
+    assert set(body["kpis"]) == {"people_registered", "partners_registered", "deals_submitted", "connections_requested", "messages_sent", "reports_filed", "demo_bookings"}
     assert len(body["daily"]["people_registered"]) == 30
     assert [s["label"] for s in body["people_funnel"]] == ["Registered", "Posted a looking-for request", "Sent a connection request", "Had a request accepted", "Sent a message"]
     assert [s["label"] for s in body["partner_funnel"]] == ["Registered", "Submitted a deal", "Deal approved", "Paid to feature a deal"]
+    assert [s["label"] for s in body["booking_funnel"]] == ["Opened checkout", "Booked (demo)", "Cancelled"]
 
 
 def test_admin_analytics_days_parameter_is_clamped(client, tmp_path, monkeypatch):

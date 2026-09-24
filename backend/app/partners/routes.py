@@ -404,6 +404,7 @@ def admin_analytics(days: int = 30):
         "connections_requested": activity.total_since(["connection.requested"], days),
         "messages_sent": activity.total_since(["message.sent"], days),
         "reports_filed": activity.total_since(["report.filed"], days),
+        "demo_bookings": activity.total_since(["booking.created"], days),
     }
     daily = {
         "people_registered": activity.daily_series(["user.registered"], days),
@@ -423,7 +424,13 @@ def admin_analytics(days: int = 30):
         ("Deal approved", ["deal.approved"]),
         ("Paid to feature a deal", ["deal.featured"]),
     ], days)
-    return {"days": days, "kpis": kpis, "daily": daily, "people_funnel": people_funnel, "partner_funnel": partner_funnel}
+    booking_funnel = activity.funnel([
+        ("Opened checkout", ["booking.checkout_started"]),
+        ("Booked (demo)", ["booking.created"]),
+        ("Cancelled", ["booking.cancelled"]),
+    ], days)
+    return {"days": days, "kpis": kpis, "daily": daily, "people_funnel": people_funnel, "partner_funnel": partner_funnel,
+            "booking_funnel": booking_funnel}
 
 
 @router.get("/api/admin/partners", dependencies=[Depends(admin_required)])

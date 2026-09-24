@@ -88,6 +88,14 @@ the app manually if the portal is not ready. Investors respond to real partners 
 | Tours and activities | Viator, GetYourGuide, Klook | Partner application | Commission |
 | Restaurants | Google Places (paid), Yelp Fusion, TheFork or OpenTable partner programs | Key or partner application | Per call or commission |
 
+### Turning the demo booking into a real one
+
+The booking flow (review, travelers, payment, confirmation, cancel) is already built as a demo in `app/bookings.py`.
+Going live means replacing its one `confirm()` function with real calls: a flight order (Duffel or Amadeus), a hotel
+booking (a bed bank or the Booking.com/Expedia partner APIs), activity tickets (Viator, GetYourGuide) and Stripe
+Checkout for the payment, which the partner side already uses. Traveler names and passports would then have to be
+sent to those suppliers, so the privacy policy must cover it. Until then, every screen says it is a demo.
+
 ### Businesses that push deals (push)
 
 | Type | Who to approach first | The pitch |

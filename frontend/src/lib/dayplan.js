@@ -60,3 +60,6 @@ export function scheduledItems(candidates, schedule) {
     .map((i) => ({ ...i, ...schedule[i.key] }))
     .sort((a, b) => a.day - b.day || PARTS.indexOf(a.part) - PARTS.indexOf(b.part) || a.order - b.order);
 }
+
+/** A typical start time for each time of day, used for calendar entries. */
+export const PART_TIME = { morning: "09:30", afternoon: "14:00", evening: "19:00", night: "22:00" };

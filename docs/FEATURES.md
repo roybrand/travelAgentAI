@@ -67,7 +67,7 @@ Related documents: [API reference (generated)](08-api-reference.md), [flows](01-
 | F-031 | Cinematic home with rotating destination photos and the search form | Built | React, Framer Motion | `pages/Home.jsx` |
 | F-032 | "Agent is working" overlay showing the steps | Built | Framer Motion | `components/PlanningOverlay.jsx` |
 | F-033 | Trip total with animated count-up, budget meter, cost donut | Built | Recharts | `pages/Trip.jsx` |
-| F-034 | Day-by-day itinerary with photos, updating as you change stay or plan | Built | React state | `pages/Trip.jsx` |
+| F-034 | Day-by-day itinerary with photos, updating as you change stay or plan. It is now the trip page itself (see G2) | Built | React state | `pages/Trip.jsx`, `components/TripTimeline.jsx` |
 | F-035 | Season chart with your trip highlighted and real temperatures on hover | Built | Recharts | `pages/Trip.jsx` |
 | F-036 | Stays page: price vs area average chart, sort, map with price pins, photo galleries | Built | Recharts, Leaflet | `pages/Stays.jsx` |
 | F-037 | Explore page: sight cards with photos, costs, nearby food, map, "add to my plan" | Built | Leaflet | `pages/Explore.jsx` |
@@ -170,19 +170,48 @@ Full description: [07 · Partner portal, deals and suppliers](07-partner-portal-
 | F-094 | Partner activity log written as markdown at runtime, without personal data | Built | `app/partners/activity.py` | `backend/logs/partner-activity.md` |
 | F-092 | Demo seed script with clearly-labelled fictional businesses, removable with one flag | Built | Python | `backend/scripts/seed_demo.py` |
 
-## G2. Day plan
+## G2. The trip page is the itinerary
+
+The trip opens on the plan itself: a slim header, a card that looks after the traveler, and every day of the trip in
+order, editable in place. Everything that explains the trip (costs, options, reasoning, season, data sources) is
+folded under Trip details. The separate Day plan tab is gone; `/plan` opens the trip page.
 
 | ID | Feature | Status | Powered by | Code |
 |---|---|---|---|---|
-| F-145 | **Day plan tab**: a real day-by-day itinerary editor, separate from the trip overview, reached from the trip's sub-navigation | Built | React | `pages/DayPlan.jsx` |
+| F-145 | **The itinerary is the trip page**: day plan and overview merged. Day 1 to the day home in order, with the flights and stay as anchors and morning, afternoon, evening and night for each day. The old `/plan` address opens it | Built | React | `pages/Trip.jsx`, `components/TripTimeline.jsx` |
 | F-146 | **Nothing is added without approval**: the plan starts empty; every sight, adventure or real place (museum, pub, etc.) appears only after the traveler taps "+ Add". No item is pre-selected | Built | React state | `state/TripContext.jsx` |
-| F-147 | **Move or remove any planned item** between days and between morning, afternoon, evening and night, or take it off the plan, at any time | Built | React | `pages/DayPlan.jsx` |
-| F-148 | On the Day plan tab the traveler **picks the slot**: the open day shows morning, afternoon, evening and night side by side, tapping one makes it the target, and "+ Add" puts the pick exactly there (a hint names the day and time). A quick "Add to my plan" from Explore goes to the least-full day at a time guessed from the item's tags (nightlife → evening, museums → morning, etc.). Anything can be moved afterwards | Built | Own code | `pages/DayPlan.jsx`, `lib/dayplan.js`, `state/TripContext.jsx` |
-| F-149 | The trip page's itinerary is generated **directly from the day plan** (no more even spacing across days); it shows the real day, time of day and detail for each approved item, and prompts the traveler to build a plan when nothing is approved yet | Built | React | `pages/Trip.jsx` |
-| F-150 | Suggestions grouped by "Matches what you like", Sights, Adventures and each real-place category the traveler asked for, so nothing already on the plan is offered twice | Built | React | `pages/DayPlan.jsx` |
-| F-151 | **"Your stay, in detail"** on the trip overview: photo previews, guest rating or star class, nightly and total price with its source (live/estimated/demo), distance from the centre and nearby bars/restaurants/beach, amenities, and a map pin, for the currently chosen hotel | Built | React, Leaflet | `components/StayDetail.jsx`, `pages/Trip.jsx` |
+| F-147 | **Move or remove any planned item** between days and between morning, afternoon, evening and night, or take it off the plan, at any time: tap the item and a sheet offers day and time chips, "Move to …" and "Remove from plan" (with Undo) | Built | React | `components/PlanSheets.jsx` |
+| F-148 | The traveler **picks the slot** without scrolling: a sticky strip of days (weekday, date, a dot per planned item, ✈ for the day home) that jumps to a day and follows the one being read. Every time slot has its own "+ Add", which opens a sheet of ideas for exactly that day and time. A quick "Add to my plan" from Explore goes to the least-full day at a time guessed from the item's tags (nightlife → evening, museums → morning, etc.). Anything can be moved afterwards | Built | Own code | `pages/Trip.jsx`, `components/PlanSheets.jsx`, `lib/dayplan.js` |
+| F-149 | The itinerary is built **directly from the traveler's plan** (no even spacing across days): the real day, time of day and detail for each approved item, and nothing that wasn't approved | Built | React | `components/TripTimeline.jsx` |
+| F-150 | **Ideas for your trip**, folded under the timeline (open while nothing is planned), grouped by "Matches what you like", Sights, Adventures and each real-place category the traveler asked for, so nothing already on the plan is offered twice | Built | React | `components/PlanSheets.jsx`, `pages/Trip.jsx` |
+| F-151 | **"Your stay"** under Trip details: photo previews, guest rating or star class, nightly and total price with its source (live/estimated/demo), distance from the centre and nearby bars/restaurants/beach, amenities, and a map pin, for the currently chosen hotel | Built | React, Leaflet | `components/StayDetail.jsx`, `pages/Trip.jsx` |
 | F-168 | **My trips**: every planned trip is saved automatically with its chosen stay and day plan, and kept (in this browser only) until the traveler deletes it. Trips are grouped by destination (soonest upcoming first), marked Upcoming, Past or Open now, and can be reopened exactly as left or deleted one by one or a whole destination at once, each with a confirm step. The open trip also survives a page refresh | Built | React, browser storage | `pages/Trips.jsx`, `lib/trips.js`, `state/TripContext.jsx` |
+| F-174 | **"Add to this slot" sheet**: a bottom sheet on phones (a centred dialog on desktop) titled with the day and time, with time-of-day chips to switch slot in place, group filters, and best fits for that time of day first ("Good in the evening"). Several ideas can be added in a row, each with Undo, then Done | Built | React | `components/PlanSheets.jsx`, `components/Sheet.jsx` |
+| F-175 | **"When do you want to go?" picker**: "+ Add" on any idea in the list opens a sheet of day chips (with the date and how many things are already planned) and time chips (the best fit is marked), then one button: "Add to Day 2 · Evening". A toast confirms it, with "Show Day 2" to jump there | Built | React | `components/PlanSheets.jsx`, `components/Sheet.jsx` |
+| F-176 | **Sticky save and book bar** under the trip: an explicit 💾 Save button that confirms ("✓ Saved" and a toast) on top of the automatic saving, the trip total, the number of activities, whether it is booked, and "Book trip →" (or the booking once made). It sits above the phone's bottom navigation | Built | React, browser storage | `components/PlanBar.jsx` |
+| F-184 | **Slim trip header**: name (or city), dates, nights and travelers, and chips for booked or not (tap to book or view), the total and per person, and how far under or over budget | Built | React | `pages/Trip.jsx` |
+| F-185 | **A card that looks after you, before the trip**: "Barcelona starts in 45 days" and a short to-do list from the plan itself, each with its action: not booked yet (Book), a day with nothing planned (Fill it, which jumps to that day), the plan changed after booking (Review), prices that are estimates, and once booked, put it in your calendar | Built | Own code | `components/CareCard.jsx`, `lib/tripday.js` |
+| F-186 | **Now and next, during the trip**: which day of the trip it is and the time of day, the next planned item with its time, distance from the stay and a Directions link (Google Maps), a "Next" flag on it in the timeline, today's day highlighted and past days dimmed. With nothing left today: Find something, or What's near me. On the last day: check out and fly home. Afterwards: welcome home | Built | Own code, Google Maps link | `components/CareCard.jsx`, `lib/tripday.js` |
+| F-187 | **One idea in each free slot**: an empty morning, afternoon, evening or night shows the best fit for that time of day that isn't planned or suggested elsewhere (with its distance from the stay), added in one tap with Undo; "Other ideas" opens the full sheet. Free slots with nothing to suggest share one line | Built | Own code | `components/TripTimeline.jsx`, `lib/tripday.js` |
+| F-188 | **Partner deals along your route, day by day** ("On your way today"): deals valid on that date within 1.2 km of one of that day's stops (else the stay, else 3 km of the city centre, said as such). Kept in the server's payment-blind order (match, real discount, distance), each deal shown on one day only except today's, at most two a day, and always labelled Partner deal | Built | Own code | `lib/tripday.js`, `components/TripTimeline.jsx` |
+| F-189 | **A map for each day**: the stay, that day's stops numbered in order and the day's deals as gold dots | Built | Leaflet, OpenStreetMap | `components/TripTimeline.jsx` |
+| F-190 | **Events on that night** under each day, when Ticketmaster is set up | Optional | Ticketmaster | `components/TripTimeline.jsx` |
+| F-191 | **Trip details, folded**: your stay, costs and budget, compare your options, why this trip (AI summary, pros and cons, reasoning), best time to go, how I read your request, name and saving, and where the data comes from | Built | React | `pages/Trip.jsx` |
 | F-170 | **Save bar** on the trip and day plan pages: shows the trip is saved to My trips with its day plan and when it was last updated, lets the traveler **name or rename** the trip (e.g. "Honeymoon"; the name shows in My trips), and offers "Save trip and day plan" if the open trip is not saved. The same bar sits at the top of My trips for the open trip, and every saved trip card has its own Rename button | Built | React, browser storage | `components/SaveTripBar.jsx`, `pages/Trips.jsx`, `state/TripContext.jsx`, `lib/trips.js` |
+
+## G3. Booking (demo)
+
+The whole booking process, end to end, with nothing reserved and nothing charged. Every step says so.
+
+| ID | Feature | Status | Powered by | Code |
+|---|---|---|---|---|
+| F-177 | **Four-step checkout** at `/book`: Review (flight, stay, activity tickets per day, free activities, total, each price with its source badge) → Travelers (lead name, email, optional mobile, and a name for every other traveler) → Payment (explains that the live app would use Stripe's hosted page; no card is ever typed, a "this is a demo" box must be ticked) → Confirmed | Built | React | `pages/Book.jsx` |
+| F-178 | **Booking on the server**: the total is recomputed from the parts (flight + nights × nightly rate + activities × travelers), and the booking gets a reference (WF-XXXXXX, no look-alike characters), an airline PNR, a hotel confirmation and a ticket code for each paid activity. Only what the trip was is stored, never names, email or phone | Built | SQLite | `app/bookings.py`, `POST /api/bookings` |
+| F-179 | Booking progress shown step by step (checking prices, holding seats, reserving the room, issuing tickets, writing the confirmation) while the booking is made | Built | React | `pages/Book.jsx` |
+| F-180 | **Manage the booking**: a manage token (shown once, stored hashed) is needed to view or cancel it; cancelling is a full refund in the demo | Built | SQLite | `GET /api/bookings/{reference}`, `POST /api/bookings/{reference}/cancel` |
+| F-181 | **Add to calendar**: a standard .ics file with the outbound flight, the stay, every planned activity at its time of day (with its ticket code) and the flight home | Built | Own code | `lib/ics.js` |
+| F-182 | **Booked state everywhere**: the trip overview shows "✓ Booked (demo) · reference" or "Book this trip · total", My trips shows a Booked badge, and changing the stay or day plan after booking is flagged, with "Review and book again" replacing the old booking | Built | React, browser storage | `pages/Trip.jsx`, `pages/Trips.jsx`, `state/TripContext.jsx` |
+| F-183 | **Booking funnel** on the admin analytics page: opened checkout → booked (demo) → cancelled, plus a Demo bookings KPI | Built | SQLite | `app/partners/routes.py`, `pages/Admin.jsx` |
 
 ## H. People (meeting other travelers)
 
@@ -288,6 +317,9 @@ passwords. It is git-ignored. A test fails if an event is added to the code with
 | `report.dismissed` | A moderator dismissed a report |
 | `profile.auto_hidden` | A profile was automatically hidden from search and new contact after reports, pending review |
 | `checkin.created` | A traveler created a "meet safely" check-in link to share outside the app |
+| `booking.checkout_started` | A traveler opened checkout for a planned trip |
+| `booking.created` | A traveler completed a demo booking (nothing reserved or charged) |
+| `booking.cancelled` | A traveler cancelled a demo booking |
 | `deal.feature_started` | A partner began payment to feature a deal |
 | `deal.featured` | A featured-placement payment was confirmed by Stripe |
 
@@ -308,7 +340,8 @@ git-ignored, because it is generated data, not source.
 
 ## Not built yet
 
-Rental cars, live restaurant and tour prices (no free source exists), guest reviews, bookings and payments,
+Rental cars, live restaurant and tour prices (no free source exists), guest reviews, real bookings and traveler
+payments (the booking flow itself is built as a demo, F-177 to F-183),
 traveler accounts and saved trips on a server, and a native mobile app. For partners: email verification,
 password reset, invoicing and team logins. Background push to a fully closed phone, and Travelpayouts affiliate
 booking links, are also not built. Ticketmaster, Travelpayouts and Amadeus are written but have not been run

@@ -184,6 +184,7 @@ travelAgentAi/
 │   │   │   ├── emergency.py     Local emergency numbers per catalog country, found from a position or a name, no network
 │   │   │   └── routes.py        The /api/people, /api/push, /api/safety, /api/emergency-numbers and /api/admin/people endpoints
 │   │   ├── alerts.py            The radar: deal, person, request and message alerts, and the RSS feed
+│   │   ├── bookings.py          Demo bookings: totals recomputed, reference and confirmation codes, manage token, cancel
 │   │   ├── suppliers/           Optional real-time adapters: ticketmaster.py (events), travelpayouts.py (fares)
 │   │   ├── docsync.py           Generates docs/08-api-reference.md from the code
 │   │   ├── mcp_tools/

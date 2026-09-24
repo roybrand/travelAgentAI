@@ -41,6 +41,9 @@ EVENTS = {
     "report.dismissed": "A moderator dismissed a report",
     "profile.auto_hidden": "A profile was automatically hidden from search and new contact after reports, pending review",
     "checkin.created": "A traveler created a 'meet safely' check-in link to share outside the app",
+    "booking.checkout_started": "A traveler opened checkout for a planned trip",
+    "booking.created": "A traveler completed a demo booking (nothing reserved or charged)",
+    "booking.cancelled": "A traveler cancelled a demo booking",
 }
 
 

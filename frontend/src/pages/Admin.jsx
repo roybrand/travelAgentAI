@@ -83,6 +83,7 @@ function Analytics({ token }) {
             <div className="card stat"><b>{data.kpis.connections_requested}</b><span>Connections requested</span></div>
             <div className="card stat"><b>{data.kpis.messages_sent}</b><span>Messages sent</span></div>
             <div className="card stat"><b>{data.kpis.reports_filed}</b><span>Reports filed</span></div>
+            <div className="card stat"><b>{data.kpis.demo_bookings ?? 0}</b><span>Demo bookings</span></div>
           </div>
           <div className="analytics-grid">
             <DailyChart title="People registrations / day" data={data.daily.people_registered} color="#2dd4bf" />
@@ -91,6 +92,7 @@ function Analytics({ token }) {
           <div className="analytics-grid">
             <FunnelChart title="People funnel" steps={data.people_funnel} />
             <FunnelChart title="Partner funnel" steps={data.partner_funnel} />
+            {data.booking_funnel && <FunnelChart title="Booking funnel (demo)" steps={data.booking_funnel} />}
           </div>
           <p className="fine">
             Self-hosted: built entirely from events already in the activity log. No vendor, no cookies, no cross-site tracking. There is no

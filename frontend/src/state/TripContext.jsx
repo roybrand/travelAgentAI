@@ -187,6 +187,23 @@ export function TripProvider({ children }) {
 
   const savedTrip = tripId ? savedTrips.find((t) => t.id === tripId) || null : null;
 
+  /** Attach a (demo) booking to the open trip, saving the trip first if needed. The booking keeps a snapshot of the
+   * stay and day plan it was made for, so a later change can be flagged. Traveler details live only here. */
+  const recordBooking = useCallback((booking) => {
+    const id = saveCurrentTrip();
+    const snapshot = { hotelId, schedule };
+    setSavedTrips((list) => list.map((t) => (t.id === id ? { ...t, booking: { ...booking, snapshot }, updatedAt: new Date().toISOString() } : t)));
+  }, [saveCurrentTrip, hotelId, schedule]);
+
+  /** Update a trip's booking after a cancel (or a status refresh) from the server. */
+  const updateBooking = useCallback((id, patch) => {
+    setSavedTrips((list) => list.map((t) => (t.id === id && t.booking ? { ...t, booking: { ...t.booking, ...patch }, updatedAt: new Date().toISOString() } : t)));
+  }, []);
+
+  const booking = savedTrip?.booking || null;
+  const bookingChanged = !!booking && booking.status !== "cancelled" &&
+    (booking.snapshot?.hotelId !== hotelId || JSON.stringify(booking.snapshot?.schedule || {}) !== JSON.stringify(schedule));
+
   /** Move an already-planned item to a different day or time of day. */
   const moveItem = useCallback((key, day, part) => {
     setSchedule((s) => (s[key] ? { ...s, [key]: { ...s[key], day, part } } : s));
@@ -211,6 +228,7 @@ export function TripProvider({ children }) {
     form, setForm, result, trip, loading, error, setError, plan, hotelId, setHotelId, planned, toggleItem, moveItem,
     config, destinations, cityName, profile, setProfile, forgetProfile, resetSearch, readback, setReadback,
     savedTrips, tripId, savedTrip, openTrip, deleteTrips, renameTrip, saveCurrentTrip, saveError,
+    booking, bookingChanged, recordBooking, updateBooking,
   };
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

@@ -17,6 +17,7 @@ from .social import demo_people
 from .partners import demo_businesses, stripe_gateway
 from .social import push
 from .alerts import router as alerts_router
+from .bookings import router as bookings_router
 from .suppliers import ticketmaster, travelpayouts
 from .schemas import BuildRequest, NearbyRequest, ParseRequest, TripRequest
 
@@ -44,11 +45,12 @@ app = FastAPI(title="travel-agent-ai backend", lifespan=lifespan)
 app.include_router(partner_router)
 app.include_router(people_router)
 app.include_router(alerts_router)
+app.include_router(bookings_router)
 
 
 STATIC_DIR = Path(__file__).parent / "static"
 FRONTEND_DIST = Path(__file__).resolve().parents[2] / "frontend" / "dist"
-SPA_ROUTES = ("trip", "plan", "trips", "stays", "explore", "nearby", "tonight", "people", "alerts", "deals", "partners", "admin", "credits")  # client-side routes served by the React app
+SPA_ROUTES = ("trip", "plan", "book", "trips", "stays", "explore", "nearby", "tonight", "people", "alerts", "deals", "partners", "admin", "credits")  # client-side routes served by the React app
 
 if (FRONTEND_DIST / "index.html").exists():
     app.mount("/assets", StaticFiles(directory=FRONTEND_DIST / "assets"), name="assets")

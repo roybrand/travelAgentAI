@@ -60,6 +60,7 @@ function TripCard({ t, open, onOpen, onDelete, onRename, today, cityName }) {
             <b>{shortDate(req.start_date)} to {shortDate(req.end_date)}</b>
             {open ? <span className="tag hit">Open now</span> : <span className={`tag ${past ? "" : "hit"}`}>{past ? "Past" : "Upcoming"}</span>}
           </div>
+          {t.booking && <span className={`tag trips-booked ${t.booking.status === "cancelled" ? "" : "booked"}`}>{t.booking.status === "cancelled" ? "Booking cancelled" : `✓ Booked (demo) · ${t.booking.reference}`}</span>}
           <span className="muted">
             {it.nights} nights · {req.travelers} {req.travelers === 1 ? "traveler" : "travelers"} · from {req.origin}
           </span>

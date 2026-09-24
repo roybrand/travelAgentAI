@@ -210,6 +210,29 @@ CREATE TABLE IF NOT EXISTS analytics_events (
     created_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_analytics_event_day ON analytics_events (event, day);
+
+-- Demo bookings (app/bookings.py): the booking flow end to end with nothing reserved and nothing charged. Only
+-- what the trip was, never who: no name, email or phone -- those stay in the traveler's browser. The manage token
+-- is stored hashed, like session tokens.
+CREATE TABLE IF NOT EXISTS demo_bookings (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    reference TEXT NOT NULL UNIQUE,
+    token_hash TEXT NOT NULL,
+    origin TEXT NOT NULL,
+    destination TEXT NOT NULL,
+    start_date TEXT NOT NULL,
+    end_date TEXT NOT NULL,
+    travelers INTEGER NOT NULL,
+    activities INTEGER NOT NULL,
+    flight_total REAL NOT NULL,
+    stay_total REAL NOT NULL,
+    activities_total REAL NOT NULL,
+    total REAL NOT NULL,
+    currency TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'confirmed',
+    created_at TEXT NOT NULL,
+    cancelled_at TEXT
+);
 """
 
 # Columns added after the first release. CREATE TABLE IF NOT EXISTS never alters an existing table, so these are

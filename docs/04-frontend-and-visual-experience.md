@@ -24,8 +24,8 @@ into photos, maps and charts. It lives in [frontend/](../frontend) and is served
 ```mermaid
 flowchart LR
     H["Home<br/>photo hero, destination tiles,<br/>search form, Reset"] -->|"Plan my trip<br/>(agent overlay)"| T
-    T --> DP["Day plan<br/>approve, move or remove<br/>each activity, day by day"]
-    T["Your trip<br/>total, donut, itinerary,<br/>pros and cons, best time, highlights"]
+    T -->|"Book trip"| BK["Book (demo)<br/>review, travelers, payment,<br/>confirmation and calendar"]
+    T["Your trip = the itinerary<br/>care card, days with + in each slot,<br/>deals along the route, details folded"]
     S["Stays<br/>price vs area average, map,<br/>photo galleries, deals"]
     E["Explore<br/>sights with photos, map,<br/>nearby deals, plan builder"]
     C["Credits<br/>photo licences"]
@@ -39,6 +39,7 @@ flowchart LR
     H --- C
     T -. "every planned trip<br/>is saved (browser)" .-> MT
     MT -->|"Open<br/>restores stay and day plan"| T
+    BK -. "booking kept<br/>with the saved trip" .-> MT
 
     style H fill:#0f766e,color:#fff
     style T fill:#1e3a8a,color:#fff

@@ -270,7 +270,6 @@ function ExploreView({ trip, planned, toggleItem, cityName }) {
           <b>{trip.chosenItems.length} experience{trip.chosenItems.length === 1 ? "" : "s"} in your plan</b>
           <span className="muted">{trip.expCost ? ` · about ${money(trip.expCost)} for ${req.travelers} traveler${req.travelers > 1 ? "s" : ""}` : ""}</span>
         </div>
-        <Link to="/plan" className="btn ghost sm">Day plan</Link>
         <Link to="/trip" className="btn primary sm">View trip · {money(trip.total)}</Link>
       </div>
     </div>
