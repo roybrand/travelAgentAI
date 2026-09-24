@@ -2,13 +2,13 @@
 import asyncio
 from datetime import date, datetime
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Request
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel, Field
 
 from app.partners import activity, db, security
 from app.partners.routes import admin_required
-from app.social import avatars, connect, demo_people, intents, places, push, safety, users, vocab
+from app.social import avatars, connect, demo_people, emergency, intents, places, push, safety, users, vocab
 
 router = APIRouter()
 
@@ -497,6 +497,14 @@ def public_checkin(token: str):
         raise HTTPException(status_code=404, detail="This check-in link is not valid.")
     return view
 
+
+@router.get("/api/emergency-numbers")
+def emergency_numbers(country: str | None = Query(default=None, max_length=60),
+                      lat: float | None = Query(default=None, ge=-90, le=90),
+                      lng: float | None = Query(default=None, ge=-180, le=180)):
+    """Local emergency numbers for a country (name or catalog city) or a position. No sign-in, nothing stored,
+    and the position is only matched against the built-in city list, never sent to another service."""
+    return emergency.lookup(country, lat, lng)
 
 # ---------------------------------------------------------------- moderation (admin token)
 

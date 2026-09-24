@@ -10,6 +10,7 @@ import DestSelect from "../components/DestSelect.jsx";
 import PersonCard, { Avatar } from "../components/PersonCard.jsx";
 import BackLink from "../components/BackLink.jsx";
 import ChangePasswordForm from "../components/ChangePassword.jsx";
+import EmergencyNumbers from "../components/EmergencyNumbers.jsx";
 
 const TABS = [["find", "Find people"], ["inbox", "Inbox"], ["profile", "My profile"]];
 
@@ -213,6 +214,8 @@ function Find() {
         <button className="btn primary" disabled={busy || text.trim().length < 4}>{busy ? "Finding people…" : "Find people"}</button>
       </form>
 
+      <EmergencyNumbers lat={loc.pos?.lat} lng={loc.pos?.lng} />
+
       {requests.length > 0 && !result && (
         <section className="card pad">
           <h2 className="card-title">Your open requests</h2>
@@ -409,6 +412,7 @@ function CheckinPanel({ connectionId }) {
         );
       })}
       {!open && <button type="button" className="linkbtn" onClick={() => setOpen(true)}>🛡️ Share meetup details with a friend</button>}
+      <EmergencyNumbers />
       {open && (
         <form className="checkin-form" onSubmit={create}>
           <p className="fine">Tell a friend where you will be. They get a link with no sign-in needed, and never your exact location.</p>

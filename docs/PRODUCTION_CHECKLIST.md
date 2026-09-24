@@ -10,10 +10,8 @@ list that pulls it all together. Related: [06 · Go live and partnerships](06-go
 
 ## If you do nothing else, do these five
 
-1. **Commit and push what's built.** Nothing since commit `757f3c4` is committed — that's the Day
-   plan, all 100 demo people, 124 demo businesses, the Radar/Alerts system, trust & safety
-   hardening, Featured payments, real push, self-hosted analytics, and auth hardening. Ask me to
-   commit it, or run `git add -A && git commit` yourself.
+1. **Commit anything outstanding and push it to a remote you control.** Check `git status`, commit, then
+   make sure the code also lives off this laptop (a private GitHub repo is enough).
 2. **Rotate every secret that was ever pasted into a chat, a screenshot or a log** — most
    importantly `OPENAI_API_KEY`. Generate a fresh key at platform.openai.com, put it only in
    `backend/.env`, and revoke the old one.
@@ -54,13 +52,17 @@ setup effort for a small FastAPI + SQLite app:
 - [ ] **Choose a host.** A single small VM (Hetzner, DigitalOcean, a Lightsail instance) or a
   PaaS (Railway, Render, Fly.io) both work — this app is one process, no queue, no cache. A PaaS
   is less to operate; a VM is cheaper at this scale and gives you a filesystem for the SQLite file.
-- [ ] **Write a Dockerfile** (there isn't one yet) or a systemd service that runs:
+- [x] **Dockerfile** (repo root). It builds the frontend and runs the backend in one image, as a non-root
+  user, with a health check. Tested locally, offline: the pages, API and trip planner all respond.
   ```
-  cd frontend && npm ci && npm run build      # produces frontend/dist, git-ignored, built at deploy time
-  cd backend && pip install -r requirements.txt
-  uvicorn app.main:app --host 0.0.0.0 --port 8000
+  docker build -t wayfinder .
+  docker run -p 8000:8000 --env-file backend/.env \n    -v wayfinder-data:/app/backend/data -v wayfinder-logs:/app/backend/logs wayfinder
   ```
-  The backend serves the built frontend itself — one process, one port, no separate static host needed.
+  Most hosts (Railway, Render, Fly.io) detect the Dockerfile automatically; give them the `.env` values as
+  secrets in their dashboard, never as a file in the image. Demo data (`backend/data`) is not in the image:
+  run `python scripts/seed_demo.py` and `python scripts/seed_people.py` inside the container if you want it.
+- [x] **Python dependencies are pinned** in `backend/requirements.txt`. An unpinned install pulled `mcp` 2.x
+  and the server would not start. Upgrade on purpose: bump a pin, run `pytest`, then deploy.
 - [ ] **Put it behind HTTPS.** A reverse proxy (Caddy or nginx with Let's Encrypt, or your PaaS's
   built-in TLS) in front of port 8000. Real push notifications and the installable-app manifest
   both require HTTPS (or `localhost`, which production isn't).
@@ -97,8 +99,9 @@ setup effort for a small FastAPI + SQLite app:
 - [ ] **Decide your moderation capacity.** Photos and reports queue at `/admin` either way; with an
   `OPENAI_API_KEY` set, obviously-bad photos are auto-rejected, but someone still has to look at
   the queue regularly, especially early on.
-- [ ] **Local emergency numbers are not shown anywhere in the app.** Worth adding before real
-  in-person meetups happen at scale.
+- [ ] **Check the emergency numbers table** (`backend/app/social/emergency.py`, 58 countries) line by
+  line against each government's own page. The numbers are shown in the app (F-171) and are the widely
+  published ones, but a wrong number here is worse than none. Update `VERIFIED` when done.
 
 ## 5. Payments (only if you're turning on Featured placements)
 
@@ -129,7 +132,7 @@ setup effort for a small FastAPI + SQLite app:
 ## 7. Final pre-launch pass
 
 - [ ] Run the full test suite one more time on the production branch: `cd backend && python -m
-  pytest` — should be 300 passed.
+  pytest` — every test should pass.
 - [ ] Run `python scripts/sync_docs.py` (from `backend/`) and confirm `git status` shows no
   changes (docs match code).
 - [ ] Load the production URL on an actual phone, not just a laptop browser — check the install

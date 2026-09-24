@@ -675,6 +675,13 @@ li.done .tick::after { content: ""; width: 5px; height: 9px; border: solid #0329
 .full-span { grid-column: 1 / -1; }
 .checkin-panel { padding: 10px 16px; border-top: 1px solid var(--line); display: grid; gap: 8px; }
 .checkin-active { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; justify-content: space-between; padding: 8px 10px; border-radius: 10px; background: rgba(45, 212, 191, 0.08); border: 1px solid rgba(45, 212, 191, 0.25); font-size: 13.5px; }
+.emergency { padding: 10px 14px; border-radius: 12px; border: 1px solid rgba(248, 113, 113, 0.3); background: rgba(248, 113, 113, 0.06); display: grid; gap: 6px; font-size: 13.5px; }
+.emergency-head { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; }
+.emergency-head select { margin-left: auto; background: var(--surface-2); border: 1px solid var(--line-2); border-radius: 8px; padding: 3px 6px; font-size: 12.5px; max-width: 100%; }
+.emergency-list { display: flex; flex-wrap: wrap; gap: 4px 14px; color: var(--muted); }
+.emergency-num { font-weight: 700; color: var(--bad); text-decoration: none; font-variant-numeric: tabular-nums; }
+.emergency-num:hover { text-decoration: underline; }
+.emergency .fine { margin: 0; }
 .checkin-form { display: grid; gap: 8px; }
 .change-password { display: grid; gap: 10px; max-width: 360px; margin-top: 10px; }
 .checkin-form input { background: rgba(6, 12, 20, 0.7); border: 1px solid var(--line); border-radius: 10px; padding: 9px 12px; color: var(--text); }

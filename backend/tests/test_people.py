@@ -613,3 +613,29 @@ def test_a_database_made_before_the_filters_is_upgraded(tmp_path):
     assert {"gender", "show_age", "audience_genders", "audience_ages", "want_genders", "want_ages"} <= cols
     row = conn.execute("SELECT audience_genders, show_age FROM users").fetchone()
     assert (row["audience_genders"], row["show_age"]) == ("[]", 0)
+
+
+# ---------------------------------------------------------------- emergency numbers
+
+def test_every_catalog_country_has_emergency_numbers():
+    from app.live import catalog
+    from app.social import emergency
+    for country in {d["country"] for d in catalog.DESTINATIONS}:
+        n = emergency.NUMBERS.get(country)
+        assert n, f"{country} is in the destination catalog but has no emergency numbers in app/social/emergency.py"
+        assert all(n[k] and n[k].isdigit() for k in ("police", "ambulance", "fire")), country
+
+
+def test_emergency_numbers_by_position_country_and_city(client):
+    lisbon = client.get("/api/emergency-numbers", params={"lat": 38.72, "lng": -9.14}).json()
+    assert lisbon["found"] and lisbon["country"] == "Portugal" and lisbon["numbers"]["general"] == "112"
+    assert client.get("/api/emergency-numbers", params={"country": "japan"}).json()["numbers"]["ambulance"] == "119"
+    assert client.get("/api/emergency-numbers", params={"country": "UK"}).json()["numbers"]["general"] == "999"
+    assert client.get("/api/emergency-numbers", params={"country": "BKK"}).json()["numbers"]["tourist"] == "1155"
+
+
+def test_emergency_numbers_do_not_guess_far_from_any_city(client):
+    mid_pacific = client.get("/api/emergency-numbers", params={"lat": 0.0, "lng": -160.0}).json()
+    assert mid_pacific["found"] is False and mid_pacific["numbers"] is None
+    assert "Portugal" in mid_pacific["countries"]  # so the person can still pick one
+    assert client.get("/api/emergency-numbers", params={"lat": 120}).status_code == 422

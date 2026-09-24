@@ -181,7 +181,8 @@ travelAgentAi/
 │   │   │   ├── avatars.py       Illustrated avatars (SVG) for demo profiles
 │   │   │   ├── safety.py        "Meet safely" check-in links: share a planned meetup outside the app, no sign-in to view
 │   │   │   ├── push.py          Optional real Web Push (RFC 8291/8292), no SDK: subscriptions, encryption, and the send itself
-│   │   │   └── routes.py        The /api/people, /api/push, /api/safety and /api/admin/people endpoints
+│   │   │   ├── emergency.py     Local emergency numbers per catalog country, found from a position or a name, no network
+│   │   │   └── routes.py        The /api/people, /api/push, /api/safety, /api/emergency-numbers and /api/admin/people endpoints
 │   │   ├── alerts.py            The radar: deal, person, request and message alerts, and the RSS feed
 │   │   ├── suppliers/           Optional real-time adapters: ticketmaster.py (events), travelpayouts.py (fares)
 │   │   ├── docsync.py           Generates docs/08-api-reference.md from the code

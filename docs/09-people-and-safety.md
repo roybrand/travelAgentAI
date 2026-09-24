@@ -44,6 +44,7 @@ flowchart LR
 | Harassment | Block and Report are on every profile card and in every chat. Blocking hides both people from each other everywhere and closes the chat. Reports go to a moderator queue, and a ban ends the person's sessions at once |
 | A harmful profile before a moderator gets to it | **Auto-hide pending review**: a profile is hidden from search, place lists and new contact the moment a report names "under 18" or "unsafe behaviour", or once two different people have an open report against it. It is not a ban — the person can still sign in and use existing chats, and it lifts automatically once every open report against them is resolved. See `app/social/connect.py::_recompute_review` |
 | Meeting a stranger in person | **"Meet safely" check-ins**: from any chat, either person can create a link with the place, time and who they are meeting, to send to a friend outside the app. No sign-in is needed to view it, and it never carries an exact location, email or phone number. It expires 12 hours after the planned time, or the moment its owner ends it |
+| An emergency during a meetup | **Local emergency numbers** sit on Find people and in every chat, as tap-to-call links: the single number where a country has one, plus police, ambulance and fire (and tourist police in Greece and Thailand). The country is worked out from the search position against the built-in city list on our own server, so no position goes to a map service and nothing is stored; the person can also pick a country. It always says to confirm numbers locally. See `app/social/emergency.py` |
 | Fake or unsafe photos | A photo is shown to others only after approval. With an OpenAI key it is checked by OpenAI's free moderation endpoint. Without one it waits in the moderator queue. Rejected photos are deleted. The address of a photo is a random 128-bit name |
 | Bad messages | Messages and notes are checked by moderation when a key is set. Length limits and rate limits apply. Any message can be reported |
 | Stalking and location | Only place-level facts are shared ("going to X on Tuesday"). A request stores a position rounded to about 1 km and expires with its day. Others see "within 1 km", never coordinates. Live position is never shared |
@@ -89,11 +90,11 @@ At `/admin`, with the admin token:
 ## 6. What is not built, and what you must do before real users
 
 - **Identity is not verified.** A photo is not proof that a person is who they say. Email verification does not exist yet.
-- **Chat uses polling** every few seconds, not push. Notifications for new requests and messages are not built.
+- **Chat uses polling** every few seconds while open. Push notifications for new requests and messages are built but optional (they need VAPID keys, see F-160).
 - **No age verification** beyond the declaration. Depending on your country, a legal review of how you handle age is wise.
 - **Privacy policy and terms** must be written and shown at sign-up. Storing photos, messages and locations makes you a data controller under GDPR and similar laws.
 - **Moderation capacity:** someone must review photos and reports every day, or turn on the OpenAI key so photos are checked automatically. Auto-hide (above) buys time, not a substitute for review.
-- **Emergency information:** local emergency numbers are not shown in the app yet. A "trusted contact" who is told *before* a meetup, not just handed a link after asking, would need a proper contacts feature; today's check-in link (above) covers the "tell a friend" habit the safety rules already ask for, but relies on the person actually sending it.
+- **Emergency information:** local emergency numbers are shown (F-171), but the table has not yet been checked number by number against each government's own page. Do that before launch. A "trusted contact" who is told *before* a meetup, not just handed a link after asking, would need a proper contacts feature; today's check-in link (above) covers the "tell a friend" habit the safety rules already ask for, but relies on the person actually sending it.
 - **Scale:** SQLite and local photo files suit a prototype. Move to Postgres and object storage before real traffic.
 - **The pool starts empty.** Until people join, matches are empty. See the demo pool below for a labelled set of 100 made-up travelers.
 

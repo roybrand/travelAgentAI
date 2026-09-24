@@ -32,6 +32,7 @@ For what each feature means and who it is for, see the [feature registry](FEATUR
 | GET | `/api/deals/preview/{deal_id}` | Public | A simulated business page for a DEMO deal's "Get this deal" link: a small, self-contained page for that fictional business, clearly labelled, since there is no real website to send anyone to. |
 | POST | `/api/deals/{deal_id}/click` | Public | Count one click on a deal's booking link (shown to the business as a result). |
 | GET | `/api/destinations` | Public | The 109 selectable destinations (Europe, Americas, Asia, Australia). |
+| GET | `/api/emergency-numbers` | Public | Local emergency numbers for a country (name or catalog city) or a position. No sign-in, nothing stored, and the position is only matched against the built-in city list, never sent to another service. |
 | GET | `/api/events` | Public | Live events near a destination during the trip (needs a free Ticketmaster key). |
 | GET | `/api/feed/deals.xml` | Public | A public RSS feed of good partner deals for a city, for feed readers and other apps. |
 | POST | `/api/nearby` | Public | Dynamic recommendations around a GPS position, using the weather, time of day, interests and trip plan. |

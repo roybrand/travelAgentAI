@@ -182,3 +182,4 @@ export const adminPeople = {
   reports: (token) => request("/api/admin/people/reports", { admin: token }),
   resolve: (token, id, ban) => request(`/api/admin/people/reports/${id}/resolve`, { method: "POST", admin: token, body: { ban } }),
 };
+export const fetchEmergencyNumbers = (params) => request(`/api/emergency-numbers?${qs(params)}`);

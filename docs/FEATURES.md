@@ -214,6 +214,7 @@ Full description and the safety design: [09 · People and safety](09-people-and-
 | F-160 | **Real push notifications** for new messages, connection requests and accepted requests, delivered even while Wayfinder is fully closed (not just backgrounded) — the one place a subscription lives against a stable identity, a Wayfinder People account. No SDK: message encryption (RFC 8291) and VAPID (RFC 8292) built directly on `cryptography`'s primitives | Optional | Web Push, VAPID | `app/social/push.py`, `POST /api/push/subscribe` |
 | F-161 | Push fires from real events already in the code — a new request, an acceptance, a message — never from a separate poller; demo profiles are silently skipped since they have no device to notify | Built | Own code | `app/social/connect.py` |
 | F-162 | "Notify me on this device" toggle in the People profile; subscribes via the service worker's Push API and hands the subscription to the account, or unsubscribes and tells the server | Built | Push API, Service Worker | `pages/People.jsx`, `public/sw.js` |
+| F-171 | **Local emergency numbers** on Find people and in every chat, next to "Meet safely": the one-for-everything number plus police, ambulance, fire and (Greece, Thailand) tourist police, as tap-to-call links, for all 58 catalog countries. The country comes from the search position matched against the built-in city list (never a map service; nothing stored), else the last country shown, else a picker. Always says to confirm locally | Built | Own table | `app/social/emergency.py`, `GET /api/emergency-numbers`, `components/EmergencyNumbers.jsx` |
 
 ## F. Quality and operations
 
@@ -227,6 +228,8 @@ Full description and the safety design: [09 · People and safety](09-people-and-
 | F-165 | **Per-account login rate limiting**, alongside the existing per-address limit — throttles a distributed guessing attempt against one email from many addresses | Built | Own limiter | `app/social/routes.py`, `app/partners/routes.py` |
 | F-166 | **Change my password** (People and Partners): requires the current password, ends every session including the current one, so sign-in again is required with the new password | Built | scrypt | `POST /api/people/me/password`, `POST /api/partners/change-password`, `components/ChangePassword.jsx` |
 | F-073 | Diagrams and documentation for every layer | Built | Mermaid | `docs/` |
+| F-172 | **One-image deployment**: a two-stage Dockerfile builds the React app and runs the backend as a non-root user on one port, with a health check; secrets come in at run time and `.dockerignore` keeps `.env`, data and logs out of the image. The database, photos and logs live on volumes | Built | Docker | `Dockerfile`, `.dockerignore` |
+| F-173 | **Pinned Python dependencies**: every direct dependency is pinned to the version the tests pass on, after an unpinned install pulled `mcp` 2.x and the server would not start | Built | pip | `backend/requirements.txt` |
 
 ---
 
