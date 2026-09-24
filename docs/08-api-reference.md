@@ -95,6 +95,8 @@ For what each feature means and who it is for, see the [feature registry](FEATUR
 |---|
 | `/` |
 | `/trip` |
+| `/plan` |
+| `/trips` |
 | `/stays` |
 | `/explore` |
 | `/nearby` |

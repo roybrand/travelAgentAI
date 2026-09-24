@@ -29,6 +29,7 @@ flowchart LR
     S["Stays<br/>price vs area average, map,<br/>photo galleries, deals"]
     E["Explore<br/>sights with photos, map,<br/>nearby deals, plan builder"]
     C["Credits<br/>photo licences"]
+    MT["My trips<br/>saved trips grouped by destination,<br/>reopen or delete"]
 
     T <-->|tabs| S
     T <-->|tabs| E
@@ -36,6 +37,8 @@ flowchart LR
     S -. "Select this stay<br/>updates trip total" .-> T
     E -. "Add to my plan<br/>updates trip total" .-> T
     H --- C
+    T -. "every planned trip<br/>is saved (browser)" .-> MT
+    MT -->|"Open<br/>restores stay and day plan"| T
 
     style H fill:#0f766e,color:#fff
     style T fill:#1e3a8a,color:#fff
@@ -238,12 +241,14 @@ npm run build
 npx cap sync          # copies dist/ into android/ and ios/, and updates native plugin config
 ```
 
-**Android** builds locally with a portable JDK 17 and the Android command-line SDK tools (platform-tools,
-`platforms;android-34`, `build-tools;34.0.0`) — no Android Studio install required:
+**Android** builds locally with a portable JDK 21 (Capacitor's Android Gradle plugin requires 21, even though the
+app itself targets much older Android versions) and the Android command-line SDK tools — no Android Studio install
+required. `gradlew` pulls in whichever extra `platforms`/`build-tools` revisions the Android Gradle Plugin asks for
+on first run, on top of a base install of `platform-tools`, `platforms;android-34` and `build-tools;34.0.0`:
 
 ```
 cd android
-$env:JAVA_HOME = "<path to a JDK 17>"
+$env:JAVA_HOME = "<path to a JDK 21>"
 $env:ANDROID_HOME = "<path to the Android SDK>"
 .\gradlew.bat assembleDebug        # -> android/app/build/outputs/apk/debug/app-debug.apk
 ```
@@ -254,10 +259,13 @@ recreate it locally by pointing `sdk.dir` at your SDK.
 **iOS** needs Xcode, which only runs on macOS — the `ios/` project exists so it's ready to open with
 `npx cap open ios` on a Mac, but it cannot be built from this Windows/Linux repo.
 
-**A corporate network with TLS-inspecting proxies will break Gradle's own downloads** (the Gradle distribution
+**A device or network with a TLS-inspecting proxy will break Gradle's own downloads** (the Gradle distribution
 itself, then every Maven dependency): Java validates certificates against its own trust store, not the OS one, so
-it will not trust a proxy's re-signed certificate even where the OS and browsers do. Fixing this means either
-building on a network without TLS interception, or trusting that proxy's root CA in the JDK's `cacerts` — a
-deliberate, security-relevant choice for whoever runs the build to make, not something to do silently.
+it will not trust a proxy's re-signed certificate even where the OS and browsers do — this shows up as
+`PKIX path building failed`. Some corporate laptops intercept TLS transparently at the machine level (an endpoint
+security agent), not just on the office network, so switching networks alone will not fix it. The fix is a
+deliberate, security-relevant choice for whoever runs the build: import that proxy's root CA into the JDK's
+`cacerts` (`keytool -importcert -alias <name> -file <root.cer> -keystore <jdk>/lib/security/cacerts -storepass changeit`),
+done once per JDK install. Never do this without explicit sign-off from whoever owns the machine.
 
 Map tiles and nothing else need the internet. Photos, charts and all data work offline.

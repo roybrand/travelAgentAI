@@ -7,6 +7,7 @@ import { PLACE_TYPE_LABEL } from "../lib/profile";
 import { longDate, money } from "../lib/format";
 import Photo from "../components/Photo.jsx";
 import BackLink from "../components/BackLink.jsx";
+import SaveTripBar from "../components/SaveTripBar.jsx";
 
 const label = (t) => TAG_LABEL[t] || PLACE_TYPE_LABEL[t] || t;
 const itemPhoto = (i) => ({ k: i.photo, src: i.photo_url, info: i.photo_credit });
@@ -66,6 +67,7 @@ function SuggestionCard({ item, onAdd }) {
 export default function DayPlan() {
   const { trip, cityName, moveItem, toggleItem } = useTrip();
   const [openDay, setOpenDay] = useState(1);
+  const [openPart, setOpenPart] = useState("morning");
   if (!trip) return <Navigate to="/" replace />;
 
   const { it, req, chosenItems, candidates } = trip;
@@ -107,6 +109,7 @@ export default function DayPlan() {
           <p className="muted">Nothing is added until you tap “+ Add”. Move anything between days or times of day, or remove it, at any time.</p>
         </div>
       </div>
+      <SaveTripBar />
 
       <div className="chips day-jump">
         {days.map((d) => (
@@ -123,34 +126,41 @@ export default function DayPlan() {
             <span className="muted">{byDay.get(d).length} planned {openDay === d ? "▲" : "▼"}</span>
           </button>
           {openDay === d && (
-            byDay.get(d).length === 0 ? (
-              <p className="muted plan-day-empty">Nothing planned for this day yet. Add ideas from the suggestions below.</p>
-            ) : (
-              PARTS.map((part) => {
+            <div className="plan-parts">
+              {PARTS.map((part) => {
                 const items = byDay.get(d).filter((i) => i.part === part);
-                if (!items.length) return null;
+                const active = openPart === part;
                 return (
-                  <div key={part} className="plan-part">
-                    <span className="plan-part-h">{PART_ICON[part]} {PART_LABEL[part]}</span>
+                  <div key={part} className={`plan-part ${active ? "active" : ""}`}>
+                    <button className="plan-part-h" aria-pressed={active} onClick={() => setOpenPart(part)} title="New picks go here">
+                      <span>{PART_ICON[part]} {PART_LABEL[part]}</span>
+                      <span className="plan-part-n">{active ? "Adding here" : items.length || ""}</span>
+                    </button>
                     {items.map((item) => (
                       <PlannedCard key={item.key} item={item} nights={nights} travelers={req.travelers} onMove={moveItem} onRemove={toggleItem} />
                     ))}
+                    {!items.length && (
+                      <button className="plan-part-empty" onClick={() => setOpenPart(part)}>
+                        {active ? "Tap “+ Add” below to fill this slot" : "Nothing yet. Tap to add here"}
+                      </button>
+                    )}
                   </div>
                 );
-              })
-            )
+              })}
+            </div>
           )}
         </section>
       ))}
 
       <section className="plan-suggestions">
         <h2 className="card-title">More things to add</h2>
+        <p className="muted fine">{openDay ? <>New picks go to <b>Day {openDay} · {PART_LABEL[openPart]}</b>. Tap a time of day above to change it.</> : "Open a day above first, and new picks will land there."}</p>
         {groups.length === 0 && <p className="muted">You have added everything the guide found. Nice and full.</p>}
         {groups.map((g) => (
           <div key={g.key} className="suggest-group">
             <span className="tag-strong">{g.label}</span>
             <div className="suggest-grid">
-              {g.items.map((item) => <SuggestionCard key={item.key} item={item} onAdd={toggleItem} />)}
+              {g.items.map((item) => <SuggestionCard key={item.key} item={item} onAdd={(i) => toggleItem(i, openDay && { day: openDay, part: openPart })} />)}
             </div>
           </div>
         ))}

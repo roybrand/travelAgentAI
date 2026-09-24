@@ -602,10 +602,37 @@ li.done .tick::after { content: ""; width: 5px; height: 9px; border: solid #0329
 
 .process-stack { display: grid; gap: 14px; }
 .process-title { font-size: 18px; letter-spacing: -0.01em; }
-.or-divider { display: flex; align-items: center; gap: 14px; color: rgba(255, 255, 255, 0.75); font-size: 13px; text-transform: uppercase; letter-spacing: 0.12em; }
-.or-divider::before, .or-divider::after { content: ""; flex: 1; height: 1px; background: rgba(255, 255, 255, 0.25); }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 .prompt-card .ai-box { border-bottom: 0; padding-bottom: 0; }
+
+/* the AI card gets its own identity -- a slow-moving gradient border -- instead of matching the plain form */
+.search.ai-card {
+  position: relative; border: 1.5px solid transparent; border-radius: var(--radius);
+  background: linear-gradient(rgba(10, 19, 32, 0.92), rgba(10, 19, 32, 0.92)) padding-box,
+              linear-gradient(115deg, #2dd4bf, #818cf8, #f5c76a, #2dd4bf) border-box;
+  background-size: 100% 100%, 300% 300%;
+  animation: ai-border-flow 10s ease infinite;
+  box-shadow: 0 30px 80px -30px rgba(45, 212, 191, 0.35);
+}
+@keyframes ai-border-flow { 0% { background-position: 0 0, 0% 50%; } 50% { background-position: 0 0, 100% 50%; } 100% { background-position: 0 0, 0% 50%; } }
+.ai-heading { display: flex; gap: 12px; align-items: flex-start; }
+.ai-orb {
+  flex: none; width: 34px; height: 34px; margin-top: 2px; border-radius: 50%;
+  background: conic-gradient(from 180deg, #2dd4bf, #818cf8, #f5c76a, #2dd4bf);
+  box-shadow: 0 0 22px 2px rgba(129, 140, 248, 0.55); animation: ai-orb-pulse 2.8s ease-in-out infinite;
+}
+@keyframes ai-orb-pulse { 0%, 100% { transform: scale(1); opacity: 0.92; } 50% { transform: scale(1.12); opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .ai-card { animation: none; } .ai-orb { animation: none; } }
+.example-chips { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.example-label { font-size: 12.5px; color: var(--muted); margin-right: 2px; }
+.chip.example { background: rgba(45, 212, 191, 0.06); font-size: 13px; }
+.form-toggle {
+  display: flex; align-items: center; justify-content: center; gap: 8px; background: none; border: 1px dashed var(--line-2);
+  border-radius: 13px; padding: 12px 16px; color: var(--muted); font-size: 14px; cursor: pointer; transition: all 0.15s;
+}
+.form-toggle span { color: var(--teal); font-weight: 650; }
+.form-toggle:hover { border-color: var(--teal-2); color: var(--text); background: rgba(45, 212, 191, 0.04); }
+.last-trip-note { text-align: center; }
 
 /* ============ people ============ */
 .avatar { display: inline-grid; place-items: center; border-radius: 50%; overflow: hidden; color: #fff; font-weight: 700; flex: none; }
@@ -807,9 +834,16 @@ li.done .tick::after { content: ""; width: 5px; height: 9px; border: solid #0329
 .plan-day-head .card-title { margin: 0; }
 .plan-day.collapsed { padding-bottom: 20px; }
 .plan-day-empty { margin-top: 12px; }
-.plan-part { margin-top: 16px; }
-.plan-part:first-of-type { margin-top: 18px; }
-.plan-part-h { display: block; font-size: 12.5px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--teal); margin-bottom: 10px; }
+.plan-parts { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-top: 18px; align-items: start; }
+.plan-part { display: grid; gap: 10px; padding: 10px; border: 1px solid var(--line); border-radius: 14px; background: rgba(255, 255, 255, 0.015); min-width: 0; }
+.plan-part.active { border-color: var(--teal); box-shadow: 0 0 0 1px var(--teal) inset; }
+.plan-part-h { display: flex; justify-content: space-between; align-items: center; gap: 6px; width: 100%; background: none; border: 0; padding: 0; cursor: pointer; font-size: 12.5px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--teal); text-align: left; }
+.plan-part-n { font-size: 11px; font-weight: 600; letter-spacing: 0; text-transform: none; color: var(--muted); }
+.plan-part.active .plan-part-n { color: var(--teal); }
+.plan-part-empty { background: none; border: 1px dashed var(--line-2); border-radius: 10px; padding: 14px 8px; font-size: 12.5px; color: var(--muted); cursor: pointer; }
+.plan-parts .plan-item { grid-template-columns: 1fr; gap: 8px; margin-bottom: 0; align-items: stretch; }
+.plan-parts .plan-item-photo { width: 100%; height: 96px; }
+.plan-parts .plan-item-move { display: flex; flex-wrap: wrap; gap: 6px; justify-items: start; }
 .plan-item { display: grid; grid-template-columns: 84px 1fr auto; gap: 14px; align-items: center; padding: 10px; border: 1px solid var(--line); border-radius: 14px; margin-bottom: 10px; background: rgba(255, 255, 255, 0.02); }
 .plan-item-photo { width: 84px; height: 84px; border-radius: 10px; overflow: hidden; }
 .plan-item-body { display: grid; gap: 4px; min-width: 0; }
@@ -818,6 +852,44 @@ li.done .tick::after { content: ""; width: 5px; height: 9px; border: solid #0329
 .plan-item-move select { background: rgba(6, 12, 20, 0.7); border: 1px solid var(--line); border-radius: 8px; padding: 5px 8px; font-size: 12.5px; color: var(--text); color-scheme: dark; }
 .plan-empty-note { margin-top: 14px; padding-top: 14px; border-top: 1px dashed var(--line-2); display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
 
+/* Save bar on the trip and day plan pages */
+.savebar { display: flex; align-items: center; gap: 10px 14px; flex-wrap: wrap; padding: 10px 14px; border-radius: 14px; margin: 16px 0 18px; max-width: 900px; }
+.savebar.saved { border-color: var(--teal-2); }
+.savebar-state { font-size: 12.5px; font-weight: 700; color: var(--muted); }
+.savebar.saved .savebar-state { color: var(--teal); }
+.savebar-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.savebar-time { font-size: 12.5px; }
+.savebar input { flex: 1 1 220px; min-width: 0; background: rgba(6, 12, 20, 0.7); border: 1px solid var(--line); border-radius: 10px; padding: 8px 12px; color: var(--text); font: inherit; }
+.trip-hero .savebar { margin-bottom: 0; }
+.trips-name { color: var(--teal); font-size: 15px; }
+.trips-open { display: grid; gap: 4px; margin-bottom: 8px; }
+.trips-open .savebar { margin-top: 4px; }
+.trips-actions { display: inline-flex; align-items: center; gap: 2px; flex-wrap: wrap; justify-content: flex-end; }
+.trips-rename { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; width: 100%; }
+.trips-rename input { flex: 1 1 140px; min-width: 0; background: rgba(6, 12, 20, 0.7); border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; color: var(--text); font: inherit; font-size: 13.5px; }
+
+/* My trips */
+.trips-group { margin-bottom: 16px; display: grid; gap: 14px; }
+.trips-group-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
+.trips-group-head .card-title { margin: 0; }
+.trips-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 12px; }
+.trips-card { display: grid; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); overflow: hidden; }
+.trips-card.open { border-color: var(--teal); box-shadow: 0 0 0 1px var(--teal) inset; }
+.trips-card-main { display: grid; grid-template-columns: 96px 1fr; gap: 12px; padding: 10px; background: none; border: 0; color: inherit; text-align: left; cursor: pointer; font: inherit; }
+.trips-card-main:hover { background: rgba(255, 255, 255, 0.03); }
+.trips-photo { width: 96px; height: 96px; border-radius: 10px; overflow: hidden; }
+.trips-body { display: grid; gap: 4px; min-width: 0; align-content: start; }
+.trips-body .muted { font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.trips-when { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.trips-card-foot { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 4px 10px 6px; border-top: 1px solid var(--line); }
+.trips-confirm { display: inline-flex; align-items: center; gap: 2px; flex-wrap: wrap; }
+.trips-confirm .muted { font-size: 13px; }
+@media (max-width: 480px) {
+  .trips-grid { grid-template-columns: 1fr; }
+  .trips-card-main { grid-template-columns: 72px 1fr; }
+  .trips-photo { width: 72px; height: 72px; }
+}
+
 .plan-suggestions { margin-top: 26px; display: grid; gap: 20px; }
 .suggest-group { display: grid; gap: 10px; }
 .suggest-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
@@ -825,6 +897,12 @@ li.done .tick::after { content: ""; width: 5px; height: 9px; border: solid #0329
 .suggest-photo { width: 56px; height: 56px; border-radius: 10px; overflow: hidden; flex: none; }
 .suggest-body { display: grid; gap: 3px; min-width: 0; }
 .suggest-body p.muted { font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@media (max-width: 900px) {
+  .plan-parts { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 480px) {
+  .plan-parts { grid-template-columns: 1fr; }
+}
 @media (max-width: 640px) {
   .plan-item { grid-template-columns: 64px 1fr; }
   .plan-item-photo { width: 64px; height: 64px; }

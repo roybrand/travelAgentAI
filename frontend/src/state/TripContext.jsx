@@ -3,6 +3,7 @@ import { fetchConfig, fetchDestinations, planTrip } from "../api";
 import { clearStoredProfile, loadProfile, storeProfile } from "../lib/profile";
 import { isoDate } from "../lib/format";
 import { candidateItems, nextSlot, scheduledItems } from "../lib/dayplan";
+import { loadCurrentTripId, loadTrips, newTripId, storeCurrentTripId, storeTrips } from "../lib/trips";
 
 const Ctx = createContext(null);
 export const useTrip = () => useContext(Ctx);
@@ -23,15 +24,26 @@ export function tripDefaults() {
   };
 }
 
+/** The trip that was open when the page was last closed, so a refresh does not lose it. */
+function reopenedTrip() {
+  const id = loadCurrentTripId();
+  return (id && loadTrips().find((t) => t.id === id)) || null;
+}
+
 export function TripProvider({ children }) {
+  const [initial] = useState(reopenedTrip);
   const [form, setForm] = useState(tripDefaults);
-  const [result, setResult] = useState(null);
+  const [result, setResult] = useState(initial?.result ?? null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [hotelId, setHotelId] = useState(null);
+  const [hotelId, setHotelId] = useState(initial?.hotelId ?? null);
   // The day plan: { [itemKey]: { day, part, order } }. Nothing goes in here except by an explicit action of the
   // traveler's (a tap to add, or a move) — the plan starts empty and nothing is pre-approved for them.
-  const [schedule, setSchedule] = useState({});
+  const [schedule, setSchedule] = useState(initial?.schedule ?? {});
+  // Saved trips (browser only) and which one is open. Every planned trip is saved; it stays until deleted.
+  const [savedTrips, setSavedTrips] = useState(loadTrips);
+  const [tripId, setTripId] = useState(initial?.id ?? null);
+  const [saveError, setSaveError] = useState("");
   const [config, setConfig] = useState({ openai: false, amadeus: false, offline: false });
   const [destinations, setDestinations] = useState([]);
   const [profile, setProfileState] = useState(loadProfile);
@@ -77,9 +89,13 @@ export function TripProvider({ children }) {
       // The form and the prompt builder are separate processes: place types come only from what the caller sends.
       const withTypes = { ...payload, place_types: payload.place_types ?? [] };
       const [data] = await Promise.all([planTrip(withTypes), new Promise((r) => setTimeout(r, 2300))]);
+      const id = newTripId();
+      const now = new Date().toISOString();
       setResult(data);
       setHotelId(data.itinerary.hotel.id);
       setSchedule({});
+      setTripId(id);
+      setSavedTrips((list) => [{ id, savedAt: now, updatedAt: now, result: data, hotelId: data.itinerary.hotel.id, schedule: {} }, ...list]);
       return true;
     } catch (e) {
       setError(e.message || "Something went wrong.");
@@ -89,8 +105,9 @@ export function TripProvider({ children }) {
     }
   }, []);
 
-  /** Forget the current trip and put the search form back to its defaults. The traveler profile is kept. */
+  /** Close the current trip (it stays saved) and put the search form back to its defaults. The profile is kept. */
   const resetSearch = useCallback(() => {
+    setTripId(null);
     setResult(null);
     setHotelId(null);
     setSchedule({});
@@ -99,10 +116,10 @@ export function TripProvider({ children }) {
     setForm(tripDefaults());
   }, []);
 
-  /** Add or remove an item from the plan. Adding auto-places it (the fewest-filled day, a time of day guessed
-   * from its tags); the traveler can move or remove it afterwards on the Day plan tab. Nothing is added without
-   * this being called from an explicit tap. */
-  const toggleItem = useCallback((item) => {
+  /** Add or remove an item from the plan. `target` ({ day, part }) is the slot the traveler picked on the Day plan
+   * tab; without it (e.g. from Explore) the item goes to the fewest-filled day at a time guessed from its tags. The
+   * traveler can move or remove it afterwards. Nothing is added without this being called from an explicit tap. */
+  const toggleItem = useCallback((item, target) => {
     const key = item.key || item.name;
     setSchedule((s) => {
       if (s[key]) {
@@ -111,9 +128,64 @@ export function TripProvider({ children }) {
         return next;
       }
       const nights = result?.itinerary?.nights || 1;
-      return { ...s, [key]: { ...nextSlot(s, nights, item), order: Date.now() } };
+      return { ...s, [key]: { ...nextSlot(s, nights, item, target), order: Date.now() } };
     });
   }, [result]);
+
+  // Keep the open trip's saved copy in step with the traveler's choices, and remember which trip is open.
+  useEffect(() => {
+    if (!tripId) return;
+    setSavedTrips((list) => list.map((t) => (t.id === tripId && (t.hotelId !== hotelId || JSON.stringify(t.schedule) !== JSON.stringify(schedule))
+      ? { ...t, hotelId, schedule, updatedAt: new Date().toISOString() } : t)));
+  }, [tripId, hotelId, schedule]);
+  useEffect(() => {
+    setSaveError(storeTrips(savedTrips) ? "" : "This browser's storage is full, so the latest changes are not saved. Delete an old trip to make room.");
+  }, [savedTrips]);
+  useEffect(() => storeCurrentTripId(tripId), [tripId]);
+
+  /** Reopen a saved trip exactly as it was left: its stay and its day plan. */
+  const openTrip = useCallback((id) => {
+    const t = loadTrips().find((x) => x.id === id) || savedTrips.find((x) => x.id === id);
+    if (!t) return false;
+    setResult(t.result);
+    setHotelId(t.hotelId ?? t.result.itinerary.hotel.id);
+    setSchedule(t.schedule || {});
+    setError("");
+    setReadback(null);
+    setTripId(t.id);
+    return true;
+  }, [savedTrips]);
+
+  /** Give a saved trip a name of the traveler's own ("Honeymoon"); an empty name goes back to the default. */
+  const renameTrip = useCallback((id, name) => {
+    const clean = (name || "").trim().slice(0, 60);
+    setSavedTrips((list) => list.map((t) => (t.id === id ? { ...t, name: clean || null, updatedAt: new Date().toISOString() } : t)));
+  }, []);
+
+  /** Save the open trip if it is not saved (e.g. its saved copy was deleted while it stayed open). Returns its id. */
+  const saveCurrentTrip = useCallback((name) => {
+    if (!result) return null;
+    if (tripId && savedTrips.some((t) => t.id === tripId)) return tripId;
+    const id = newTripId();
+    const now = new Date().toISOString();
+    setSavedTrips((list) => [{ id, name: (name || "").trim().slice(0, 60) || null, savedAt: now, updatedAt: now, result, hotelId, schedule }, ...list]);
+    setTripId(id);
+    return id;
+  }, [result, tripId, savedTrips, hotelId, schedule]);
+
+  /** Delete saved trips for good. Deleting the open trip also closes it. */
+  const deleteTrips = useCallback((ids) => {
+    const gone = new Set(ids);
+    setSavedTrips((list) => list.filter((t) => !gone.has(t.id)));
+    if (tripId && gone.has(tripId)) {
+      setTripId(null);
+      setResult(null);
+      setHotelId(null);
+      setSchedule({});
+    }
+  }, [tripId]);
+
+  const savedTrip = tripId ? savedTrips.find((t) => t.id === tripId) || null : null;
 
   /** Move an already-planned item to a different day or time of day. */
   const moveItem = useCallback((key, day, part) => {
@@ -138,6 +210,7 @@ export function TripProvider({ children }) {
   const value = {
     form, setForm, result, trip, loading, error, setError, plan, hotelId, setHotelId, planned, toggleItem, moveItem,
     config, destinations, cityName, profile, setProfile, forgetProfile, resetSearch, readback, setReadback,
+    savedTrips, tripId, savedTrip, openTrip, deleteTrips, renameTrip, saveCurrentTrip, saveError,
   };
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

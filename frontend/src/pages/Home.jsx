@@ -17,6 +17,15 @@ const FEATURES = [
   ["The right time to go", "Your dates are scored against real historical weather for the destination, with a nudge when a better window exists."],
 ];
 
+// A few real, varied examples so the box never faces someone with a blank page. Clicking one fills it in --
+// nothing is sent until they choose to.
+const EXAMPLES = [
+  "5 days in Tokyo this spring, we love food, temples and a good night out",
+  "Long weekend in Barcelona for 4 friends — nightlife, beach and tapas",
+  "A week in Sydney in December, beaches, hikes and good coffee",
+  "Romantic 6 nights in Paris, museums and wine, nothing too rushed",
+];
+
 export default function Home() {
   const { form, setForm, plan, loading, error, setError, config, destinations, profile, setProfile, forgetProfile, trip, setReadback } = useTrip();
   const navigate = useNavigate();
@@ -30,6 +39,8 @@ export default function Home() {
   const [parsing, setParsing] = useState(false);
   const [image, setImage] = useState(null);
   const fileRef = useRef(null);
+  // The manual form is tucked away by default so the AI box reads as the product, not "option 1 of 2".
+  const [showForm, setShowForm] = useState(false);
   const [assumptions, setAssumptions] = useState([]);
   // Set when the words did not name a usable city: we ask instead of guessing.
   const [ask, setAsk] = useState(null);
@@ -173,15 +184,20 @@ export default function Home() {
           <div className="process-stack">
             {config.openai && (
               <motion.section
-                className="search glass prompt-card"
+                className="search glass prompt-card ai-card"
                 aria-label="Describe your trip"
                 initial={{ opacity: 0, y: 24 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.25, duration: 0.6 }}
               >
   <div className="ai-box">
-                  <h2 className="process-title">✨ Describe your trip</h2>
-                  <p className="muted">Write it the way you would say it. I read your words only and build the whole trip from them. The form below is not used.</p>
+                  <div className="ai-heading">
+                    <span className="ai-orb" aria-hidden="true" />
+                    <div>
+                      <h2 className="process-title">Tell me about your dream trip</h2>
+                      <p className="muted">Talk to me the way you'd tell a friend. I'll work out the destination, dates and vibe, then search real flights, hotels and things to do myself.</p>
+                    </div>
+                  </div>
                   <label className="field">
                     <span className="sr-only">Describe your trip</span>
                     <textarea
@@ -192,6 +208,14 @@ export default function Home() {
                       onChange={(e) => setFreeText(e.target.value)}
                     />
                   </label>
+                  {!freeText && !image && (
+                    <div className="example-chips">
+                      <span className="example-label">Try one:</span>
+                      {EXAMPLES.map((ex) => (
+                        <button type="button" key={ex} className="chip example" onClick={() => setFreeText(ex)}>{ex}</button>
+                      ))}
+                    </div>
+                  )}
                   <div className="ai-actions">
                     <input ref={fileRef} type="file" accept="image/*" hidden onChange={pickImage} />
                     {image ? (
@@ -247,18 +271,31 @@ export default function Home() {
                 </div>
               </motion.section>
             )}
-            {config.openai && <div className="or-divider"><span>or plan it yourself</span></div>}
 
+            {trip && <p className="fine tight last-trip-note">Your last trip is still saved. <Link to="/trip">Go back to it</Link> or plan a different one.</p>}
+
+            {config.openai && !showForm && (
+              <button type="button" className="form-toggle" onClick={() => setShowForm(true)}>
+                Prefer to fill in the details yourself? <span>Open the form →</span>
+              </button>
+            )}
+
+            <AnimatePresence>
+            {(showForm || !config.openai) && (
             <motion.form
               className="search glass"
               onSubmit={submit}
               noValidate
               aria-label="Plan with the form"
-              initial={{ opacity: 0, y: 24 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.35, duration: 0.6 }}
+              initial={config.openai ? { opacity: 0, height: 0 } : { opacity: 0, y: 24 }}
+              animate={config.openai ? { opacity: 1, height: "auto" } : { opacity: 1, y: 0 }}
+              exit={config.openai ? { opacity: 0, height: 0 } : undefined}
+              transition={{ duration: config.openai ? 0.35 : 0.6, delay: config.openai ? 0 : 0.35 }}
             >
-              <h2 className="process-title">Plan with the form</h2>
+              <div className="card-head">
+                <h2 className="process-title">Plan with the form</h2>
+                {config.openai && <button type="button" className="link-btn plain" onClick={() => setShowForm(false)}>Hide the form</button>}
+              </div>
               <div className="dest-grid" role="radiogroup" aria-label="Popular destinations">
                 {SHOWCASE.map((s) => (
                   <button
@@ -327,9 +364,10 @@ export default function Home() {
                 </button>
                 <button className="btn ghost big" type="button" onClick={resetForm} disabled={loading}>↺ Reset</button>
               </div>
-              {trip && <p className="fine tight">Your last trip is still saved. <Link to="/trip">Go back to it</Link> or plan a different one.</p>}
               <p className="fine tight">The first search for a city can take up to a minute while live data is gathered. After that it is fast.</p>
             </motion.form>
+            )}
+            </AnimatePresence>
           </div>
         </div>
       </section>

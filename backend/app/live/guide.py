@@ -6,7 +6,7 @@ FICTIONAL demo venues and discounts are dropped and replaced by real nearby rest
 """
 from datetime import date
 
-from app.live import catalog, climate, osm, places
+from app.live import catalog, climate, osm, photos, places
 from app.mcp_tools.guides_data import assess_timing, build_guide
 
 MONTH_NAMES = ["January", "February", "March", "April", "May", "June", "July", "August", "September",
@@ -71,6 +71,10 @@ def build_live_guide(dest: dict, start_date: str, end_date: str, interests: list
                 by_type[kind] = {"label": osm.PLACE_TYPES[kind][0], "places": found}
         except Exception:
             by_type = {}
+
+    # Anything still without a photo (curated activities, beaches, zoos, sights whose image is not reusable) gets a
+    # real credited one looked up by name, link or location, where one exists.
+    photos.fill(place_items + adventure_items + [p for g in by_type.values() for p in g["places"]], dest["city"])
 
     place_items.sort(key=lambda i: -len(i["matches"]))
     adventure_items.sort(key=lambda i: -len(i["matches"]))

@@ -31,8 +31,13 @@ export function candidateItems(guide) {
   });
 }
 
-/** Where a newly-added item lands: the day with the fewest items so far, spreading the plan out evenly. */
-export function nextSlot(schedule, nights, item) {
+/** Where a newly-added item lands. On the Day plan tab the traveler picks it (the open day and the chosen time of
+ * day), so it goes exactly there. Otherwise fall back to the day with the fewest items so far and a guessed time. */
+export function nextSlot(schedule, nights, item, target) {
+  if (target?.day) {
+    const day = Math.min(Math.max(1, target.day), Math.max(1, nights));
+    return { day, part: PARTS.includes(target.part) ? target.part : guessPart(item) };
+  }
   const counts = Array.from({ length: Math.max(1, nights) }, () => 0);
   Object.values(schedule).forEach((s) => {
     if (s.day >= 1 && s.day <= counts.length) counts[s.day - 1] += 1;

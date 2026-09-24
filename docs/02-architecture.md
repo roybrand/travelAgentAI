@@ -158,7 +158,8 @@ travelAgentAi/
 │   │   │   └── combine.py       Pairing, ranking, rationale, pros/cons
 │   │   ├── live/                Live sources: catalog (109 cities), climate, places, osm, amadeus, llm, pricing,
 │   │   │                        travel.py (flight and stay search: Amadeus, Travelpayouts, estimates), geo.py (distances), nearby, guide,
-│   │   │                        nightlife.py (Tonight: best clubs and bars for one night)
+│   │   │                        nightlife.py (Tonight: best clubs and bars for one night),
+│   │   │                        photos.py (finds a credited photo for activities, beaches, zoos and other photo-less items)
 │   │   ├── partners/            The partner side, see doc 07
 │   │   │   ├── db.py            SQLite schema and connections (backend/data/partners.db)
 │   │   │   ├── security.py      scrypt passwords, hashed tokens and keys, rate limiter

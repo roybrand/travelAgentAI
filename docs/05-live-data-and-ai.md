@@ -127,6 +127,23 @@ last 30 days**, boosted when the description reads like an attraction. Junk (sta
 circuits) and lead images that are maps or diagrams are filtered out. Only photos under CC BY, CC BY-SA,
 CC0 or public-domain licences are kept, each with author and licence.
 
+### Photos for everything else (`app/live/photos.py`)
+
+Activities ("Float in the Dead Sea", "Sunset sail on the Tagus"), OpenStreetMap places (beaches, zoos, parks) and
+sights whose own image is not reusable get a photo looked up for them, most exact source first:
+
+1. The place's own Wikipedia article or Wikidata item, when OpenStreetMap links one (Ramat Gan Safari, most named beaches).
+2. For beaches, viewpoints and parks, Commons photos **taken within 400 m** whose file name says what they show
+   (beach, sea, sunset...). Photos of events (protests, parades, weddings) are skipped.
+3. A Wikipedia search on the name, kept only if the article title shares a real word with it.
+4. A Commons photo search on the name, kept only if the file name contains its proper name ("Tagus") or, for a
+   generic activity, a key word plus the city ("Dubai desert safari").
+
+Curated activities whose name describes an activity rather than a place carry a `photo_query` (for example
+"Dead Sea"). The same licence rule applies, with author and licence shown. Lookups run in parallel and are
+cached for 30 days, including "no photo found". A lookup that failed because a source was down is not
+cached. When nothing fits, the item keeps its placeholder rather than showing a wrong picture.
+
 ### Hotel neighbourhood signals (real data, computed)
 
 | Signal | How it is computed | Interest it feeds |

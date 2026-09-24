@@ -13,6 +13,7 @@ import { PLACE_TYPE_LABEL } from "../lib/profile";
 import { PART_LABEL, PARTS } from "../lib/dayplan";
 import CountUp from "../components/CountUp.jsx";
 import Photo from "../components/Photo.jsx";
+import SaveTripBar from "../components/SaveTripBar.jsx";
 import SourceBadge from "../components/SourceBadge.jsx";
 
 const C = { flight: "#818cf8", stay: "#2dd4bf", exp: "#f5c76a" };
@@ -104,6 +105,7 @@ export default function Trip() {
               <Link to="/" className="btn ghost sm">✎ Change this search</Link>
               <button className="btn primary sm" onClick={() => { resetSearch(); navigate("/"); }}>↺ Start a new search</button>
             </div>
+            <SaveTripBar />
           </motion.div>
         </div>
       </section>

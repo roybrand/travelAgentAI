@@ -7,6 +7,7 @@ import { useTrip } from "./state/TripContext.jsx";
 import Home from "./pages/Home.jsx";
 import Trip from "./pages/Trip.jsx";
 import DayPlan from "./pages/DayPlan.jsx";
+import Trips from "./pages/Trips.jsx";
 import Stays from "./pages/Stays.jsx";
 import Explore from "./pages/Explore.jsx";
 import Credits from "./pages/Credits.jsx";
@@ -21,7 +22,7 @@ import Partners from "./pages/Partners.jsx";
 import Admin from "./pages/Admin.jsx";
 
 function Header() {
-  const { trip, resetSearch } = useTrip();
+  const { trip, resetSearch, savedTrips } = useTrip();
   const navigate = useNavigate();
   const { prefs } = useNearby();
   const live = prefs.enabled;
@@ -42,6 +43,7 @@ function Header() {
       </Link>
       <nav className="tabs" aria-label="Sections">
         <NavLink to="/" end>Home</NavLink>
+        {savedTrips.length > 0 && <NavLink to="/trips" end>My trips</NavLink>}
         {trip && (
           <>
             <NavLink to="/trip">Your trip</NavLink>
@@ -79,9 +81,10 @@ function Header() {
 
 /** The bar at the bottom of the screen on phones, where the top tabs would not fit. */
 function BottomNav() {
-  const { trip } = useTrip();
+  const { trip, savedTrips } = useTrip();
   const items = [
     ["/", "Home", "🏠", true],
+    ...(savedTrips.length ? [["/trips", "Trips", "🗂️", true]] : []),
     ...(trip ? [["/trip", "Trip", "🧳", false], ["/plan", "Plan", "🗓️", false]] : []),
     ["/tonight", "Tonight", "🌙", false],
     ["/people", "People", "👥", false],
@@ -140,6 +143,7 @@ function Footer() {
     <footer className="footer">
       <nav className="footer-nav" aria-label="Site">
         <Link to="/">Home</Link>
+        <Link to="/trips">My trips</Link>
         <Link to="/tonight">Tonight</Link>
         <Link to="/people">People</Link>
         <Link to="/deals">Deals</Link>
@@ -182,6 +186,7 @@ export default function App() {
             <Route path="/" element={<Home />} />
             <Route path="/trip" element={<Trip />} />
             <Route path="/plan" element={<DayPlan />} />
+            <Route path="/trips" element={<Trips />} />
             <Route path="/stays" element={<Stays />} />
             <Route path="/explore" element={<Explore />} />
             <Route path="/nearby" element={<Nearby />} />

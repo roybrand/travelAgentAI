@@ -48,7 +48,7 @@ app.include_router(alerts_router)
 
 STATIC_DIR = Path(__file__).parent / "static"
 FRONTEND_DIST = Path(__file__).resolve().parents[2] / "frontend" / "dist"
-SPA_ROUTES = ("trip", "stays", "explore", "nearby", "tonight", "people", "alerts", "deals", "partners", "admin", "credits")  # client-side routes served by the React app
+SPA_ROUTES = ("trip", "plan", "trips", "stays", "explore", "nearby", "tonight", "people", "alerts", "deals", "partners", "admin", "credits")  # client-side routes served by the React app
 
 if (FRONTEND_DIST / "index.html").exists():
     app.mount("/assets", StaticFiles(directory=FRONTEND_DIST / "assets"), name="assets")

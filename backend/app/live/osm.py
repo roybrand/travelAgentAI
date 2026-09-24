@@ -272,6 +272,7 @@ def _place_record(dest: dict, e_type: str, e_id: int, tags: dict, pt, kind: str)
         "website": tags.get("website") or tags.get("contact:website"),
         "opening_hours": tags.get("opening_hours"),
         "wikipedia": tags.get("wikipedia"),
+        "wikidata": tags.get("wikidata"),
         "osm_url": f"https://www.openstreetmap.org/{e_type}/{e_id}",
         "notable": bool(tags.get("wikipedia") or tags.get("wikidata")),
     }
@@ -313,7 +314,11 @@ def places_of_type(dest: dict, types: list[str], per_type: int = 8) -> dict[str,
         try:
             return _fetch_types_overpass(dest, wanted)
         except Exception:
-            return _fetch_types_nominatim(dest, wanted)
+            found = _fetch_types_nominatim(dest, wanted)
+            if not found:
+                # The fallback found nothing: do not cache that for two weeks, try Overpass again next time.
+                raise RuntimeError("no places of these types from the fallback")
+            return found
 
     found = cached(key, 14 * DAY, fetch)
     grouped: dict[str, list[dict]] = {k: [] for k in wanted}
