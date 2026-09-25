@@ -6,6 +6,7 @@ import { candidateItems, scheduledItems } from "../lib/dayplan";
 import { money, shortDate } from "../lib/format";
 import Photo from "../components/Photo.jsx";
 import SaveTripBar from "../components/SaveTripBar.jsx";
+import AccountPanel from "../components/AccountPanel.jsx";
 
 /** The numbers a saved trip card shows, worked out the same way as the open trip's total. */
 function summarize(t) {
@@ -95,10 +96,11 @@ export default function Trips() {
           <div className="eyebrow">My trips</div>
           <h1 className="h2">Your saved trips</h1>
           <p className="muted">
-            Every trip you plan is saved here, with its stay and day plan, until you delete it. They are kept in this browser only.
+            Every trip you plan is saved here, with its stay and day plan, until you delete it.
           </p>
         </div>
       </div>
+      <AccountPanel />
       {saveError && <p className="error">{saveError}</p>}
       {trip && (
         <div className="trips-open">

@@ -20,6 +20,8 @@ import SafetyCheckin from "./pages/SafetyCheckin.jsx";
 import { AlertBell, AlertToasts } from "./components/AlertBell.jsx";
 import Partners from "./pages/Partners.jsx";
 import Admin from "./pages/Admin.jsx";
+import MoreMenu, { useMoreItems } from "./components/MoreMenu.jsx";
+import { useAlerts } from "./state/AlertsContext.jsx";
 
 function Header() {
   const { trip, resetSearch, savedTrips } = useTrip();
@@ -27,6 +29,7 @@ function Header() {
   const { prefs } = useNearby();
   const live = prefs.enabled;
   const [online, setOnline] = useState(null);
+  const [more, setMore] = useState(false);
   useEffect(() => {
     const run = () => checkHealth().then(setOnline);
     run();
@@ -55,7 +58,9 @@ function Header() {
         <NavLink to="/people">People</NavLink>
         <NavLink to="/deals">Deals</NavLink>
         <NavLink to="/nearby">Nearby{live && <i className="live-dot" title="Live recommendations are on" />}</NavLink>
+        <button type="button" className="tab-more" onClick={() => setMore(true)} aria-haspopup="dialog">More ▾</button>
       </nav>
+      <MoreMenu open={more} onClose={() => setMore(false)} />
       {trip && (
         <button
           className="btn ghost sm new-search"
@@ -78,28 +83,38 @@ function Header() {
   );
 }
 
-/** The bar at the bottom of the screen on phones, where the top tabs would not fit. */
+/** The bar at the bottom of the screen on phones: five big, labelled buttons for what's used most, and More for the
+ * rest (a sheet with every other part of the app). Always on screen, never at the end of a page. */
 function BottomNav() {
-  const { trip, savedTrips } = useTrip();
+  const { trip } = useTrip();
+  const { unseen } = useAlerts();
+  const { pathname } = useLocation();
+  const [more, setMore] = useState(false);
+  const moreItems = useMoreItems();
   const items = [
     ["/", "Home", "🏠", true],
-    ...(savedTrips.length ? [["/trips", "Trips", "🗂️", true]] : []),
-    ...(trip ? [["/trip", "Trip", "🧳", false]] : []),
+    trip ? ["/trip", "Trip", "🧳", false] : ["/trips", "My trips", "🗂️", true],
     ["/tonight", "Tonight", "🌙", false],
-    ["/people", "People", "👥", false],
     ["/deals", "Deals", "🏷️", false],
-    ["/nearby", "Nearby", "📍", false],
-    ["/partners", "Business", "🏢", false],
   ];
+  const inMore = moreItems.some(([to]) => to === pathname) && !items.some(([to]) => to === pathname);
   return (
-    <nav className="bottomnav" aria-label="Main">
-      {items.map(([to, label, icon, end]) => (
-        <NavLink key={to} to={to} end={end}>
-          <span aria-hidden="true">{icon}</span>
-          {label}
-        </NavLink>
-      ))}
-    </nav>
+    <>
+      <nav className="bottomnav" aria-label="Main">
+        {items.map(([to, label, icon, end]) => (
+          <NavLink key={to} to={to} end={end}>
+            <span aria-hidden="true">{icon}</span>
+            {label}
+          </NavLink>
+        ))}
+        <button type="button" className={`bn-more ${inMore ? "active" : ""}`} onClick={() => setMore(true)} aria-haspopup="dialog">
+          <span aria-hidden="true">☰</span>
+          More
+          {unseen.length > 0 && <i className="bn-badge">{unseen.length > 9 ? "9+" : unseen.length}</i>}
+        </button>
+      </nav>
+      <MoreMenu open={more} onClose={() => setMore(false)} />
+    </>
   );
 }
 
@@ -140,14 +155,8 @@ function Toasts() {
 function Footer() {
   return (
     <footer className="footer">
+      {/* Secondary links only: every main part of the app is in the top tabs or More (desktop) and the bottom bar (phones). */}
       <nav className="footer-nav" aria-label="Site">
-        <Link to="/">Home</Link>
-        <Link to="/trips">My trips</Link>
-        <Link to="/tonight">Tonight</Link>
-        <Link to="/people">People</Link>
-        <Link to="/deals">Deals</Link>
-        <Link to="/alerts">Radar</Link>
-        <Link to="/nearby">Nearby</Link>
         <Link to="/partners">For businesses</Link>
         <Link to="/credits">Credits</Link>
         <Link to="/admin">Admin</Link>

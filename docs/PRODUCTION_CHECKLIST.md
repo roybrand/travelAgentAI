@@ -127,17 +127,26 @@ setup effort for a small FastAPI + SQLite app:
 - [ ] **Back up `backend/data/partners.db`** on a schedule (a daily cron copying it to S3/Backblaze
   is enough at this scale), and before every deploy. It now holds partners, deals, People accounts,
   reservations and voucher check-ins. Right now a lost disk means a lost database.
-- [ ] **Plan the Postgres move before you need it**, not during an outage. SQLite comfortably
-  handles a single-writer prototype; move once you have real concurrent write load (many partners
-  and travelers acting at once). The schema in `backend/app/partners/db.py` is plain SQL, so this
-  is a driver change, not a redesign — but it is real work, budget a day for it.
+- [x] **PostgreSQL support is built** (F-213): set `WAYFINDER_DATABASE_URL=postgresql://…` and the server uses
+  it; schema changes are numbered migrations (F-214). The whole test suite passes on both databases:
+  `sh scripts/test_postgres.sh` (from `backend/`) runs it on Postgres in Docker.
+- [ ] **Create a managed PostgreSQL database** (Neon, Supabase, Render, Railway, AWS RDS, …) with automatic
+  daily backups, in the same region as your server. Put its URL only in the production `.env`.
+- [ ] **Move your data once:** `WAYFINDER_DATABASE_URL=… python scripts/migrate_sqlite_to_postgres.py`
+  (F-215). On a copy of today's database it copied every business, deal and account and skipped 38
+  orphaned rows left by old deletions. Then start the server with the URL set, and keep the SQLite file
+  as a backup.
+- [ ] **Photos to object storage:** People and business photos are still files in `backend/data/`. Move them
+  to S3 or Cloudflare R2 before running more than one server (not built).
 - [ ] **Rate limits currently live in memory** (`app/partners/security.py`), so they reset on every
   restart and don't share state across multiple server instances. Fine for one process; revisit if
   you ever run more than one.
-- [ ] **Know what lives only in the traveler's browser:** saved trips, day plans, moods, booked
-  flights/stays (demo), deal vouchers and traveler names entered at checkout are kept in the
-  browser (`localStorage`). Clearing it, or changing phone, loses them. Before real travelers depend
-  on it, decide on **traveler accounts with server-side trips** (not built). Say so in the privacy policy.
+- [x] **Trips are kept with the account when signed in** (F-216): trips, day plans, moods, bookings and deal
+  vouchers sync across devices. Without an account they still live only in the browser, and the app says so.
+- [ ] **Traveler names typed at checkout stay on the device** by design (F-217). When real bookings exist,
+  traveler details must be stored server-side, encrypted, and covered by the privacy policy. **Lawyer.**
+- [ ] **Password reset** is still missing (§5): with trips now in accounts, a forgotten password means
+  losing access to them. Build it before inviting real travelers to create accounts.
 - [ ] Deal bookings made **before 25 Sep 2026** never stored their voucher on the server, so a
   business can't look them up by voucher. Clear old test bookings before launch (§8).
 

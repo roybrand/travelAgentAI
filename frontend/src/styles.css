@@ -1229,3 +1229,37 @@ li.done .tick::after { content: ""; width: 5px; height: 9px; border: solid #0329
 .today-row td { background: rgba(45, 212, 191, 0.05); }
 .db-ref.used { border-style: solid; border-color: rgba(52, 211, 153, 0.6); }
 @media (max-width: 560px) { .voucher-check { grid-template-columns: 1fr; } }
+
+/* ============ account: trips on every device ============ */
+.acct-panel { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 14px; padding: 12px 16px; border-radius: 14px; margin: 0 0 16px; font-size: 14px; }
+.acct-panel.off { border: 1px solid rgba(245, 199, 106, 0.4); background: rgba(245, 199, 106, 0.06); }
+.acct-panel.on { border: 1px solid rgba(45, 212, 191, 0.4); background: rgba(45, 212, 191, 0.06); }
+.acct-panel.on.error { border-color: rgba(248, 113, 113, 0.5); background: rgba(248, 113, 113, 0.06); }
+.acct-panel.compact { margin: 10px 0 0; }
+.acct-actions { display: flex; gap: 14px; }
+.acct-form { display: grid; gap: 12px; }
+
+/* ============ navigation: five big buttons + More ============ */
+.tab-more { background: none; border: 0; color: var(--muted); padding: 7px 16px; border-radius: 999px; font: inherit; font-size: 14px; font-weight: 600; cursor: pointer; white-space: nowrap; }
+.tab-more:hover { color: var(--text); background: rgba(255, 255, 255, 0.04); }
+.more-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; }
+.more-tile { display: grid; grid-template-columns: 40px 1fr; grid-template-areas: "icon label" "icon hint"; gap: 0 12px; align-items: center; padding: 12px 14px; border-radius: 14px; border: 1px solid var(--line); background: var(--surface); color: var(--text); text-decoration: none !important; transition: border-color 0.15s; }
+.more-tile:hover, .more-tile.on { border-color: var(--teal-2); }
+.more-icon { grid-area: icon; width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center; background: var(--surface-2); font-size: 20px; }
+.more-tile b { grid-area: label; font-size: 15px; }
+.more-tile small { grid-area: hint; color: var(--muted); font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bottomnav .bn-more { position: relative; display: grid; justify-items: center; gap: 2px; flex: 1; padding: 4px 2px; background: none; border: 0; font: inherit; font-weight: 600; color: var(--muted); border-radius: 10px; cursor: pointer; }
+.bn-badge { position: absolute; top: 0; right: calc(50% - 22px); min-width: 17px; height: 17px; padding: 0 4px; border-radius: 999px; background: linear-gradient(135deg, #fb7185, #f59e0b); color: #1a0b02; font-style: normal; font-size: 10.5px; font-weight: 800; display: grid; place-items: center; }
+@media (max-width: 760px) {
+  .bottomnav a, .bottomnav .bn-more { font-size: 12.5px; padding: 6px 2px; gap: 3px; }
+  .bottomnav a span, .bottomnav .bn-more span { font-size: 23px; }
+  .bottomnav a.active, .bottomnav .bn-more.active { color: #8ff3e4; background: rgba(45, 212, 191, 0.14); }
+  .more-grid { grid-template-columns: 1fr 1fr; }
+  .more-tile { grid-template-columns: 1fr; grid-template-areas: "icon" "label" "hint"; justify-items: start; gap: 6px; }
+  .more-tile small { white-space: normal; }
+}
+/* an open sheet or menu covers the pop-ups (alert toasts sit at 130) */
+.sheet-scrim { z-index: 140; }
+@media (max-width: 760px) {
+  .bottomnav a span, .bottomnav .bn-more span { height: 28px; display: grid; place-items: center; }
+}

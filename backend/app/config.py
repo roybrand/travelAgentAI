@@ -16,7 +16,8 @@ Secrets live in backend/.env (never committed). Copy .env.example to .env and fi
     VAPID_PRIVATE_KEY=...            # generate a free pair: python scripts/generate_vapid_keys.py
     VAPID_SUBJECT=mailto:you@example.com   # required alongside the keys; a contact address for push services
     ADMIN_TOKEN=...                  # required to use the moderation page (/admin); pick a long random string
-    WAYFINDER_DB=...                 # optional: path of the partner/deals SQLite file (default backend/data/partners.db)
+    WAYFINDER_DB=...                 # optional: path of the SQLite file (default backend/data/partners.db)
+    WAYFINDER_DATABASE_URL=...       # production: postgresql://user:password@host:5432/db (then SQLite is not used)
 
 WAYFINDER_OFFLINE=1 disables every network call and uses the built-in demo data (the test suite sets it).
 """
@@ -99,6 +100,12 @@ def vapid_keys() -> tuple[str, str, str] | None:
 def admin_token() -> str | None:
     """The moderation page is disabled until this is set. Deliberately not tied to offline mode."""
     return os.environ.get("ADMIN_TOKEN") or None
+
+
+def database_url() -> str | None:
+    """PostgreSQL in production (postgresql://...). Unset: the SQLite file at db_path()."""
+    url = (os.environ.get("WAYFINDER_DATABASE_URL") or "").strip()
+    return url if url.startswith(("postgresql://", "postgres://")) else None
 
 
 def db_path() -> Path:

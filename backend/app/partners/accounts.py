@@ -37,7 +37,7 @@ def register(name: str, email: str, password: str, business_type: str, city: str
             )
             return {"id": cur.lastrowid, "email": email, "name": name}
     except Exception as exc:
-        if "UNIQUE" in str(exc):
+        if db.is_unique_violation(exc):
             raise AccountError("That email is already registered. Try signing in.", 409) from exc
         raise
 

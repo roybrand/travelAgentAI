@@ -55,7 +55,7 @@ export function DealBookingProvider({ children }) {
       api.status(b.reference, b.manage_token)
         .then((r) => {
           if (r.status !== b.status) {
-            setBookings((list) => list.map((x) => (x.reference === b.reference ? { ...x, status: r.status, redeemed_at: r.redeemed_at, cancelled_at: r.cancelled_at } : x)));
+            setBookings((list) => list.map((x) => (x.reference === b.reference ? { ...x, status: r.status, redeemed_at: r.redeemed_at, cancelled_at: r.cancelled_at, updatedAt: new Date().toISOString() } : x)));
           }
         })
         .catch(() => {});
@@ -102,7 +102,8 @@ export function DealBookingProvider({ children }) {
       const r = await api.create({ deal_id: deal.id, date: form.date, quantity: form.quantity, pay: form.pay, part: form.part, demo_acknowledged: form.ack });
       const inTrip = trip && form.date >= trip.req.start_date && form.date <= dayDate(trip.req.start_date, trip.it.nights + 1);
       const day = inTrip ? Math.round((new Date(form.date + "T00:00:00") - new Date(trip.req.start_date + "T00:00:00")) / 86400000) + 1 : null;
-      const saved = { ...r, part: form.part, tripId: inTrip ? tripId : null, day, bookedAt: new Date().toISOString() };
+      const now = new Date().toISOString();
+      const saved = { ...r, part: form.part, tripId: inTrip ? tripId : null, day, bookedAt: now, updatedAt: now };
       setBookings((list) => [saved, ...list]);
       setDone(saved);
     } catch (e) {
@@ -116,12 +117,33 @@ export function DealBookingProvider({ children }) {
     if (!window.confirm(`Cancel ${b.deal.title} (${b.reference})? In this demo you get a full refund.`)) return;
     try {
       const r = await api.cancel(b.reference, b.manage_token);
-      setBookings((list) => list.map((x) => (x.reference === b.reference ? { ...x, status: r.status, cancelled_at: r.cancelled_at } : x)));
+      setBookings((list) => list.map((x) => (x.reference === b.reference ? { ...x, status: r.status, cancelled_at: r.cancelled_at, updatedAt: new Date().toISOString() } : x)));
       setDeal(null);
     } catch (e) {
       setError(e.message);
     }
   };
+
+  /** Deal bookings arriving from the account: a newer copy replaces this device's; a deleted one goes. */
+  const mergeRemoteBookings = useCallback((docs) => {
+    if (!docs.length) return;
+    const byRef = new Map(docs.map((d) => [d.id, d]));
+    setBookings((list) => {
+      const seen = new Set(list.map((b) => b.reference));
+      const out = list.flatMap((b) => {
+        const d = byRef.get(b.reference);
+        if (!d) return [b];
+        if (d.deleted) return [];
+        return [d.updated_at > (b.updatedAt || b.bookedAt || "") ? d.data : b];
+      });
+      docs.forEach((d) => { if (!seen.has(d.id) && !d.deleted && d.data?.reference) out.push(d.data); });
+      return out.sort((a, b) => (b.bookedAt || "").localeCompare(a.bookedAt || ""));
+    });
+  }, []);
+  const forgetLocalBookings = useCallback((refs) => {
+    const gone = new Set(refs);
+    setBookings((list) => list.filter((b) => !gone.has(b.reference)));
+  }, []);
 
   /** Live (not cancelled) deal bookings for a trip, by trip day. */
   const forTrip = useCallback((id) => bookings.filter((b) => b.tripId && b.tripId === id && b.status !== "cancelled"), [bookings]);
@@ -220,7 +242,7 @@ export function DealBookingProvider({ children }) {
   );
 
   return (
-    <Ctx.Provider value={{ open, openBooking, bookings, forTrip }}>
+    <Ctx.Provider value={{ open, openBooking, bookings, forTrip, mergeRemoteBookings, forgetLocalBookings }}>
       {children}
       {sheet}
     </Ctx.Provider>

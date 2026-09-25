@@ -161,7 +161,7 @@ travelAgentAi/
 │   │   │                        nightlife.py (Tonight: best clubs and bars for one night),
 │   │   │                        photos.py (finds a credited photo for activities, beaches, zoos and other photo-less items)
 │   │   ├── partners/            The partner side, see doc 07
-│   │   │   ├── db.py            SQLite schema and connections (backend/data/partners.db)
+│   │   │   ├── db.py            The one database layer: SQLite (laptop, tests) or PostgreSQL (WAYFINDER_DATABASE_URL), numbered migrations
 │   │   │   ├── security.py      scrypt passwords, hashed tokens and keys, rate limiter
 │   │   │   ├── accounts.py      Sign-up, sessions, API keys, suspension
 │   │   │   ├── deals.py         Deal validation, moderation, payment-blind ranking
@@ -185,6 +185,7 @@ travelAgentAi/
 │   │   │   └── routes.py        The /api/people, /api/push, /api/safety, /api/emergency-numbers and /api/admin/people endpoints
 │   │   ├── alerts.py            The radar: deal, person, request and message alerts, and the RSS feed
 │   │   ├── bookings.py          Demo bookings: totals recomputed, reference and confirmation codes, manage token, cancel
+│   │   ├── account_sync.py      Trips and deal bookings kept with the traveler's account, synced across devices
 │   │   ├── suppliers/           Optional real-time adapters: ticketmaster.py (events), travelpayouts.py (fares)
 │   │   ├── docsync.py           Generates docs/08-api-reference.md from the code
 │   │   ├── mcp_tools/

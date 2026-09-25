@@ -22,6 +22,7 @@ import FlightPicker, { connectionText } from "../components/FlightPicker.jsx";
 import TravelersSheet from "../components/TravelersSheet.jsx";
 import InterestsSheet from "../components/InterestsSheet.jsx";
 import TicketsSheet from "../components/TicketsSheet.jsx";
+import AccountPanel from "../components/AccountPanel.jsx";
 
 const C = { flight: "#818cf8", stay: "#2dd4bf", exp: "#f5c76a" };
 
@@ -373,6 +374,7 @@ export default function Trip() {
 
         <Fold title="Name and saving" hint={savedTrip ? "Saved to My trips" : "Not saved"}>
           <SaveTripBar />
+          <AccountPanel compact />
         </Fold>
 
         <Fold title="Where this data comes from" hint="Live, estimated or demo, for every number">

@@ -199,3 +199,6 @@ export const dealBookings = {
   status: (ref, token) => request(`/api/bookings/deal/${encodeURIComponent(ref)}?${qs({ token })}`),
 };
 export const fetchTripWeather = (params) => request(`/api/trip-weather?${qs(params)}`);
+export const account = {
+  sync: (token, since, docs) => request("/api/account/sync", { method: "POST", token, body: { since, docs } }),
+};

@@ -4,6 +4,7 @@ import { clearStoredProfile, loadProfile, storeProfile } from "../lib/profile";
 import { isoDate } from "../lib/format";
 import { candidateItems, nextSlot, scheduledItems } from "../lib/dayplan";
 import { flightOptions, loadCurrentTripId, loadTrips, newTripId, pickFlight, storeCurrentTripId, storeTrips } from "../lib/trips";
+import { keepPrivate, recordDeletion } from "../lib/sync";
 
 const Ctx = createContext(null);
 export const useTrip = () => useContext(Ctx);
@@ -193,6 +194,55 @@ export function TripProvider({ children }) {
     return true;
   }, [savedTrips]);
 
+  /** Trips arriving from the account (another device changed or deleted them). A newer copy replaces this device's,
+   * keeping its private checkout details; the open trip follows along so the page shows the latest version. */
+  const mergeRemoteTrips = useCallback((docs) => {
+    if (!docs.length) return;
+    const byId = new Map(docs.map((d) => [d.id, d]));
+    setSavedTrips((list) => {
+      const out = [];
+      const seen = new Set();
+      list.forEach((t) => {
+        const d = byId.get(t.id);
+        seen.add(t.id);
+        if (!d) return out.push(t);
+        if (d.deleted) return undefined;
+        return out.push(d.updated_at > (t.updatedAt || "") ? keepPrivate(t, d.data) : t);
+      });
+      docs.forEach((d) => { if (!seen.has(d.id) && !d.deleted && d.data?.result?.itinerary) out.push(d.data); });
+      return out.sort((a, b) => (b.savedAt || "").localeCompare(a.savedAt || ""));
+    });
+    const mine = tripId && byId.get(tripId);
+    if (mine?.deleted) {
+      setTripId(null);
+      setResult(null);
+      setHotelId(null);
+      setFlightId(null);
+      setSchedule({});
+      setMoods({});
+    } else if (mine?.data?.result) {
+      setResult(mine.data.result);
+      setHotelId(mine.data.hotelId ?? mine.data.result.itinerary.hotel.id);
+      setFlightId(mine.data.flightId ?? mine.data.result.itinerary.flight.id);
+      setSchedule(mine.data.schedule || {});
+      setMoods(mine.data.moods || {});
+    }
+  }, [tripId]);
+
+  /** Take trips off this device without recording a deletion (another account signed in; they stay in theirs). */
+  const forgetLocalTrips = useCallback((ids) => {
+    const gone = new Set(ids);
+    setSavedTrips((list) => list.filter((t) => !gone.has(t.id)));
+    if (tripId && gone.has(tripId)) {
+      setTripId(null);
+      setResult(null);
+      setHotelId(null);
+      setFlightId(null);
+      setSchedule({});
+      setMoods({});
+    }
+  }, [tripId]);
+
   /** Give a saved trip a name of the traveler's own ("Honeymoon"); an empty name goes back to the default. */
   const renameTrip = useCallback((id, name) => {
     const clean = (name || "").trim().slice(0, 60);
@@ -213,6 +263,7 @@ export function TripProvider({ children }) {
   /** Delete saved trips for good. Deleting the open trip also closes it. */
   const deleteTrips = useCallback((ids) => {
     const gone = new Set(ids);
+    ids.forEach((id) => recordDeletion("trip", id)); // so the deletion reaches the account's other devices
     setSavedTrips((list) => list.filter((t) => !gone.has(t.id)));
     if (tripId && gone.has(tripId)) {
       setTripId(null);
@@ -320,7 +371,7 @@ export function TripProvider({ children }) {
   const value = {
     form, setForm, result, trip, loading, error, setError, plan, hotelId, setHotelId, flightId, setFlightId, choosePackage, replanTrip, moods, setMood, planned, toggleItem, moveItem,
     config, destinations, cityName, profile, setProfile, forgetProfile, resetSearch, readback, setReadback,
-    savedTrips, tripId, savedTrip, openTrip, deleteTrips, renameTrip, saveCurrentTrip, saveError,
+    savedTrips, tripId, savedTrip, openTrip, deleteTrips, renameTrip, saveCurrentTrip, saveError, mergeRemoteTrips, forgetLocalTrips,
     booking, bookingChanged, ticketChanges, applyTicketChanges, recordBooking, updateBooking,
   };
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

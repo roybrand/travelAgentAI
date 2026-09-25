@@ -18,6 +18,7 @@ from .partners import demo_businesses, stripe_gateway
 from .social import push
 from .alerts import router as alerts_router
 from .bookings import router as bookings_router
+from .account_sync import router as account_router
 from .suppliers import ticketmaster, travelpayouts
 from .schemas import BuildRequest, NearbyRequest, ParseRequest, TripRequest
 
@@ -46,6 +47,7 @@ app.include_router(partner_router)
 app.include_router(people_router)
 app.include_router(alerts_router)
 app.include_router(bookings_router)
+app.include_router(account_router)
 
 
 STATIC_DIR = Path(__file__).parent / "static"

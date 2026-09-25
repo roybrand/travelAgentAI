@@ -53,7 +53,7 @@ def register(email: str, password: str, display_name: str, birth_year: int, agre
                 (email, name, security.hash_password(password), birth_year, int(demo), _now()))
             return {"id": cur.lastrowid}
     except Exception as exc:
-        if "UNIQUE" in str(exc):
+        if db.is_unique_violation(exc):
             raise UserError("That email is already registered. Try signing in.", 409) from exc
         raise
 

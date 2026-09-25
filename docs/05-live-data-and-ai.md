@@ -254,7 +254,9 @@ Copy [backend/.env.example](../backend/.env.example) to `backend/.env` and fill 
 | `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` | Enables real push notifications for messages and connection requests, even while closed. Generate a free pair: `python scripts/generate_vapid_keys.py` | off |
 | `VAPID_SUBJECT` | Required alongside them: a contact address (`mailto:...`) push services may use if something is wrong | off |
 | `ADMIN_TOKEN` | Unlocks the moderation page `/admin` | moderation off |
-| `WAYFINDER_DB` | Where partner accounts and deals are stored | `backend/data/partners.db` |
+| `WAYFINDER_DB` | The SQLite file for everything the server keeps (laptop and tests) | `backend/data/partners.db` |
+| `WAYFINDER_DATABASE_URL` | Production database: `postgresql://user:password@host:5432/db`. When set, SQLite is not used. Data moves once with `scripts/migrate_sqlite_to_postgres.py` | Not set (SQLite) |
+| `WAYFINDER_DB_POOL` | Postgres connections kept open per server process | `10` |
 | `WAYFINDER_OFFLINE` | `1` disables every network call and uses built-in demo data | `0` |
 
 `GET /api/config` reports what is switched on, and the UI shows or hides features accordingly.

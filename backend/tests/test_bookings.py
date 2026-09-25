@@ -44,7 +44,7 @@ def test_booking_end_to_end(client):
 def test_booking_stores_no_personal_details(client):
     client.post("/api/bookings", json=body())
     with db.tx() as c:
-        cols = {r["name"] for r in c.execute("PRAGMA table_info(demo_bookings)")}
+        cols = db._columns(c, db.dialect(), "demo_bookings")
     assert not cols & {"name", "email", "phone", "lead_name", "lead_email"}
     assert "token_hash" in cols and "manage_token" not in cols
 
@@ -127,6 +127,12 @@ def test_a_deal_booking_says_how_it_is_paid(client):
     assert client.post("/api/bookings/deal", json={"deal_id": deal["id"], "date": day.isoformat(), "quantity": 1, "pay": "later", "demo_acknowledged": True}).status_code == 422
 
 
+import pytest  # noqa: E402
+
+from app import config as _config  # noqa: E402
+
+
+@pytest.mark.skipif(bool(_config.database_url()), reason="upgrades an old SQLite file; the Postgres run starts empty")
 def test_older_databases_gain_the_ticket_and_pay_columns(tmp_path, monkeypatch):
     import sqlite3
     from app.partners import db as dbmod

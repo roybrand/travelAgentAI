@@ -13,7 +13,14 @@ from app.live import nearby
 DOC = Path(__file__).resolve().parents[2] / "docs" / "08-api-reference.md"
 ENV_EXAMPLE = Path(__file__).resolve().parents[1] / ".env.example"
 
-_AUTH_BY_HEADER = {"authorization": "Partner sign-in", "x-admin-token": "Admin token", "x-api-key": "API key"}
+_AUTH_BY_HEADER = {"x-admin-token": "Admin token", "x-api-key": "API key"}
+
+
+def _auth_label(path: str, headers: set[str]) -> str:
+    labels = {label for h, label in _AUTH_BY_HEADER.items() if h in headers}
+    if "authorization" in headers:
+        labels.add("Partner sign-in" if path.startswith("/api/partners") else "Traveler sign-in")
+    return ", ".join(sorted(labels)) or "Public"
 
 
 def endpoints() -> list[tuple[str, str, str, str]]:
@@ -26,7 +33,7 @@ def endpoints() -> list[tuple[str, str, str, str]]:
             continue
         for method, op in item.items():
             headers = {p["name"].lower() for p in op.get("parameters", []) if p["in"] == "header"}
-            auth = ", ".join(sorted({label for h, label in _AUTH_BY_HEADER.items() if h in headers})) or "Public"
+            auth = _auth_label(path, headers)
             text = (op.get("description") or "").strip().split("\n\n")[0]
             rows.append((path, method.upper(), auth, " ".join(text.split())))
     return sorted(rows)
