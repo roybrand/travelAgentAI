@@ -248,7 +248,10 @@ CREATE TABLE IF NOT EXISTS demo_deal_bookings (
     status TEXT NOT NULL DEFAULT 'confirmed',
     created_at TEXT NOT NULL,
     cancelled_at TEXT,
-    pay TEXT NOT NULL DEFAULT 'venue'
+    pay TEXT NOT NULL DEFAULT 'venue',
+    voucher TEXT,
+    part TEXT,
+    redeemed_at TEXT
 );
 """
 
@@ -259,7 +262,7 @@ _ADDED_COLUMNS = {
               "audience_ages": "TEXT NOT NULL DEFAULT '[]'", "under_review": "INTEGER NOT NULL DEFAULT 0"},
     "intents": {"want_genders": "TEXT NOT NULL DEFAULT '[]'", "want_ages": "TEXT NOT NULL DEFAULT '[]'"},
     "demo_bookings": {"tickets": "TEXT NOT NULL DEFAULT '[]'"},
-    "demo_deal_bookings": {"pay": "TEXT NOT NULL DEFAULT 'venue'"},
+    "demo_deal_bookings": {"pay": "TEXT NOT NULL DEFAULT 'venue'", "voucher": "TEXT", "part": "TEXT", "redeemed_at": "TEXT"},
 }
 
 _ready: set[str] = set()
@@ -274,6 +277,9 @@ def _migrate(conn: sqlite3.Connection) -> None:
         for name, ddl in columns.items():
             if name not in have:
                 conn.execute(f"ALTER TABLE {table} ADD COLUMN {name} {ddl}")
+    # Indexes on added columns can only be made once the columns exist, so they live here, not in SCHEMA.
+    if conn.execute("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'demo_deal_bookings'").fetchone():
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_deal_booking_voucher ON demo_deal_bookings (voucher)")
 
 
 def _init(path: str, conn: sqlite3.Connection) -> None:

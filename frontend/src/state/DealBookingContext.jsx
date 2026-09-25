@@ -47,6 +47,21 @@ export function DealBookingProvider({ children }) {
 
   useEffect(() => store(bookings), [bookings]);
 
+  // Bookings still open may have been used at the place (the business checks the voucher in) or cancelled elsewhere:
+  // ask for their current status once when the app opens.
+  useEffect(() => {
+    const open = load().filter((b) => b.status === "confirmed" && b.manage_token);
+    open.forEach((b) => {
+      api.status(b.reference, b.manage_token)
+        .then((r) => {
+          if (r.status !== b.status) {
+            setBookings((list) => list.map((x) => (x.reference === b.reference ? { ...x, status: r.status, redeemed_at: r.redeemed_at, cancelled_at: r.cancelled_at } : x)));
+          }
+        })
+        .catch(() => {});
+    });
+  }, []);
+
   // The days this deal can be booked on: each trip day inside its dates, or (no overlap) any day inside them.
   const days = useMemo(() => {
     if (!deal || deal.booking) return [];
@@ -84,7 +99,7 @@ export function DealBookingProvider({ children }) {
     setBusy(true);
     setError("");
     try {
-      const r = await api.create({ deal_id: deal.id, date: form.date, quantity: form.quantity, pay: form.pay, demo_acknowledged: form.ack });
+      const r = await api.create({ deal_id: deal.id, date: form.date, quantity: form.quantity, pay: form.pay, part: form.part, demo_acknowledged: form.ack });
       const inTrip = trip && form.date >= trip.req.start_date && form.date <= dayDate(trip.req.start_date, trip.it.nights + 1);
       const day = inTrip ? Math.round((new Date(form.date + "T00:00:00") - new Date(trip.req.start_date + "T00:00:00")) / 86400000) + 1 : null;
       const saved = { ...r, part: form.part, tripId: inTrip ? tripId : null, day, bookedAt: new Date().toISOString() };
@@ -119,11 +134,11 @@ export function DealBookingProvider({ children }) {
     <Sheet
       open={!!deal}
       onClose={() => { if (!busy) setDeal(null); }}
-      title={viewing ? (viewing.status === "cancelled" ? "Booking cancelled" : "You're booked") : "Book now"}
+      title={viewing ? (viewing.status === "cancelled" ? "Booking cancelled" : viewing.status === "redeemed" ? "Used at the place" : "You're booked") : "Book now"}
       subtitle={<b className="sheet-item">{viewing ? viewing.deal.title : deal?.title}</b>}
       footer={viewing ? (
         <div className="sheet-actions">
-          {viewing.status !== "cancelled" && <button type="button" className="btn ghost danger-btn" onClick={() => cancel(viewing)}>Cancel booking</button>}
+          {viewing.status === "confirmed" && <button type="button" className="btn ghost danger-btn" onClick={() => cancel(viewing)}>Cancel booking</button>}
           <button type="button" className="btn primary grow" onClick={() => setDeal(null)}>Done</button>
         </div>
       ) : deal && (
@@ -134,7 +149,10 @@ export function DealBookingProvider({ children }) {
     >
       {viewing ? (
         <div className="db-done">
-          <div className="db-ref"><small>Voucher</small><b>{viewing.voucher || viewing.reference}</b><span>Show this at {viewing.deal.partner_name}. Demo only.</span></div>
+          <div className={`db-ref ${viewing.status === "redeemed" ? "used" : ""}`}>
+            <small>Voucher</small><b>{viewing.voucher || viewing.reference}</b>
+            <span>{viewing.status === "redeemed" ? `✓ Used at ${viewing.deal.partner_name}${viewing.redeemed_at ? ` on ${new Date(viewing.redeemed_at).toLocaleString("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}` : ""}` : `Show this at ${viewing.deal.partner_name}. They check it in on their side. Demo only.`}</span>
+          </div>
           <ul className="db-facts">
             <li>📅 {longDay(viewing.date)}{viewing.part ? ` · ${PART_ICON[viewing.part]} ${PART_LABEL[viewing.part]}` : ""}</li>
             <li>🧾 {viewing.quantity} × {viewing.deal.title}{viewing.deal.price_note ? ` (${viewing.deal.price_note})` : ""} · {fmt(viewing.total, viewing.currency)}</li>

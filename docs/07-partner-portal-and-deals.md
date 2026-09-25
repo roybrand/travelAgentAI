@@ -115,7 +115,11 @@ Featured placements (below) are the one payment flow that is built; regular deal
 | `GET /api/deals?dest=OPO&interests=&place_types=&category=&start=&end=` | Public | Ranked partner deals for a city |
 | `POST /api/deals/{id}/click` | Public | Count a click on "Get this deal" |
 | `POST /api/bookings/deal` | Public | "Book now" as a demo: checks the deal is approved and running that day and within stock, prices it from the database, returns a voucher and reference. `pay` is `venue` (default: pay at the place on arrival, the voucher holds the price) or `now` (paid in the app). Counts as a click in the partner's stats. Nothing is reserved or charged |
-| `POST /api/bookings/deal/{reference}/cancel` | Manage token | Cancel a demo deal booking |
+| `POST /api/bookings/deal/{reference}/cancel` | Manage token | Cancel a demo deal booking (not once the voucher is used) |
+| `GET /api/bookings/deal/{reference}` | Manage token | The booking's status now: booked, cancelled or used at the place |
+| `GET /api/partners/reservations` | Partner | Bookings of this business's own deals: day, time of day, how many, total, how it's paid, voucher, status. Never who booked |
+| `POST /api/partners/reservations/check` | Partner | Look up a voucher or booking reference among this business's reservations, with warnings (another day, cancelled, used) |
+| `POST /api/partners/reservations/{reference}/redeem` | Partner | Mark a reservation as used at the place, once |
 | `GET /api/deals/options` | Public | Categories, tags, currencies and the disclosure text |
 | `GET /api/events?dest=OPO&start=&end=` | Public | Ticketmaster events (empty until a key is set) |
 | `POST /api/partners/register`, `/login`, `/logout` | Business | Account and session |

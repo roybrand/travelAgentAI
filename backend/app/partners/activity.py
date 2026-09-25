@@ -47,6 +47,7 @@ EVENTS = {
     "booking.updated": "A traveler updated a demo booking's activity tickets (added, refunded or moved), flights and stay untouched",
     "booking.deal_created": "A traveler booked a partner deal as a demo (nothing reserved or charged)",
     "booking.deal_cancelled": "A traveler cancelled a demo deal booking",
+    "booking.deal_redeemed": "A business checked in a deal voucher at the place (marked as used)",
 }
 
 

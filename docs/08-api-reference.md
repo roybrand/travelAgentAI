@@ -25,6 +25,7 @@ For what each feature means and who it is for, see the [feature registry](FEATUR
 | POST | `/api/bookings` | Public | Book the trip -- as a demo: nothing is reserved with any airline or hotel and nothing is charged. Returns a reference, confirmation codes and a manage token (shown once) for viewing or cancelling it. |
 | POST | `/api/bookings/checkout` | Public | A traveler opened checkout for a trip. Counted for the booking funnel only; nothing is stored about them. |
 | POST | `/api/bookings/deal` | Public | Book one partner deal for a day, as a demo: nothing is reserved with the business and nothing is charged. The deal must be approved and valid that day; the price comes from our database (price x quantity), never the browser. |
+| GET | `/api/bookings/deal/{reference}` | Public | A demo deal booking as it stands now (confirmed, cancelled, or used at the place), for whoever holds its token. |
 | POST | `/api/bookings/deal/{reference}/cancel` | Public | Cancel a demo deal booking, for whoever holds its manage token. |
 | GET | `/api/bookings/{reference}` | Public | A demo booking's status, for whoever holds its manage token. |
 | PUT | `/api/bookings/{reference}/activities` | Public | Bring a booking's activity tickets in line with the day plan, without touching the flights or the stay: new paid activities get tickets (charged), dropped ones are refunded, moved ones are re-dated for free. Free activities need no ticket. The difference is worked out here, from each price per person and the travelers. |
@@ -57,6 +58,9 @@ For what each feature means and who it is for, see the [feature registry](FEATUR
 | POST | `/api/partners/logout` | Partner sign-in | End the current partner session. |
 | GET | `/api/partners/me` | Partner sign-in | The signed-in partner's profile, totals, and every deal with its views and clicks. |
 | POST | `/api/partners/register` | Public | Create a partner account and sign in. |
+| GET | `/api/partners/reservations` | Partner sign-in | Every reservation of this business's deals: today's first, then upcoming, then past ones. |
+| POST | `/api/partners/reservations/check` | Partner sign-in | Look up the voucher (or booking reference) a traveler shows, among this business's own reservations only. |
+| POST | `/api/partners/reservations/{reference}/redeem` | Partner sign-in | Mark a reservation as used at the place. Once only; a cancelled one can't be used. |
 | POST | `/api/payments/stripe/webhook` | Public | Stripe calls this when a Featured-placement checkout completes. The signature is verified before anything in the body is trusted (see stripe_gateway.verify_webhook). |
 | POST | `/api/people/attend` | Partner sign-in | Register to a place for a day: 'I am going'. Others going there can see my profile if it is visible. |
 | DELETE | `/api/people/attend/{attendance_id}` | Partner sign-in | Cancel a registration. |

@@ -15,10 +15,11 @@ import secrets
 from datetime import date, datetime, timezone
 from typing import Literal
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field, model_validator
 
 from app.partners import activity, db, deals, security
+from app.partners.routes import current_partner
 
 router = APIRouter()
 
@@ -226,6 +227,7 @@ class DealBookingIn(BaseModel):
     date: date
     quantity: int = Field(ge=1, le=10)
     pay: Literal["venue", "now"] = "venue"  # at the place on arrival (the voucher holds the price), or now in the app
+    part: Literal["morning", "afternoon", "evening", "night"] | None = None  # when they plan to come, for the business
     demo_acknowledged: bool
 
     @model_validator(mode="after")
@@ -240,7 +242,8 @@ class DealBookingIn(BaseModel):
 def _deal_view(row, deal: dict | None) -> dict:
     return {
         "demo": True, "reference": row["reference"], "status": row["status"], "date": row["day"], "quantity": row["quantity"], "pay": row["pay"],
-        "total": row["total"], "currency": row["currency"], "cancelled_at": row["cancelled_at"],
+        "total": row["total"], "currency": row["currency"], "cancelled_at": row["cancelled_at"], "redeemed_at": row["redeemed_at"],
+        "voucher": row["voucher"], "part": row["part"],
         "deal": deal and {k: deal[k] for k in ("id", "title", "partner_name", "address", "category", "category_label", "price", "price_note", "lat", "lng")},
     }
 
@@ -260,18 +263,19 @@ def book_deal(body: DealBookingIn, request: Request):
     with db.tx() as c:
         for _ in range(5):
             reference = f"WD-{_code(_REF_CHARS, 6)}"
-            if not c.execute("SELECT 1 FROM demo_deal_bookings WHERE reference = ?", (reference,)).fetchone():
+            voucher = f"V-{_code(_REF_CHARS, 8)}"
+            if not c.execute("SELECT 1 FROM demo_deal_bookings WHERE reference = ? OR voucher = ?", (reference, voucher)).fetchone():
                 break
         c.execute(
-            "INSERT INTO demo_deal_bookings (reference, token_hash, deal_id, day, quantity, total, currency, created_at, pay) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO demo_deal_bookings (reference, token_hash, deal_id, day, quantity, total, currency, created_at, pay, voucher, part) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (reference, security.sha256(token), deal["id"], body.date.isoformat(), body.quantity, total, deal["currency"],
-             datetime.now(timezone.utc).isoformat(), body.pay),
+             datetime.now(timezone.utc).isoformat(), body.pay, voucher, body.part),
         )
         row = c.execute("SELECT * FROM demo_deal_bookings WHERE reference = ?", (reference,)).fetchone()
     deals.record_click(deal["id"])
     activity.record("booking.deal_created", deal=deal["id"])
-    return {**_deal_view(row, deal), "manage_token": token, "voucher": f"V-{_code(_REF_CHARS, 8)}"}
+    return {**_deal_view(row, deal), "manage_token": token}
 
 
 @router.post("/api/bookings/deal/{reference}/cancel")
@@ -281,6 +285,8 @@ def cancel_deal_booking(reference: str, body: CancelIn):
         row = c.execute("SELECT * FROM demo_deal_bookings WHERE reference = ?", (reference.upper(),)).fetchone()
         if not row or not secrets.compare_digest(row["token_hash"], security.sha256(body.token)):
             raise HTTPException(status_code=404, detail="No booking with that reference.")
+        if row["status"] == "redeemed":
+            raise HTTPException(status_code=409, detail="This voucher was already used at the place, so it can't be cancelled.")
         changed = row["status"] != "cancelled"
         if changed:
             c.execute("UPDATE demo_deal_bookings SET status = 'cancelled', cancelled_at = ? WHERE id = ?",
@@ -289,3 +295,98 @@ def cancel_deal_booking(reference: str, body: CancelIn):
     if changed:
         activity.record("booking.deal_cancelled", deal=row["deal_id"])
     return _deal_view(row, None)
+
+
+@router.get("/api/bookings/deal/{reference}")
+def deal_booking_status(reference: str, token: str):
+    """A demo deal booking as it stands now (confirmed, cancelled, or used at the place), for whoever holds its token."""
+    with db.tx() as c:
+        row = c.execute("SELECT * FROM demo_deal_bookings WHERE reference = ?", (reference.upper(),)).fetchone()
+    if not row or not secrets.compare_digest(row["token_hash"], security.sha256(token)):
+        raise HTTPException(status_code=404, detail="No booking with that reference.")
+    return _deal_view(row, None)
+
+
+# ---------------------------------------------------------------- the business side: reservations and check-in
+# A business sees what was booked on its own deals (which deal, day, time of day, how many, how it's paid, status),
+# never who booked: there is no name, email or phone to show. The voucher the traveler shows is the proof.
+
+_RES_SELECT = (
+    "SELECT b.*, d.title, d.price, d.price_note FROM demo_deal_bookings b JOIN deals d ON d.id = b.deal_id "
+    "WHERE d.partner_id = ?"
+)
+
+
+def _reservation(row, today: date) -> dict:
+    return {
+        "reference": row["reference"], "voucher": row["voucher"], "deal_id": row["deal_id"], "title": row["title"],
+        "date": row["day"], "part": row["part"], "quantity": row["quantity"], "total": row["total"], "currency": row["currency"],
+        "pay": row["pay"], "status": row["status"], "booked_at": row["created_at"], "redeemed_at": row["redeemed_at"],
+        "is_today": row["day"] == today.isoformat(), "price_note": row["price_note"],
+    }
+
+
+@router.get("/api/partners/reservations")
+def partner_reservations(partner: dict = Depends(current_partner)):
+    """Every reservation of this business's deals: today's first, then upcoming, then past ones."""
+    today = date.today()
+    with db.tx() as c:
+        rows = c.execute(f"{_RES_SELECT} ORDER BY b.day, b.id LIMIT 500", (partner["id"],)).fetchall()
+    items = [_reservation(r, today) for r in rows]
+    t = today.isoformat()
+    rank = lambda r: (0 if r["date"] == t else 1 if r["date"] > t else 2, r["date"] if r["date"] >= t else "~" + r["date"])  # noqa: E731
+    items.sort(key=rank)
+    live = [r for r in items if r["status"] == "confirmed"]
+    return {
+        "reservations": items,
+        "counts": {
+            "today": sum(1 for r in live if r["date"] == t),
+            "upcoming": sum(1 for r in live if r["date"] > t),
+            "used": sum(1 for r in items if r["status"] == "redeemed"),
+        },
+    }
+
+
+class VoucherIn(BaseModel):
+    code: str = Field(min_length=4, max_length=20)
+
+
+def _find_for_partner(c, partner_id: int, code: str):
+    code = code.strip().upper()
+    return c.execute(f"{_RES_SELECT} AND (b.voucher = ? OR b.reference = ?)", (partner_id, code, code)).fetchone()
+
+
+@router.post("/api/partners/reservations/check")
+def check_voucher(body: VoucherIn, request: Request, partner: dict = Depends(current_partner)):
+    """Look up the voucher (or booking reference) a traveler shows, among this business's own reservations only."""
+    security.limit(f"voucher-check:{partner['id']}", 120, 3600)
+    with db.tx() as c:
+        row = _find_for_partner(c, partner["id"], body.code)
+    if not row:
+        raise HTTPException(status_code=404, detail="No reservation with that code for your deals. Check the code with the guest.")
+    today = date.today()
+    r = _reservation(row, today)
+    warnings = []
+    if r["status"] == "cancelled":
+        warnings.append("This reservation was cancelled by the traveler.")
+    if r["status"] == "redeemed":
+        warnings.append("This voucher was already used.")
+    if r["date"] != today.isoformat():
+        warnings.append(f"It is booked for {r['date']}, not today.")
+    return {**r, "warnings": warnings, "can_redeem": r["status"] == "confirmed"}
+
+
+@router.post("/api/partners/reservations/{reference}/redeem")
+def redeem_voucher(reference: str, partner: dict = Depends(current_partner)):
+    """Mark a reservation as used at the place. Once only; a cancelled one can't be used."""
+    with db.tx() as c:
+        row = _find_for_partner(c, partner["id"], reference)
+        if not row:
+            raise HTTPException(status_code=404, detail="No reservation with that code for your deals.")
+        if row["status"] != "confirmed":
+            raise HTTPException(status_code=409, detail="Already used." if row["status"] == "redeemed" else "This reservation was cancelled.")
+        c.execute("UPDATE demo_deal_bookings SET status = 'redeemed', redeemed_at = ? WHERE id = ?",
+                  (datetime.now(timezone.utc).isoformat(), row["id"]))
+        row = _find_for_partner(c, partner["id"], reference)
+    activity.record("booking.deal_redeemed", deal=row["deal_id"])
+    return _reservation(row, date.today())

@@ -22,7 +22,7 @@ function BookedDealRow({ b, onOpen }) {
       <span className="planned-thumb booked-icon" aria-hidden="true">{CATEGORY_ICON[b.deal.category] || "🏷️"}</span>
       <span className="planned-body">
         <b>{b.deal.title}</b>
-        <small>✓ Booked · {money(b.total, b.currency)} {b.pay === "now" ? "paid" : "to pay there"} · {b.reference}</small>
+        <small>{b.status === "redeemed" ? "✓ Used" : "✓ Booked"} · {money(b.total, b.currency)} {b.pay === "now" ? "paid" : b.status === "redeemed" ? "" : "to pay there"} · {b.reference}</small>
       </span>
       <span className="planned-more" aria-label="Voucher and cancel">⋯</span>
     </button>

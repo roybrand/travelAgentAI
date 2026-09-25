@@ -9,6 +9,7 @@ import DealCard from "../components/DealCard.jsx";
 import DestSelect from "../components/DestSelect.jsx";
 import BackLink from "../components/BackLink.jsx";
 import ChangePasswordForm from "../components/ChangePassword.jsx";
+import ReservationsPanel from "../components/ReservationsPanel.jsx";
 
 const TOKEN_KEY = "wf.partner.v1";
 const loadToken = () => {
@@ -420,6 +421,8 @@ function Dashboard({ token, onSignOut }) {
       {(adding || editing) && (
         <DealForm token={token} me={me} options={options} editing={editing} onSaved={saved} onCancel={() => { setEditing(null); setAdding(false); }} />
       )}
+
+      <ReservationsPanel token={token} />
 
       <section className="card pad">
         <h2 className="card-title">Your deals</h2>

@@ -1212,3 +1212,20 @@ li.done .tick::after { content: ""; width: 5px; height: 9px; border: solid #0329
 .deal-cost-row { display: grid; grid-template-columns: 1fr auto auto; gap: 10px; font-size: 13.5px; align-items: baseline; }
 .deal-cost-row em { font-style: normal; font-size: 12px; color: var(--muted); }
 .deal-costs .fine { margin: 0; }
+
+/* ============ partner reservations and check-in ============ */
+.reservations { display: grid; gap: 14px; }
+.reservations .card-head { display: flex; justify-content: space-between; align-items: center; }
+.stat-row.compact { margin: 0; }
+.voucher-check { display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: end; }
+.voucher-check input { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; letter-spacing: 0.08em; text-transform: uppercase; }
+.voucher-result { display: grid; gap: 6px; padding: 14px; border-radius: 14px; border: 1px solid var(--teal-2); background: rgba(45, 212, 191, 0.06); }
+.voucher-result.cancelled { border-color: rgba(248, 113, 113, 0.5); background: rgba(248, 113, 113, 0.06); }
+.voucher-result.redeemed { border-color: var(--line-2); background: var(--surface-2); }
+.voucher-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.voucher-result p { margin: 0; }
+.voucher-pay { font-weight: 700; font-size: 16px; }
+.voucher-result .btn { justify-self: start; }
+.today-row td { background: rgba(45, 212, 191, 0.05); }
+.db-ref.used { border-style: solid; border-color: rgba(52, 211, 153, 0.6); }
+@media (max-width: 560px) { .voucher-check { grid-template-columns: 1fr; } }

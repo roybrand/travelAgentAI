@@ -141,3 +141,56 @@ def test_older_databases_gain_the_ticket_and_pay_columns(tmp_path, monkeypatch):
     with dbmod.tx() as c:
         assert "tickets" in {r["name"] for r in c.execute("PRAGMA table_info(demo_bookings)")}
         assert "pay" in {r["name"] for r in c.execute("PRAGMA table_info(demo_deal_bookings)")}
+
+
+# ---------------------------------------------------------------- the business side: reservations and check-in
+
+def test_another_business_never_sees_or_checks_in_someone_elses_reservation(client):
+    from tests.test_partners import signup
+    deal, day = _a_live_deal(client)
+    b = client.post("/api/bookings/deal", json={"deal_id": deal["id"], "date": day.isoformat(), "quantity": 2, "part": "evening", "demo_acknowledged": True}).json()
+    assert b["voucher"].startswith("V-") and b["part"] == "evening"
+    stranger, _ = signup(client)
+    assert all(r["reference"] != b["reference"] for r in client.get("/api/partners/reservations", headers=stranger).json()["reservations"])
+    assert client.post("/api/partners/reservations/check", json={"code": b["voucher"]}, headers=stranger).status_code == 404
+    assert client.post(f"/api/partners/reservations/{b['reference']}/redeem", headers=stranger).status_code == 404
+
+
+def test_the_owner_checks_in_the_voucher_once(client):
+    from datetime import date, timedelta
+    from tests.test_partners import approve, deal_body, signup, submit
+    headers, _ = signup(client)
+    deal_id = submit(client, headers)
+    approve(client, deal_id)
+    tomorrow = (date.today() + timedelta(days=1)).isoformat()
+    b = client.post("/api/bookings/deal", json={"deal_id": deal_id, "date": tomorrow, "quantity": 2, "part": "evening", "demo_acknowledged": True}).json()
+
+    res = client.get("/api/partners/reservations", headers=headers).json()
+    mine = next(r for r in res["reservations"] if r["reference"] == b["reference"])
+    assert mine["voucher"] == b["voucher"] and mine["quantity"] == 2 and mine["pay"] == "venue" and mine["part"] == "evening"
+    assert "email" not in mine and "name" not in mine and res["counts"]["upcoming"] >= 1
+
+    check = client.post("/api/partners/reservations/check", json={"code": b["voucher"].lower()}, headers=headers).json()
+    assert check["can_redeem"] and any("not today" in w for w in check["warnings"])
+    used = client.post(f"/api/partners/reservations/{b['reference']}/redeem", headers=headers).json()
+    assert used["status"] == "redeemed" and used["redeemed_at"]
+    assert client.post(f"/api/partners/reservations/{b['reference']}/redeem", headers=headers).status_code == 409
+
+    status = client.get(f"/api/bookings/deal/{b['reference']}", params={"token": b["manage_token"]}).json()
+    assert status["status"] == "redeemed"
+    assert client.post(f"/api/bookings/deal/{b['reference']}/cancel", json={"token": b["manage_token"]}).status_code == 409
+    assert client.get(f"/api/bookings/deal/{b['reference']}", params={"token": "wrong-token-123"}).status_code == 404
+    assert client.get("/api/partners/reservations").status_code == 401
+
+
+def test_a_cancelled_reservation_cannot_be_checked_in(client):
+    from datetime import date
+    from tests.test_partners import approve, signup, submit
+    headers, _ = signup(client)
+    deal_id = submit(client, headers)
+    approve(client, deal_id)
+    b = client.post("/api/bookings/deal", json={"deal_id": deal_id, "date": date.today().isoformat(), "quantity": 1, "demo_acknowledged": True}).json()
+    client.post(f"/api/bookings/deal/{b['reference']}/cancel", json={"token": b["manage_token"]})
+    check = client.post("/api/partners/reservations/check", json={"code": b["reference"]}, headers=headers).json()
+    assert not check["can_redeem"] and any("cancelled" in w for w in check["warnings"])
+    assert client.post(f"/api/partners/reservations/{b['reference']}/redeem", headers=headers).status_code == 409

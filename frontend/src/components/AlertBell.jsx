@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import { useAlerts } from "../state/AlertsContext.jsx";
 import { useDealBooking } from "../state/DealBookingContext.jsx";
 import AlertCard from "./AlertCard.jsx";
@@ -43,6 +43,9 @@ export function AlertBell() {
 export function AlertToasts() {
   const { toasts, dismissToast, markSeen } = useAlerts();
   const booking = useDealBooking();
+  // The business and moderator pages are workspaces: traveler pop-ups would sit over a check-in or a review.
+  const { pathname } = useLocation();
+  if (pathname.startsWith("/partners") || pathname.startsWith("/admin")) return null;
   return (
     <div className="alert-toasts" aria-live="polite">
       {toasts.map(({ id, alert: a }) => (

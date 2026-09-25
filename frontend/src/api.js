@@ -119,6 +119,9 @@ export const partner = {
   geocode: (token, q, dest) => request(`/api/partners/geocode?${qs({ q, dest })}`, { token }),
   feature: (token, id, success_url, cancel_url) => request(`/api/partners/deals/${id}/feature`, { method: "POST", token, body: { success_url, cancel_url } }),
   changePassword: (token, current_password, new_password) => request("/api/partners/change-password", { method: "POST", token, body: { current_password, new_password } }),
+  reservations: (token) => request("/api/partners/reservations", { token }),
+  checkVoucher: (token, code) => request("/api/partners/reservations/check", { method: "POST", token, body: { code } }),
+  redeem: (token, ref) => request(`/api/partners/reservations/${encodeURIComponent(ref)}/redeem`, { method: "POST", token }),
 };
 
 export const admin = {
@@ -193,5 +196,6 @@ export const bookings = {
 export const dealBookings = {
   create: (body) => request("/api/bookings/deal", { method: "POST", body }),
   cancel: (ref, token) => request(`/api/bookings/deal/${encodeURIComponent(ref)}/cancel`, { method: "POST", body: { token } }),
+  status: (ref, token) => request(`/api/bookings/deal/${encodeURIComponent(ref)}?${qs({ token })}`),
 };
 export const fetchTripWeather = (params) => request(`/api/trip-weather?${qs(params)}`);

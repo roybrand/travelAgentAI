@@ -96,6 +96,14 @@ booking (a bed bank or the Booking.com/Expedia partner APIs), activity tickets (
 Checkout for the payment, which the partner side already uses. Traveler names and passports would then have to be
 sent to those suppliers, so the privacy policy must cover it. Until then, every screen says it is a demo.
 
+### How money moves for partner deals
+
+Today no money moves through Wayfinder. A traveler books a deal as a demo and chooses to pay at the place (the default)
+or in the app. The business sees the reservation in its dashboard and checks the voucher in at the door (pay at the
+place is fully built, business side included). Taking real payment in the app would use Stripe Connect: each business
+connects its own Stripe account, the traveler pays in the app, and Stripe pays the business minus a commission. That
+needs business onboarding (identity checks), payouts, refunds and terms, and is not built.
+
 ### Businesses that push deals (push)
 
 | Type | Who to approach first | The pitch |
