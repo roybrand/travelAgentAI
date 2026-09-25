@@ -40,7 +40,7 @@ export function DealBookingProvider({ children }) {
   const { trip, tripId } = useTrip();
   const [bookings, setBookings] = useState(load);
   const [deal, setDeal] = useState(null); // the deal being booked, or the booking being viewed ({ booking })
-  const [form, setForm] = useState({ date: "", quantity: 1, part: "evening", ack: false });
+  const [form, setForm] = useState({ date: "", quantity: 1, part: "evening", pay: "venue", ack: false });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [done, setDone] = useState(null);
@@ -65,7 +65,7 @@ export function DealBookingProvider({ children }) {
     setDone(null);
     setError("");
     setDeal(d);
-    setForm({ date: "", quantity: 1, part: CATEGORY_PART[d.category] || "evening", ack: false });
+    setForm({ date: "", quantity: 1, part: CATEGORY_PART[d.category] || "evening", pay: "venue", ack: false });
   }, []);
   useEffect(() => {
     if (deal && !deal.booking && !form.date) {
@@ -84,7 +84,7 @@ export function DealBookingProvider({ children }) {
     setBusy(true);
     setError("");
     try {
-      const r = await api.create({ deal_id: deal.id, date: form.date, quantity: form.quantity, demo_acknowledged: form.ack });
+      const r = await api.create({ deal_id: deal.id, date: form.date, quantity: form.quantity, pay: form.pay, demo_acknowledged: form.ack });
       const inTrip = trip && form.date >= trip.req.start_date && form.date <= dayDate(trip.req.start_date, trip.it.nights + 1);
       const day = inTrip ? Math.round((new Date(form.date + "T00:00:00") - new Date(trip.req.start_date + "T00:00:00")) / 86400000) + 1 : null;
       const saved = { ...r, part: form.part, tripId: inTrip ? tripId : null, day, bookedAt: new Date().toISOString() };
@@ -128,7 +128,7 @@ export function DealBookingProvider({ children }) {
         </div>
       ) : deal && (
         <button type="button" className="btn primary full" disabled={!form.ack || busy || !form.date} onClick={book}>
-          {busy ? "Booking…" : `Book now (demo) · ${fmt(total, deal.currency)}`}
+          {busy ? "Booking…" : form.pay === "now" ? `Book and pay now (demo) · ${fmt(total, deal.currency)}` : `Book now · pay ${fmt(total, deal.currency)} there`}
         </button>
       )}
     >
@@ -138,6 +138,7 @@ export function DealBookingProvider({ children }) {
           <ul className="db-facts">
             <li>📅 {longDay(viewing.date)}{viewing.part ? ` · ${PART_ICON[viewing.part]} ${PART_LABEL[viewing.part]}` : ""}</li>
             <li>🧾 {viewing.quantity} × {viewing.deal.title}{viewing.deal.price_note ? ` (${viewing.deal.price_note})` : ""} · {fmt(viewing.total, viewing.currency)}</li>
+            <li>{viewing.pay === "now" ? `💳 Paid in the app (demo). Nothing to pay at ${viewing.deal.partner_name}` : `🏷️ Pay ${fmt(viewing.total, viewing.currency)} at ${viewing.deal.partner_name} when you arrive. Nothing paid now`}</li>
             {viewing.deal.address && <li>📍 {viewing.deal.address}</li>}
             <li>🔖 Booking {viewing.reference}</li>
           </ul>
@@ -177,6 +178,16 @@ export function DealBookingProvider({ children }) {
             <button type="button" className="tp-btn sm" aria-label="More" disabled={form.quantity >= maxQty} onClick={() => setForm({ ...form, quantity: form.quantity + 1 })}>+</button>
           </div>
           {deal.stock != null && <p className="fine">{deal.stock} left, per the business.</p>}
+
+          <div className="slot-label">How you pay</div>
+          <div className="pay-pick">
+            <button type="button" className="slot-part" aria-pressed={form.pay === "venue"} onClick={() => setForm({ ...form, pay: "venue" })}>
+              <span aria-hidden="true">🏷️</span><span><b>At the place</b><small>Show the voucher when you arrive and pay there. The deal price is held for you</small></span>
+            </button>
+            <button type="button" className="slot-part" aria-pressed={form.pay === "now"} onClick={() => setForm({ ...form, pay: "now" })}>
+              <span aria-hidden="true">💳</span><span><b>Now, in the app</b><small>Paid up front, nothing to pay there (demo: no card is charged)</small></span>
+            </button>
+          </div>
 
           <label className="check">
             <input type="checkbox" checked={form.ack} onChange={(e) => setForm({ ...form, ack: e.target.checked })} />

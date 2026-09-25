@@ -9,6 +9,7 @@ import { tripCalendar, downloadCalendar } from "../lib/ics";
 import BackLink from "../components/BackLink.jsx";
 import SourceBadge from "../components/SourceBadge.jsx";
 import TravelersSheet from "../components/TravelersSheet.jsx";
+import TicketsSheet from "../components/TicketsSheet.jsx";
 
 const STEPS = [["review", "Review"], ["travelers", "Travelers"], ["pay", "Payment"], ["done", "Confirmed"]];
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -40,7 +41,8 @@ function Line({ icon, title, sub, amount, badge }) {
 /** The whole booking journey for the open trip -- review, traveler details, payment, confirmation -- as a demo:
  * nothing is reserved with an airline or hotel and nothing is charged, and every step says so. */
 export default function Book() {
-  const { trip, cityName, booking, bookingChanged, recordBooking, updateBooking, tripId } = useTrip();
+  const { trip, cityName, booking, bookingChanged, ticketChanges, recordBooking, updateBooking, tripId } = useTrip();
+  const [ticketsOpen, setTicketsOpen] = useState(false);
   const [step, setStep] = useState(booking && !bookingChanged ? "done" : "review");
   const [who, setWho] = useState(() => booking?.lead ? { ...booking.lead, others: booking.others || [] } : { name: "", email: "", phone: "", others: [] });
   const [ack, setAck] = useState(false);
@@ -261,13 +263,17 @@ export default function Book() {
                   <b>{booking.reference}</b>
                   <span>{copied ? "Copied" : "Tap to copy"}</span>
                 </button>
-                {live && bookingChanged && <p className="notice">Your plan has changed since this booking. <button type="button" className="linkbtn" onClick={() => setStep("review")}>Review and book again</button></p>}
+                {live && bookingChanged && <p className="notice">Your flight, stay or number of travelers changed since this booking. <button type="button" className="linkbtn" onClick={() => setStep("review")}>Review and book again</button></p>}
+                {live && ticketChanges && (
+                  <p className="notice">Paid activities changed since booking. Only their tickets need updating; flights and stay stay as they are. <button type="button" className="btn primary sm" onClick={() => setTicketsOpen(true)}>Update tickets</button></p>
+                )}
+                {changeNote && <p className="notice ok-notice">{changeNote}</p>}
               </div>
 
               <div className="card pad bk-codes">
                 <Line icon="✈️" title={`${booking.flight.airline || "Flights"} · ${from} ⇄ ${to}`} sub={`Airline reference (PNR) ${booking.flight.pnr}`} amount={money(booking.totals.flight)} />
                 <Line icon="🏨" title={booking.stay.name} sub={`Hotel confirmation ${booking.stay.confirmation} · ${booking.totals.nights} nights`} amount={money(booking.totals.stay)} />
-                {booking.tickets.map((t) => (
+                {(booking.tickets || []).map((t) => (
                   <Line key={t.code} icon="🎟️" title={t.name} sub={`Day ${t.day} · ${PART_LABEL[t.part]} · ticket ${t.code}`} />
                 ))}
                 {booking.free_activities.length > 0 && <p className="fine">Free, no ticket needed: {booking.free_activities.join(", ")}.</p>}
@@ -289,6 +295,7 @@ export default function Book() {
       </AnimatePresence>
 
       <TravelersSheet open={travelersOpen} onClose={() => setTravelersOpen(false)} say={setChangeNote} />
+      <TicketsSheet open={ticketsOpen} onClose={() => setTicketsOpen(false)} say={setChangeNote} />
       {step !== "done" && step !== "review" && (
         <details className="bk-mini card pad">
           <summary>Trip summary · <b>{money(total)}</b></summary>

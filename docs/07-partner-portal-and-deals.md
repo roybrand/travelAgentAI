@@ -114,7 +114,7 @@ Featured placements (below) are the one payment flow that is built; regular deal
 |---|---|---|
 | `GET /api/deals?dest=OPO&interests=&place_types=&category=&start=&end=` | Public | Ranked partner deals for a city |
 | `POST /api/deals/{id}/click` | Public | Count a click on "Get this deal" |
-| `POST /api/bookings/deal` | Public | "Book now" as a demo: checks the deal is approved and running that day and within stock, prices it from the database, returns a voucher and reference. Counts as a click in the partner's stats. Nothing is reserved or charged |
+| `POST /api/bookings/deal` | Public | "Book now" as a demo: checks the deal is approved and running that day and within stock, prices it from the database, returns a voucher and reference. `pay` is `venue` (default: pay at the place on arrival, the voucher holds the price) or `now` (paid in the app). Counts as a click in the partner's stats. Nothing is reserved or charged |
 | `POST /api/bookings/deal/{reference}/cancel` | Manage token | Cancel a demo deal booking |
 | `GET /api/deals/options` | Public | Categories, tags, currencies and the disclosure text |
 | `GET /api/events?dest=OPO&start=&end=` | Public | Ticketmaster events (empty until a key is set) |

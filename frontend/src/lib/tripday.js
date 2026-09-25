@@ -2,6 +2,7 @@
  * so the trip page, the care card and the timeline agree on the same facts. */
 import { PARTS, PART_LABEL, PART_TIME, guessPart } from "./dayplan";
 import { distanceM } from "./format";
+import { dealMoodScore, isIndoor, moodScore, weatherScore } from "./moods";
 
 export const ROUTE_RADIUS_M = 1200; // "on your way": a partner deal within an easy walk of one of that day's stops
 export const CENTRE_RADIUS_M = 3000; // when nothing that day has a known position, "near the centre" is the honest fallback
@@ -59,7 +60,7 @@ export function dayStops(items, day, hotel, centre) {
 /** Partner deals along each day's route: valid on that date and within ROUTE_RADIUS_M of one of that day's stops.
  * The server's order is kept (match, real discount, distance -- never payment); distance only breaks ties. Each deal
  * appears on one day only, the first it fits, except that `pinDay` (today, during the trip) always gets its own. */
-export function routeDeals(deals, { days, startIso, items, hotel, centre, pinDay = null, perDay = 2 }) {
+export function routeDeals(deals, { days, startIso, items, hotel, centre, pinDay = null, perDay = 2, moodFor = () => null }) {
   const out = {};
   const used = new Set();
   const order = [...days].sort((a, b) => (a === pinDay ? -1 : b === pinDay ? 1 : a - b));
@@ -77,23 +78,30 @@ export function routeDeals(deals, { days, startIso, items, hotel, centre, pinDay
         return best && { ...deal, rank, distance_m: Math.round(best.m), near: best.near };
       })
       .filter((x) => x && (d === pinDay || !used.has(x.id)))
-      .sort((a, b) => a.rank - b.rank || a.distance_m - b.distance_m)
+      // the day's mood (the traveler's own preference) comes first; then the server's payment-blind order
+      .sort((a, b) => dealMoodScore(b, moodFor(d)) - dealMoodScore(a, moodFor(d)) || a.rank - b.rank || a.distance_m - b.distance_m)
       .slice(0, perDay);
     out[d].forEach((x) => used.add(x.id));
   });
   return out;
 }
 
-/** One idea for an empty slot: the best fit for that time of day that isn't planned or already suggested. */
-export function slotSuggestion(candidates, scheduled, taken, part, hotel) {
-  const score = (i) => (guessPart(i) === part ? 2 : 0) + (i.matches?.length ? 1 : 0);
+/** How well an idea fits a slot: its time of day, what the traveler likes, the day's mood, and the weather. */
+export function slotScore(i, part, { mood = null, wet = false } = {}) {
+  return (guessPart(i) === part ? 2 : 0) + (i.matches?.length ? 1 : 0) + moodScore(i, mood) + weatherScore(i, wet);
+}
+
+/** One idea for an empty slot: the best fit (see slotScore) that isn't planned or already suggested, with a short
+ * reason when the mood or the weather is what put it first. */
+export function slotSuggestion(candidates, scheduled, taken, part, hotel, ctx = {}) {
   const pick = candidates
     .filter((c) => !scheduled.has(c.key) && !taken.has(c.key))
-    .sort((a, b) => score(b) - score(a))[0];
-  if (!pick || score(pick) < 2) return null;
+    .sort((a, b) => slotScore(b, part, ctx) - slotScore(a, part, ctx))[0];
+  if (!pick || slotScore(pick, part, ctx) < 2) return null;
   taken.add(pick.key);
   const away = hotel?.lat != null && pick.lat != null ? Math.round(distanceM(hotel, pick)) : null;
-  return { item: pick, away };
+  const why = ctx.wet && isIndoor(pick) ? "indoors" : ctx.mood && moodScore(pick, ctx.mood) >= 2 ? "your mood" : null;
+  return { item: pick, away, why };
 }
 
 /** The short to-do list that makes the plan feel looked after, most useful first. Each task can carry an action. */

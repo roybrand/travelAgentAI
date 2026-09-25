@@ -27,6 +27,7 @@ For what each feature means and who it is for, see the [feature registry](FEATUR
 | POST | `/api/bookings/deal` | Public | Book one partner deal for a day, as a demo: nothing is reserved with the business and nothing is charged. The deal must be approved and valid that day; the price comes from our database (price x quantity), never the browser. |
 | POST | `/api/bookings/deal/{reference}/cancel` | Public | Cancel a demo deal booking, for whoever holds its manage token. |
 | GET | `/api/bookings/{reference}` | Public | A demo booking's status, for whoever holds its manage token. |
+| PUT | `/api/bookings/{reference}/activities` | Public | Bring a booking's activity tickets in line with the day plan, without touching the flights or the stay: new paid activities get tickets (charged), dropped ones are refunded, moved ones are re-dated for free. Free activities need no ticket. The difference is worked out here, from each price per person and the travelers. |
 | POST | `/api/bookings/{reference}/cancel` | Public | Cancel a demo booking. The demo always refunds in full; a real one would follow each supplier's rules. |
 | POST | `/api/build-trip` | Public | Trip fields plus a traveler profile (keywords, interests, place types) from free text and/or a photo. |
 | GET | `/api/config` | Public | What is switched on, so the UI can show or hide features and label data sources honestly. |
@@ -94,6 +95,7 @@ For what each feature means and who it is for, see the [feature registry](FEATUR
 | POST | `/api/push/unsubscribe` | Partner sign-in | Stop push notifications on this browser. |
 | GET | `/api/safety/{token}` | Public | A 'meet safely' check-in, for anyone holding the link (no sign-in needed) -- meant for a friend outside Wayfinder to see the plan. Never an exact location, email or phone number. |
 | GET | `/api/tonight` | Public | The best clubs and bars in a city for one night, with photos, opening hours, and real prices where they exist. |
+| GET | `/api/trip-weather` | Public | Day-by-day forecast for a trip (Open-Meteo, free). Only days inside the 16-day forecast window get weather; further out the answer says when it will be ready instead of guessing. |
 | GET | `/health` | Public | Liveness check used by the UI status pill. |
 
 ## Front-end pages

@@ -53,6 +53,7 @@ flowchart LR
 |---|---|---|---|
 | The 100-city list | Curated by hand (city, country, coordinates, price level) | No | n/a |
 | Best time to go, weather | **Open-Meteo** historical archive, 2019 to 2023 | No | **Live** |
+| Weather for each day of the trip | **Open-Meteo** daily forecast, only for days within its 16-day range (further out the app says when it will be ready, never guesses) | No | Weather pill on each day |
 | Sights and descriptions | **Wikipedia**, ranked by real 30-day page views | No | **Live** |
 | Destination photos and credits | **Wikimedia Commons**, only reuse-with-credit licences | No | **Live** |
 | Hotels: names, star class, location, amenities | **OpenStreetMap** | No | **Live** |

@@ -188,8 +188,10 @@ export const bookings = {
   create: (body) => request("/api/bookings", { method: "POST", body }),
   get: (ref, token) => request(`/api/bookings/${encodeURIComponent(ref)}?${qs({ token })}`),
   cancel: (ref, token) => request(`/api/bookings/${encodeURIComponent(ref)}/cancel`, { method: "POST", body: { token } }),
+  updateTickets: (ref, token, activities) => request(`/api/bookings/${encodeURIComponent(ref)}/activities`, { method: "PUT", body: { token, activities } }),
 };
 export const dealBookings = {
   create: (body) => request("/api/bookings/deal", { method: "POST", body }),
   cancel: (ref, token) => request(`/api/bookings/deal/${encodeURIComponent(ref)}/cancel`, { method: "POST", body: { token } }),
 };
+export const fetchTripWeather = (params) => request(`/api/trip-weather?${qs(params)}`);

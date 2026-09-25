@@ -4,6 +4,8 @@ import { mayNotify, showDeviceNotification } from "../lib/notify";
 import { useNearby } from "./NearbyContext.jsx";
 import { usePeople } from "./PeopleContext.jsx";
 import { useTrip } from "./TripContext.jsx";
+import { MOOD } from "../lib/moods";
+import { tripPhase } from "../lib/tripday";
 
 const Ctx = createContext(null);
 export const useAlerts = () => useContext(Ctx);
@@ -34,7 +36,7 @@ const write = (key, value) => {
  * and, if allowed, device notifications.
  */
 export function AlertsProvider({ children }) {
-  const { trip, form } = useTrip();
+  const { trip, form, moods } = useTrip();
   const { position, prefs: nearbyPrefs } = useNearby();
   const { token } = usePeople();
   const [settings, setSettingsState] = useState(() => ({ ...DEFAULTS, ...read(SETTINGS_KEY, {}) }));
@@ -57,14 +59,19 @@ export function AlertsProvider({ children }) {
   const body = useMemo(() => {
     const kinds = [...(settings.deals ? ["deal"] : []), ...(settings.people && token ? ["person", "request", "message"] : [])];
     const gps = nearbyPrefs.enabled && position;
+    // During the trip, today's mood (if set) adds what it leans towards to the matching, for today's pop-ups only.
+    const phase = trip ? tripPhase(trip.req, trip.it.nights) : null;
+    const mood = phase?.phase === "during" ? MOOD[moods[phase.day]] : null;
+    const union = (a, b) => [...new Set([...(a || []), ...(b || [])])];
     return {
       dest: trip?.req.destination || form.destination,
       start: trip?.req.start_date, end: trip?.req.end_date,
-      interests: trip?.req.interests || form.interests, place_types: trip?.req.place_types || [],
+      interests: union(trip?.req.interests || form.interests, mood?.interests).slice(0, 12),
+      place_types: union(trip?.req.place_types, mood?.place_types).slice(0, 14),
       ...(gps ? { lat: Math.round(position.lat * 1000) / 1000, lng: Math.round(position.lng * 1000) / 1000 } : {}),
       radius_m: settings.radius_m, min_discount: settings.min_discount, kinds,
     };
-  }, [trip, form.destination, form.interests, position, nearbyPrefs.enabled, settings, token]);
+  }, [trip, form.destination, form.interests, position, nearbyPrefs.enabled, settings, token, moods]);
   const bodyKey = JSON.stringify(body);
   const rssUrl = `/api/feed/deals.xml?dest=${body.dest}&interests=${(body.interests || []).join(",")}&min_discount=${settings.min_discount}`;
   useEffect(() => setRss(rssUrl), [rssUrl]);

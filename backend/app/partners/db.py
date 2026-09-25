@@ -231,7 +231,8 @@ CREATE TABLE IF NOT EXISTS demo_bookings (
     currency TEXT NOT NULL,
     status TEXT NOT NULL DEFAULT 'confirmed',
     created_at TEXT NOT NULL,
-    cancelled_at TEXT
+    cancelled_at TEXT,
+    tickets TEXT NOT NULL DEFAULT '[]'
 );
 
 -- Demo bookings of a single partner deal (app/bookings.py): which deal, which day, how many. Never who.
@@ -246,7 +247,8 @@ CREATE TABLE IF NOT EXISTS demo_deal_bookings (
     currency TEXT NOT NULL,
     status TEXT NOT NULL DEFAULT 'confirmed',
     created_at TEXT NOT NULL,
-    cancelled_at TEXT
+    cancelled_at TEXT,
+    pay TEXT NOT NULL DEFAULT 'venue'
 );
 """
 
@@ -256,6 +258,8 @@ _ADDED_COLUMNS = {
     "users": {"gender": "TEXT", "show_age": "INTEGER NOT NULL DEFAULT 0", "audience_genders": "TEXT NOT NULL DEFAULT '[]'",
               "audience_ages": "TEXT NOT NULL DEFAULT '[]'", "under_review": "INTEGER NOT NULL DEFAULT 0"},
     "intents": {"want_genders": "TEXT NOT NULL DEFAULT '[]'", "want_ages": "TEXT NOT NULL DEFAULT '[]'"},
+    "demo_bookings": {"tickets": "TEXT NOT NULL DEFAULT '[]'"},
+    "demo_deal_bookings": {"pay": "TEXT NOT NULL DEFAULT 'venue'"},
 }
 
 _ready: set[str] = set()
@@ -265,6 +269,8 @@ _lock = threading.Lock()
 def _migrate(conn: sqlite3.Connection) -> None:
     for table, columns in _ADDED_COLUMNS.items():
         have = {r["name"] for r in conn.execute(f"PRAGMA table_info({table})")}
+        if not have:
+            continue  # the table doesn't exist yet: the schema creates it with every column
         for name, ddl in columns.items():
             if name not in have:
                 conn.execute(f"ALTER TABLE {table} ADD COLUMN {name} {ddl}")

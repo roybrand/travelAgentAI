@@ -1170,3 +1170,45 @@ li.done .tick::after { content: ""; width: 5px; height: 9px; border: solid #0329
 .db-facts { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; font-size: 14px; }
 .ok-notice { background: rgba(52, 211, 153, 0.08); border-color: rgba(52, 211, 153, 0.4); color: #bbf7d0; margin: 0; }
 .radar-likes { margin: 6px 0 0; font-size: 14px; color: var(--muted); }
+
+/* ============ mood and weather on the trip ============ */
+.tday-tools { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+.tday-head { align-items: flex-start; }
+.wx-pill { font-size: 12.5px; padding: 4px 10px; border-radius: 999px; border: 1px solid var(--line-2); background: var(--surface-2); white-space: nowrap; }
+.wx-pill.wet { border-color: rgba(96, 165, 250, 0.6); background: rgba(96, 165, 250, 0.12); color: #bfdbfe; }
+.wx-banner { margin: -4px 0 12px; padding: 8px 12px; border-radius: 12px; font-size: 13.5px; color: #bfdbfe; background: rgba(96, 165, 250, 0.08); border: 1px solid rgba(96, 165, 250, 0.35); }
+.wx-swap { margin: 4px 0 2px 4px; font-size: 12.5px; color: #bfdbfe; }
+.mood-chip { white-space: nowrap; }
+.mood-chip.set { border-color: rgba(245, 199, 106, 0.6); color: #fde68a; background: rgba(245, 199, 106, 0.08); }
+.mood-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+.mood-btn { display: flex; align-items: center; gap: 10px; min-height: 52px; padding: 10px 14px; border-radius: 14px; border: 1px solid var(--line); background: var(--surface); color: var(--text); font-weight: 600; cursor: pointer; text-align: left; }
+.mood-btn span { font-size: 22px; }
+.mood-btn[aria-pressed="true"] { border-color: rgba(245, 199, 106, 0.7); background: rgba(245, 199, 106, 0.1); }
+.mood-btn.clear { grid-column: 1 / -1; justify-content: center; color: var(--muted); font-weight: 500; }
+.care-mood { display: grid; gap: 8px; padding-top: 10px; border-top: 1px dashed var(--line-2); font-size: 14px; }
+.care-mood .chips { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; padding-bottom: 2px; }
+.care-mood .chips::-webkit-scrollbar { display: none; }
+.care-mood .chip { flex: none; white-space: nowrap; }
+@media (max-width: 760px) {
+  .tday-head { flex-wrap: wrap; }
+  .tday-tools { width: 100%; justify-content: flex-start; }
+}
+
+/* ============ tickets update and deal payment ============ */
+.tk-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.tk-list li { display: grid; grid-template-columns: auto 1fr auto; grid-template-areas: "tag name amount" "tag when amount"; gap: 0 10px; align-items: center; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--line); background: var(--surface); }
+.tk-list b { grid-area: name; }
+.tk-list small { grid-area: when; color: var(--muted); font-size: 12.5px; }
+.tk-list em { grid-area: amount; font-style: normal; font-weight: 700; }
+.tk-tag { grid-area: tag; font-size: 11px; font-weight: 800; padding: 2px 8px; border-radius: 999px; }
+.tk-tag.add { background: rgba(45, 212, 191, 0.16); color: #8ff3e4; }
+.tk-tag.remove { background: rgba(248, 113, 113, 0.14); color: #fca5a5; }
+.tk-tag.move { background: rgba(129, 140, 248, 0.16); color: #c7d2fe; }
+.pay-pick { display: grid; gap: 8px; }
+.pay-pick .slot-part { align-items: flex-start; }
+.pay-pick .slot-part > span:last-child { display: grid; gap: 2px; }
+.pay-pick small { font-size: 12px; color: var(--muted); font-weight: 500; }
+.deal-costs { display: grid; gap: 6px; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); }
+.deal-cost-row { display: grid; grid-template-columns: 1fr auto auto; gap: 10px; font-size: 13.5px; align-items: baseline; }
+.deal-cost-row em { font-style: normal; font-size: 12px; color: var(--muted); }
+.deal-costs .fine { margin: 0; }

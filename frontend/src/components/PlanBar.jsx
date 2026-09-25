@@ -7,8 +7,8 @@ import { money } from "../lib/format";
 /** The bar that stays at the bottom of the trip: an explicit save (on top of the automatic one), what the trip adds
  * up to, and the way on to booking. Rendered into <body>, because the page-transition transform on <main> would
  * otherwise pin a fixed bar to the page instead of the screen. */
-export default function PlanBar({ say }) {
-  const { trip, savedTrip, saveCurrentTrip, saveError, booking, bookingChanged } = useTrip();
+export default function PlanBar({ say, onUpdateTickets }) {
+  const { trip, savedTrip, saveCurrentTrip, saveError, booking, bookingChanged, ticketChanges } = useTrip();
   const navigate = useNavigate();
   const [flash, setFlash] = useState(false);
   if (!trip) return null;
@@ -30,11 +30,15 @@ export default function PlanBar({ say }) {
       </button>
       <div className="dp-bar-sum">
         <b>{money(trip.total)}</b>
-        <span className="muted">{n} {n === 1 ? "activity" : "activities"} · {booked ? (bookingChanged ? "changed since booking" : `booked ${booking.reference}`) : "not booked yet"}</span>
+        <span className="muted">{n} {n === 1 ? "activity" : "activities"} · {booked ? (bookingChanged ? "flight, stay or travelers changed" : ticketChanges ? "tickets to update" : `booked ${booking.reference}`) : "not booked yet"}</span>
       </div>
-      <button type="button" className="btn primary sm dp-bar-book" onClick={() => navigate("/book")}>
-        {booked ? (bookingChanged ? "Update →" : "Booking →") : "Book trip →"}
-      </button>
+      {booked && ticketChanges && !bookingChanged ? (
+        <button type="button" className="btn primary sm dp-bar-book" onClick={onUpdateTickets}>Update tickets →</button>
+      ) : (
+        <button type="button" className="btn primary sm dp-bar-book" onClick={() => navigate("/book")}>
+          {booked ? (bookingChanged ? "Rebook →" : "Booking →") : "Book trip →"}
+        </button>
+      )}
     </div>,
     document.body,
   );

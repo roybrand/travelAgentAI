@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
-import { fetchConfig, fetchDestinations, planTrip } from "../api";
+import { bookings as bookingsApi, fetchConfig, fetchDestinations, planTrip } from "../api";
 import { clearStoredProfile, loadProfile, storeProfile } from "../lib/profile";
 import { isoDate } from "../lib/format";
 import { candidateItems, nextSlot, scheduledItems } from "../lib/dayplan";
@@ -42,6 +42,8 @@ export function TripProvider({ children }) {
   // The day plan: { [itemKey]: { day, part, order } }. Nothing goes in here except by an explicit action of the
   // traveler's (a tap to add, or a move) — the plan starts empty and nothing is pre-approved for them.
   const [schedule, setSchedule] = useState(initial?.schedule ?? {});
+  // The traveler's mood per trip day ({ [day]: moodKey }). It re-orders that day's ideas and deals, nothing else.
+  const [moods, setMoods] = useState(initial?.moods ?? {});
   // Saved trips (browser only) and which one is open. Every planned trip is saved; it stays until deleted.
   const [savedTrips, setSavedTrips] = useState(loadTrips);
   const [tripId, setTripId] = useState(initial?.id ?? null);
@@ -97,6 +99,7 @@ export function TripProvider({ children }) {
       setHotelId(data.itinerary.hotel.id);
       setFlightId(data.itinerary.flight.id);
       setSchedule({});
+      setMoods({});
       setTripId(id);
       setSavedTrips((list) => [{ id, savedAt: now, updatedAt: now, result: data, hotelId: data.itinerary.hotel.id, flightId: data.itinerary.flight.id, schedule: {} }, ...list]);
       return true;
@@ -142,6 +145,7 @@ export function TripProvider({ children }) {
     setHotelId(null);
     setFlightId(null);
     setSchedule({});
+    setMoods({});
     setError("");
     setReadback(null);
     setForm(tripDefaults());
@@ -166,9 +170,9 @@ export function TripProvider({ children }) {
   // Keep the open trip's saved copy in step with the traveler's choices, and remember which trip is open.
   useEffect(() => {
     if (!tripId) return;
-    setSavedTrips((list) => list.map((t) => (t.id === tripId && (t.hotelId !== hotelId || t.flightId !== flightId || JSON.stringify(t.schedule) !== JSON.stringify(schedule))
-      ? { ...t, hotelId, flightId, schedule, updatedAt: new Date().toISOString() } : t)));
-  }, [tripId, hotelId, flightId, schedule]);
+    setSavedTrips((list) => list.map((t) => (t.id === tripId && (t.hotelId !== hotelId || t.flightId !== flightId || JSON.stringify(t.schedule) !== JSON.stringify(schedule) || JSON.stringify(t.moods || {}) !== JSON.stringify(moods))
+      ? { ...t, hotelId, flightId, schedule, moods, updatedAt: new Date().toISOString() } : t)));
+  }, [tripId, hotelId, flightId, schedule, moods]);
   useEffect(() => {
     setSaveError(storeTrips(savedTrips) ? "" : "This browser's storage is full, so the latest changes are not saved. Delete an old trip to make room.");
   }, [savedTrips]);
@@ -182,6 +186,7 @@ export function TripProvider({ children }) {
     setHotelId(t.hotelId ?? t.result.itinerary.hotel.id);
     setFlightId(t.flightId ?? t.result.itinerary.flight.id);
     setSchedule(t.schedule || {});
+    setMoods(t.moods || {});
     setError("");
     setReadback(null);
     setTripId(t.id);
@@ -200,10 +205,10 @@ export function TripProvider({ children }) {
     if (tripId && savedTrips.some((t) => t.id === tripId)) return tripId;
     const id = newTripId();
     const now = new Date().toISOString();
-    setSavedTrips((list) => [{ id, name: (name || "").trim().slice(0, 60) || null, savedAt: now, updatedAt: now, result, hotelId, flightId, schedule }, ...list]);
+    setSavedTrips((list) => [{ id, name: (name || "").trim().slice(0, 60) || null, savedAt: now, updatedAt: now, result, hotelId, flightId, schedule, moods }, ...list]);
     setTripId(id);
     return id;
-  }, [result, tripId, savedTrips, hotelId, flightId, schedule]);
+  }, [result, tripId, savedTrips, hotelId, flightId, schedule, moods]);
 
   /** Delete saved trips for good. Deleting the open trip also closes it. */
   const deleteTrips = useCallback((ids) => {
@@ -215,6 +220,7 @@ export function TripProvider({ children }) {
       setHotelId(null);
       setFlightId(null);
       setSchedule({});
+      setMoods({});
     }
   }, [tripId]);
 
@@ -235,15 +241,26 @@ export function TripProvider({ children }) {
 
   const booking = savedTrip?.booking || null;
   const currentFlightId = result ? pickFlight(result.itinerary, flightId).id : null;
+  // Only a new flight, stay or number of travelers means booking again. Day plan changes never do: free activities
+  // need nothing, and paid ones are handled as ticket changes (see ticketChanges below).
   const bookingChanged = !!booking && booking.status !== "cancelled" &&
     (booking.snapshot?.hotelId !== hotelId || (booking.snapshot?.flightId ?? result?.itinerary.flight.id) !== currentFlightId ||
-      (booking.snapshot?.travelers ?? result?.request.travelers) !== result?.request.travelers ||
-      JSON.stringify(booking.snapshot?.schedule || {}) !== JSON.stringify(schedule));
+      (booking.snapshot?.travelers ?? result?.request.travelers) !== result?.request.travelers);
 
   /** Switch to one of the compared flight + stay packages in one go. */
   const choosePackage = useCallback((fid, hid) => {
     setFlightId(fid);
     setHotelId(hid);
+  }, []);
+
+  /** Set (or clear, with null) the mood for one trip day. */
+  const setMood = useCallback((day, key) => {
+    setMoods((m) => {
+      const next = { ...m };
+      if (key) next[day] = key;
+      else delete next[day];
+      return next;
+    });
   }, []);
 
   /** Move an already-planned item to a different day or time of day. */
@@ -271,11 +288,40 @@ export function TripProvider({ children }) {
 
   const planned = trip ? trip.chosenItems.map((i) => i.key) : [];
 
+  /** How the paid activities on the plan differ from the tickets already booked: to add (charged), to refund, or
+   * to re-date (free). Null when there is nothing to do (no booking, a full rebook is due, or they match). */
+  const ticketChanges = useMemo(() => {
+    if (!trip || !booking || booking.status === "cancelled" || bookingChanged) return null;
+    const people = trip.req.travelers;
+    const price = (name) => trip.candidates.find((c) => c.name === name)?.cost || 0;
+    const tickets = new Map((booking.tickets || []).map((t) => [t.name, t]));
+    const paid = trip.chosenItems.filter((i) => i.cost);
+    const added = paid.filter((i) => !tickets.has(i.name));
+    const moved = paid.filter((i) => tickets.has(i.name) && (tickets.get(i.name).day !== i.day || tickets.get(i.name).part !== i.part));
+    const removed = [...tickets.values()].filter((t) => !paid.some((i) => i.name === t.name));
+    if (!added.length && !moved.length && !removed.length) return null;
+    const charge = added.reduce((s, i) => s + i.cost * people, 0);
+    const refund = removed.reduce((s, t) => s + (t.cost ?? price(t.name)) * people, 0);
+    return { added, moved, removed, charge, refund, people };
+  }, [trip, booking, bookingChanged]);
+
+  /** Update just the tickets on the booking (demo): nothing else is rebooked and no details are asked again. */
+  const applyTicketChanges = useCallback(async () => {
+    if (!trip || !booking) return null;
+    const activities = trip.chosenItems.map((i) => ({ name: i.name.slice(0, 160), day: i.day, part: i.part, cost: i.cost ?? null }));
+    const r = await bookingsApi.updateTickets(booking.reference, booking.manage_token, activities);
+    setSavedTrips((list) => list.map((t) => (t.id === tripId && t.booking ? {
+      ...t, booking: { ...t.booking, tickets: r.tickets, totals: r.totals, free_activities: trip.chosenItems.filter((i) => !i.cost).map((i) => i.name), snapshot: { ...t.booking.snapshot, schedule } },
+      updatedAt: new Date().toISOString(),
+    } : t)));
+    return r;
+  }, [trip, booking, tripId, schedule]);
+
   const value = {
-    form, setForm, result, trip, loading, error, setError, plan, hotelId, setHotelId, flightId, setFlightId, choosePackage, replanTrip, planned, toggleItem, moveItem,
+    form, setForm, result, trip, loading, error, setError, plan, hotelId, setHotelId, flightId, setFlightId, choosePackage, replanTrip, moods, setMood, planned, toggleItem, moveItem,
     config, destinations, cityName, profile, setProfile, forgetProfile, resetSearch, readback, setReadback,
     savedTrips, tripId, savedTrip, openTrip, deleteTrips, renameTrip, saveCurrentTrip, saveError,
-    booking, bookingChanged, recordBooking, updateBooking,
+    booking, bookingChanged, ticketChanges, applyTicketChanges, recordBooking, updateBooking,
   };
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

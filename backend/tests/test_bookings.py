@@ -90,3 +90,54 @@ def test_book_a_deal_only_when_it_is_live_on_that_day(client):
     assert client.post("/api/bookings/deal", json={"deal_id": deal["id"], "date": yesterday, "quantity": 1, "demo_acknowledged": True}).status_code == 422
     assert client.post("/api/bookings/deal", json={"deal_id": 999999, "date": date.today().isoformat(), "quantity": 1, "demo_acknowledged": True}).status_code == 409
     assert client.post("/api/bookings/deal", json={"deal_id": deal["id"], "date": date.today().isoformat(), "quantity": 11, "demo_acknowledged": True}).status_code == 422
+
+
+# ---------------------------------------------------------------- changing the day plan after booking
+
+def test_update_tickets_charges_refunds_and_moves_without_touching_flights_or_stay(client):
+    b = client.post("/api/bookings", json=body()).json()  # tickets: Tram 28 (£3 pp, day 1 morning); the free sunset has none
+    token, ref = b["manage_token"], b["reference"]
+    tram = next(t for t in b["tickets"] if t["name"] == "Tram 28 ride")
+
+    plan = [
+        {"name": "Tram 28 ride", "day": 2, "part": "afternoon", "cost": 3},   # moved
+        {"name": "Sunset sail", "day": 3, "part": "evening", "cost": 35},     # added, paid
+        {"name": "Miradouro sunset", "day": 2, "part": "evening", "cost": 0}, # free: never a ticket
+    ]
+    r = client.put(f"/api/bookings/{ref}/activities", json={"token": token, "activities": plan}).json()
+    assert r["added"] == ["Sunset sail"] and r["moved"] == ["Tram 28 ride"] and r["removed"] == []
+    assert r["charged"] == 70 and r["refunded"] == 0                          # 35 x 2 travelers
+    assert r["totals"] == {"nights": 4, "flight": 300, "stay": 400, "activities": 76, "total": 776}
+    assert next(t for t in r["tickets"] if t["name"] == "Tram 28 ride")["code"] == tram["code"]  # same ticket, new date
+
+    r = client.put(f"/api/bookings/{ref}/activities", json={"token": token, "activities": plan[1:]}).json()
+    assert r["removed"] == ["Tram 28 ride"] and r["refunded"] == 6 and r["totals"]["total"] == 770
+    assert client.get(f"/api/bookings/{ref}", params={"token": token}).json()["total"] == 770
+
+    assert client.put(f"/api/bookings/{ref}/activities", json={"token": "wrong-token-123", "activities": []}).status_code == 404
+    client.post(f"/api/bookings/{ref}/cancel", json={"token": token})
+    assert client.put(f"/api/bookings/{ref}/activities", json={"token": token, "activities": []}).status_code == 409
+
+
+def test_a_deal_booking_says_how_it_is_paid(client):
+    deal, day = _a_live_deal(client)
+    at_venue = client.post("/api/bookings/deal", json={"deal_id": deal["id"], "date": day.isoformat(), "quantity": 1, "demo_acknowledged": True}).json()
+    now = client.post("/api/bookings/deal", json={"deal_id": deal["id"], "date": day.isoformat(), "quantity": 1, "pay": "now", "demo_acknowledged": True}).json()
+    assert at_venue["pay"] == "venue" and now["pay"] == "now"
+    assert client.post("/api/bookings/deal", json={"deal_id": deal["id"], "date": day.isoformat(), "quantity": 1, "pay": "later", "demo_acknowledged": True}).status_code == 422
+
+
+def test_older_databases_gain_the_ticket_and_pay_columns(tmp_path, monkeypatch):
+    import sqlite3
+    from app.partners import db as dbmod
+    path = tmp_path / "old.db"
+    old = sqlite3.connect(path)
+    old.executescript(
+        "CREATE TABLE demo_bookings (id INTEGER PRIMARY KEY, reference TEXT);"
+        "CREATE TABLE demo_deal_bookings (id INTEGER PRIMARY KEY, reference TEXT);"
+    )
+    old.close()
+    monkeypatch.setenv("WAYFINDER_DB", str(path))
+    with dbmod.tx() as c:
+        assert "tickets" in {r["name"] for r in c.execute("PRAGMA table_info(demo_bookings)")}
+        assert "pay" in {r["name"] for r in c.execute("PRAGMA table_info(demo_deal_bookings)")}

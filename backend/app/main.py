@@ -9,7 +9,7 @@ from fastapi.staticfiles import StaticFiles
 
 from . import config
 from .graph import build_trip_planning_graph
-from .live import catalog, llm, nearby, nightlife
+from .live import catalog, forecast, llm, nearby, nightlife
 from .mcp_tools.client import MCPToolClient
 from .partners.routes import router as partner_router
 from .social.routes import router as people_router
@@ -120,6 +120,15 @@ async def get_config():
 async def destinations():
     """The 109 selectable destinations (Europe, Americas, Asia, Australia)."""
     return {"destinations": catalog.public_list(), "regions": [catalog.EUROPE, catalog.AMERICAS, catalog.ASIA, catalog.OCEANIA]}
+
+
+@app.get("/api/trip-weather")
+async def trip_weather(dest: str, start: date, end: date):
+    """Day-by-day forecast for a trip (Open-Meteo, free). Only days inside the 16-day forecast window get weather;
+    further out the answer says when it will be ready instead of guessing."""
+    if end < start or (end - start).days > 60:
+        raise HTTPException(status_code=422, detail="Pick a trip of 60 days or fewer.")
+    return await asyncio.to_thread(forecast.trip_forecast, dest, start, end)
 
 
 @app.post("/api/parse-request")

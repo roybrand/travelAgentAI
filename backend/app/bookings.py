@@ -10,6 +10,7 @@ would go, so the whole journey can be shown. Every response says `demo: true`, a
 - Going live means swapping `confirm()` for real supplier calls (Amadeus flight orders, hotel bookings) and
   Stripe Checkout, which the partner side already uses. See docs/06-go-live-and-partnerships.md.
 """
+import json
 import secrets
 from datetime import date, datetime, timezone
 from typing import Literal
@@ -91,6 +92,9 @@ def confirm(b: BookingIn) -> dict:
     t = totals(b)
     token = secrets.token_urlsafe(24)
     now = datetime.now(timezone.utc).isoformat()
+    # The booking keeps its tickets (what, when, price per person, code), so they can be changed later on their own.
+    tickets = [{"name": a.name, "day": a.day, "part": a.part, "cost": a.cost, "code": f"T-{_code(_REF_CHARS, 5)}"}
+               for a in b.activities if a.cost]
     with db.tx() as c:
         for _ in range(5):
             reference = f"WF-{_code(_REF_CHARS, 6)}"
@@ -98,14 +102,12 @@ def confirm(b: BookingIn) -> dict:
                 break
         c.execute(
             "INSERT INTO demo_bookings (reference, token_hash, origin, destination, start_date, end_date, travelers, "
-            "activities, flight_total, stay_total, activities_total, total, currency, created_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "activities, flight_total, stay_total, activities_total, total, currency, created_at, tickets) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (reference, security.sha256(token), b.origin.upper(), b.destination.upper(), b.start_date.isoformat(),
              b.end_date.isoformat(), b.travelers, len(b.activities), t["flight"], t["stay"], t["activities"], t["total"],
-             b.currency, now),
+             b.currency, now, json.dumps(tickets)),
         )
-    tickets = [{"name": a.name, "day": a.day, "part": a.part, "code": f"T-{_code(_REF_CHARS, 5)}"}
-               for a in b.activities if a.cost]
     return {
         "demo": True, "reference": reference, "manage_token": token, "status": "confirmed", "booked_at": now,
         "currency": b.currency, "totals": t,
@@ -134,6 +136,51 @@ def _view(row) -> dict:
 
 def _ip(request: Request) -> str:
     return request.client.host if request.client else "unknown"
+
+
+class TicketsIn(BaseModel):
+    token: str = Field(min_length=10, max_length=100)
+    activities: list[ActivityIn] = Field(default_factory=list, max_length=80)
+
+
+@router.put("/api/bookings/{reference}/activities")
+def update_tickets(reference: str, body: TicketsIn):
+    """Bring a booking's activity tickets in line with the day plan, without touching the flights or the stay: new
+    paid activities get tickets (charged), dropped ones are refunded, moved ones are re-dated for free. Free
+    activities need no ticket. The difference is worked out here, from each price per person and the travelers."""
+    row = _row(reference, body.token)
+    if row["status"] != "confirmed":
+        raise HTTPException(status_code=409, detail="This booking is cancelled. Book again instead.")
+    nights = (date.fromisoformat(row["end_date"]) - date.fromisoformat(row["start_date"])).days
+    if any(a.day > nights for a in body.activities):
+        raise HTTPException(status_code=422, detail="An activity is planned on a day outside the trip.")
+    old = {t["name"]: t for t in json.loads(row["tickets"] or "[]")}
+    new, added, moved = [], [], []
+    for a in body.activities:
+        if not a.cost:
+            continue
+        before = old.get(a.name)
+        new.append({"name": a.name, "day": a.day, "part": a.part, "cost": a.cost,
+                    "code": before["code"] if before else f"T-{_code(_REF_CHARS, 5)}"})
+        if not before:
+            added.append(a.name)
+        elif (before["day"], before["part"]) != (a.day, a.part):
+            moved.append(a.name)
+    kept = {t["name"] for t in new}
+    removed = [name for name in old if name not in kept]
+    acts = round(sum(t["cost"] * row["travelers"] for t in new), 2)
+    delta = round(acts - row["activities_total"], 2)
+    total = round(row["flight_total"] + row["stay_total"] + acts, 2)
+    with db.tx() as c:
+        c.execute("UPDATE demo_bookings SET tickets = ?, activities = ?, activities_total = ?, total = ? WHERE id = ?",
+                  (json.dumps(new), len(new), acts, total, row["id"]))
+    if added or removed or moved:
+        activity.record("booking.updated", added=len(added), removed=len(removed), moved=len(moved))
+    return {
+        "demo": True, "reference": row["reference"], "tickets": new, "added": added, "removed": removed, "moved": moved,
+        "charged": max(delta, 0), "refunded": max(-delta, 0), "currency": row["currency"],
+        "totals": {"nights": nights, "flight": row["flight_total"], "stay": row["stay_total"], "activities": acts, "total": total},
+    }
 
 
 @router.post("/api/bookings/checkout")
@@ -178,6 +225,7 @@ class DealBookingIn(BaseModel):
     deal_id: int = Field(ge=1)
     date: date
     quantity: int = Field(ge=1, le=10)
+    pay: Literal["venue", "now"] = "venue"  # at the place on arrival (the voucher holds the price), or now in the app
     demo_acknowledged: bool
 
     @model_validator(mode="after")
@@ -191,7 +239,7 @@ class DealBookingIn(BaseModel):
 
 def _deal_view(row, deal: dict | None) -> dict:
     return {
-        "demo": True, "reference": row["reference"], "status": row["status"], "date": row["day"], "quantity": row["quantity"],
+        "demo": True, "reference": row["reference"], "status": row["status"], "date": row["day"], "quantity": row["quantity"], "pay": row["pay"],
         "total": row["total"], "currency": row["currency"], "cancelled_at": row["cancelled_at"],
         "deal": deal and {k: deal[k] for k in ("id", "title", "partner_name", "address", "category", "category_label", "price", "price_note", "lat", "lng")},
     }
@@ -215,10 +263,10 @@ def book_deal(body: DealBookingIn, request: Request):
             if not c.execute("SELECT 1 FROM demo_deal_bookings WHERE reference = ?", (reference,)).fetchone():
                 break
         c.execute(
-            "INSERT INTO demo_deal_bookings (reference, token_hash, deal_id, day, quantity, total, currency, created_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            "INSERT INTO demo_deal_bookings (reference, token_hash, deal_id, day, quantity, total, currency, created_at, pay) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (reference, security.sha256(token), deal["id"], body.date.isoformat(), body.quantity, total, deal["currency"],
-             datetime.now(timezone.utc).isoformat()),
+             datetime.now(timezone.utc).isoformat(), body.pay),
         )
         row = c.execute("SELECT * FROM demo_deal_bookings WHERE reference = ?", (reference,)).fetchone()
     deals.record_click(deal["id"])

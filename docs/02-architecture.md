@@ -156,7 +156,7 @@ travelAgentAi/
 │   │   ├── ranking/
 │   │   │   ├── score.py         Flight, hotel, and combination scoring
 │   │   │   └── combine.py       Pairing, ranking, rationale, pros/cons
-│   │   ├── live/                Live sources: catalog (109 cities), climate, places, osm, amadeus, llm, pricing,
+│   │   ├── live/                Live sources: catalog (109 cities), climate, forecast (trip-day weather), places, osm, amadeus, llm, pricing,
 │   │   │                        travel.py (flight and stay search: Amadeus, Travelpayouts, estimates), geo.py (distances), nearby, guide,
 │   │   │                        nightlife.py (Tonight: best clubs and bars for one night),
 │   │   │                        photos.py (finds a credited photo for activities, beaches, zoos and other photo-less items)

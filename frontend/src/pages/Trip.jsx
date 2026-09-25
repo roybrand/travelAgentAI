@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, Navigate, useNavigate } from "react-router-dom";
 import { Bar, BarChart, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis } from "recharts";
 import { useTrip } from "../state/TripContext.jsx";
-import { fetchDeals, fetchEvents } from "../api";
+import { fetchDeals, fetchEvents, fetchTripWeather } from "../api";
 import { DISCLOSURE } from "../components/DealsSection.jsx";
 import { TAG_LABEL } from "../lib/constants";
 import { MONTHS, duration, money, shortDate } from "../lib/format";
@@ -17,9 +17,11 @@ import CareCard from "../components/CareCard.jsx";
 import TripTimeline from "../components/TripTimeline.jsx";
 import PlanBar from "../components/PlanBar.jsx";
 import { IdeaRow, usePlanSheets } from "../components/PlanSheets.jsx";
+import { useDealBooking } from "../state/DealBookingContext.jsx";
 import FlightPicker, { connectionText } from "../components/FlightPicker.jsx";
 import TravelersSheet from "../components/TravelersSheet.jsx";
 import InterestsSheet from "../components/InterestsSheet.jsx";
+import TicketsSheet from "../components/TicketsSheet.jsx";
 
 const C = { flight: "#818cf8", stay: "#2dd4bf", exp: "#f5c76a" };
 
@@ -50,10 +52,13 @@ function Fold({ title, hint, children, open = false }) {
 /** The trip, as the traveler lives it: a slim header, a card that looks after them, and the itinerary day by day,
  * editable in place, with partner deals along each day's route. Everything else sits folded under Trip details. */
 export default function Trip() {
-  const { trip, cityName, profile, forgetProfile, config, resetSearch, readback, booking, savedTrip, destinations, choosePackage } = useTrip();
+  const { trip, cityName, profile, forgetProfile, config, resetSearch, readback, booking, savedTrip, destinations, choosePackage, moods } = useTrip();
+  const [weather, setWeather] = useState(null);
   const [flightsOpen, setFlightsOpen] = useState(false);
   const [travelersOpen, setTravelersOpen] = useState(false);
   const [likesOpen, setLikesOpen] = useState(false);
+  const [ticketsOpen, setTicketsOpen] = useState(false);
+  const dealBooking = useDealBooking();
   const navigate = useNavigate();
   const [activeDay, setActiveDay] = useState(1);
   const [deals, setDeals] = useState([]);
@@ -69,7 +74,8 @@ export default function Trip() {
     void el.offsetWidth; // restart the highlight animation
     el.classList.add("flash");
   };
-  const sheets = usePlanSheets({ onShowDay: scrollToDay });
+  const wetOn = (d) => !!(trip && weather?.days?.[dayDate(trip.req.start_date, d)]?.wet);
+  const sheets = usePlanSheets({ onShowDay: scrollToDay, dayContext: (d) => ({ mood: moods[d], wet: wetOn(d) }) });
 
   const req = trip?.req;
   const nights = trip?.it.nights || 0;
@@ -82,6 +88,9 @@ export default function Trip() {
     fetchDeals({ dest: req.destination, start: req.start_date, end: req.end_date, interests: req.interests.join(","), place_types: (req.place_types || []).join(",") })
       .then((r) => live && setDeals(r.deals || []))
       .catch(() => live && setDeals([]));
+    fetchTripWeather({ dest: req.destination, start: req.start_date, end: dayDate(req.start_date, (trip?.it.nights || 0) + 1) })
+      .then((r) => live && setWeather(r))
+      .catch(() => live && setWeather(null));
     if (config.ticketmaster) {
       fetchEvents({ dest: req.destination, start: req.start_date, end: req.end_date })
         .then((r) => live && setEvents(r.events || []))
@@ -110,8 +119,9 @@ export default function Trip() {
     return routeDeals(deals, {
       days: Array.from({ length: nights + 1 }, (_, i) => i + 1), startIso: req.start_date, items: trip.chosenItems, hotel: trip.hotel,
       centre: destinations.find((x) => x.code === req.destination), pinDay: phase?.phase === "during" ? phase.day : null,
+      moodFor: (d) => moods[d],
     });
-  }, [deals, trip, nights, req, phase, destinations]);
+  }, [deals, trip, nights, req, phase, destinations, moods]);
   const eventsByDate = useMemo(() => events.reduce((m, e) => ({ ...m, [e.date]: [...(m[e.date] || []), e] }), {}), [events]);
 
   if (!trip) return <Navigate to="/" replace />;
@@ -164,7 +174,7 @@ export default function Trip() {
         </div>
       </header>
 
-      <CareCard phase={phase} place={place} onDay={scrollToDay} onAdd={sheets.openAdd} />
+      <CareCard phase={phase} place={place} onDay={scrollToDay} onAdd={sheets.openAdd} weather={weather} say={sheets.say} onTickets={() => setTicketsOpen(true)} />
 
       <nav className="daystrip" ref={stripRef} aria-label="Jump to a day">
         {Array.from({ length: nights + 1 }, (_, i) => i + 1).map((d) => {
@@ -179,7 +189,7 @@ export default function Trip() {
         })}
       </nav>
 
-      <TripTimeline phase={phase} dealsByDay={dealsByDay} eventsByDate={eventsByDate} sheets={sheets} onChangeFlight={() => setFlightsOpen(true)} />
+      <TripTimeline phase={phase} dealsByDay={dealsByDay} eventsByDate={eventsByDate} sheets={sheets} onChangeFlight={() => setFlightsOpen(true)} weather={weather} />
       <p className="fine trip-deals-note">
         {routeDealCount > 0 ? `${DISCLOSURE} ` : "No partner deals along your route yet. We'll show them here as businesses add them. "}
         <Link to="/deals">All deals in {place} →</Link>
@@ -227,6 +237,27 @@ export default function Trip() {
                   <li key={p.name}><i style={{ background: p.color }} /><span>{p.name}</span><b>{money(p.value)}</b><em>{Math.round((p.value / total) * 100)}%</em></li>
                 ))}
               </ul>
+              {(() => {
+                // Booked partner deals are separate purchases, often in another currency: listed, never added to the total.
+                const mine = dealBooking.forTrip(savedTrip?.id);
+                if (!mine.length) return null;
+                const sum = (pay) => Object.entries(mine.filter((b) => (b.pay || "venue") === pay).reduce((m, b) => ({ ...m, [b.currency]: (m[b.currency] || 0) + b.total }), {}))
+                  .map(([cur, v]) => money(v, cur)).join(" + ");
+                return (
+                  <div className="deal-costs">
+                    <span className="tag-strong">Booked deals</span>
+                    {mine.map((b) => (
+                      <div key={b.reference} className="deal-cost-row">
+                        <span>{b.deal.title} · Day {b.day}</span>
+                        <b>{money(b.total, b.currency)}</b>
+                        <em>{(b.pay || "venue") === "now" ? "paid" : "pay there"}</em>
+                      </div>
+                    ))}
+                    {sum("venue") && <p className="fine">To pay at the places: {sum("venue")}.</p>}
+                    {sum("now") && <p className="fine">Already paid in the app (demo): {sum("now")}.</p>}
+                  </div>
+                );
+              })()}
               {budget != null && (
                 <div className="budget-line">
                   <span>Budget {money(budget)}</span>
@@ -353,7 +384,8 @@ export default function Trip() {
         </Fold>
       </div>
 
-      <PlanBar say={sheets.say} />
+      <PlanBar say={sheets.say} onUpdateTickets={() => setTicketsOpen(true)} />
+      <TicketsSheet open={ticketsOpen} onClose={() => setTicketsOpen(false)} say={sheets.say} />
       <FlightPicker open={flightsOpen} onClose={() => setFlightsOpen(false)} say={sheets.say} />
       <TravelersSheet open={travelersOpen} onClose={() => setTravelersOpen(false)} say={sheets.say} />
       <InterestsSheet open={likesOpen} onClose={() => setLikesOpen(false)} say={sheets.say} />

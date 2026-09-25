@@ -5,7 +5,8 @@ import { PARTS, PART_ICON, PART_LABEL, guessPart } from "../lib/dayplan";
 import { TAG_LABEL } from "../lib/constants";
 import { PLACE_TYPE_LABEL } from "../lib/profile";
 import { money } from "../lib/format";
-import { dayDate } from "../lib/tripday";
+import { dayDate, slotScore } from "../lib/tripday";
+import { MOOD, isIndoor, moodScore } from "../lib/moods";
 import Photo from "./Photo.jsx";
 import Sheet from "./Sheet.jsx";
 
@@ -107,7 +108,7 @@ export function IdeaRow({ item, hint, added, onAdd, onUndo, addLabel = "+ Add" }
 
 /** Everything needed to change the plan in place: the "add to this slot" sheet, the "when?" / move sheet and a
  * confirmation toast. Returns the openers and the UI to render once on the page. */
-export function usePlanSheets({ onShowDay } = {}) {
+export function usePlanSheets({ onShowDay, dayContext = () => ({}) } = {}) {
   const { trip, toggleItem, moveItem } = useTrip();
   const [addSlot, setAddSlot] = useState(null); // { day, part } while the "add to this slot" sheet is open
   const [addedHere, setAddedHere] = useState([]); // keys added in the open sheet, so they stay visible with Undo
@@ -129,8 +130,9 @@ export function usePlanSheets({ onShowDay } = {}) {
   const counts = useMemo(() => chosenItems.reduce((m, i) => ({ ...m, [i.day]: (m[i.day] || 0) + 1 }), {}), [chosenItems]);
   const groups = useMemo(() => ideaGroups(candidates, scheduledKeys), [candidates, scheduledKeys]);
 
-  const openAdd = useCallback((day, part) => {
-    setAddSlot({ day, part });
+  /** Open ideas for one slot. `replace` (an item already there) makes it a swap: the first idea added takes its place. */
+  const openAdd = useCallback((day, part, replace = null) => {
+    setAddSlot({ day, part, replace });
     setAddedHere([]);
     setFilter("fit");
   }, []);
@@ -157,9 +159,27 @@ export function usePlanSheets({ onShowDay } = {}) {
       if (filter === "sight" || filter === "adventure") return !matched(i) && i.source === filter;
       return !matched(i) && i.source === "place" && i.type === filter;
     };
-    const score = (i) => (guessPart(i) === addSlot.part ? 2 : 0) + (matched(i) ? 1 : 0);
-    return pool.filter(inFilter).sort((a, b) => score(b) - score(a));
+    const ctx = dayContext(addSlot.day);
+    return pool.filter(inFilter).sort((a, b) => slotScore(b, addSlot.part, ctx) - slotScore(a, addSlot.part, ctx));
   })();
+  const sheetCtx = addSlot ? dayContext(addSlot.day) : {};
+  const hintFor = (item) => {
+    if (sheetCtx.wet && isIndoor(item)) return "Indoors, good for rain";
+    if (sheetCtx.mood && moodScore(item, sheetCtx.mood) >= 2) return `Fits your ${MOOD[sheetCtx.mood].label.toLowerCase()} mood`;
+    return guessPart(item) === addSlot.part ? PART_HINT[addSlot.part] : null;
+  };
+  const addFromSheet = (item) => {
+    if (addSlot.replace) {
+      const old = addSlot.replace;
+      toggleItem(old);
+      toggleItem(item, addSlot);
+      setAddSlot(null);
+      say(`Swapped ${old.name} for ${item.name}`, { label: "Undo", run: () => { toggleItem(item); toggleItem(old, { day: old.day, part: old.part }); } });
+      return;
+    }
+    toggleItem(item, addSlot);
+    setAddedHere((k) => [...k, item.key]);
+  };
 
   const closeAdd = () => {
     if (addedHere.length) say(`${addedHere.length} added to ${slotName(addSlot.day, addSlot.part)}`);
@@ -193,7 +213,7 @@ export function usePlanSheets({ onShowDay } = {}) {
         open={!!addSlot}
         onClose={closeAdd}
         wide
-        title={addSlot ? `Add to ${slotName(addSlot.day, addSlot.part)}` : ""}
+        title={addSlot ? (addSlot.replace ? `Swap ${addSlot.replace.name}` : `Add to ${slotName(addSlot.day, addSlot.part)}`) : ""}
         subtitle={addSlot && (
           <div className="chips sheet-parts">
             {PARTS.map((p) => (
@@ -219,9 +239,10 @@ export function usePlanSheets({ onShowDay } = {}) {
                 <IdeaRow
                   key={item.key}
                   item={item}
-                  hint={guessPart(item) === addSlot.part ? PART_HINT[addSlot.part] : null}
+                  hint={hintFor(item)}
                   added={addedHere.includes(item.key)}
-                  onAdd={() => { toggleItem(item, addSlot); setAddedHere((k) => [...k, item.key]); }}
+                  addLabel={addSlot.replace ? "Swap in" : "+ Add"}
+                  onAdd={() => addFromSheet(item)}
                   onUndo={() => { toggleItem(item); setAddedHere((k) => k.filter((x) => x !== item.key)); }}
                 />
               ))}
