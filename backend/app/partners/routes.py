@@ -405,6 +405,7 @@ def admin_analytics(days: int = 30):
         "messages_sent": activity.total_since(["message.sent"], days),
         "reports_filed": activity.total_since(["report.filed"], days),
         "demo_bookings": activity.total_since(["booking.created"], days),
+        "demo_deal_bookings": activity.total_since(["booking.deal_created"], days),
     }
     daily = {
         "people_registered": activity.daily_series(["user.registered"], days),

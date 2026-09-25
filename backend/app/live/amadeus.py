@@ -48,6 +48,21 @@ def parse_duration(iso: str) -> int:
     return int(m.group(1) or 0) * 60 + int(m.group(2) or 0) if m else 0
 
 
+def _connections(segments: list[dict]) -> dict:
+    """Where and how long each change of plane is, and when the last leg lands (local time), from the segments.
+    Segments without arrival details are skipped rather than guessed."""
+    from datetime import datetime
+    via, waits = [], []
+    for a, b in zip(segments, segments[1:]):
+        arr, dep = a.get("arrival") or {}, b.get("departure") or {}
+        if arr.get("iataCode"):
+            via.append(arr["iataCode"])
+        if arr.get("at") and dep.get("at"):
+            waits.append(round((datetime.fromisoformat(dep["at"]) - datetime.fromisoformat(arr["at"])).total_seconds() / 60))
+    last = (segments[-1].get("arrival") or {}).get("at") if segments else None
+    return {"via": via, "layover_minutes": waits, "arrive_time": last[11:16] if last else None}
+
+
 def parse_flight_offers(data: dict, origin: str, dest: str, depart: str, ret: str, adults: int) -> list[dict]:
     carriers = data.get("dictionaries", {}).get("carriers", {})
     out = []
@@ -67,6 +82,7 @@ def parse_flight_offers(data: dict, origin: str, dest: str, depart: str, ret: st
             "total_price": round(total),
             "currency": offer["price"].get("currency", "GBP"),
             "price_source": "amadeus",
+            **_connections(segments),
         })
     return out
 

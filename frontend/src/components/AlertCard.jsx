@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
+import { useDealBooking } from "../state/DealBookingContext.jsx";
 import { people, trackDealClick } from "../api";
 import { usePeople } from "../state/PeopleContext.jsx";
 import { useAlerts } from "../state/AlertsContext.jsx";
@@ -14,6 +15,7 @@ const priceText = (n, cur) => new Intl.NumberFormat("en-GB", { style: "currency"
 
 function DealAlert({ a, compact }) {
   const d = a.deal;
+  const booking = useDealBooking();
   return (
     <article className={`alert-card deal ${a.hot ? "hot" : ""} ${compact ? "compact" : ""}`}>
       <div className="alert-art" style={a.image ? { backgroundImage: `url(${a.image})` } : undefined}>
@@ -30,7 +32,8 @@ function DealAlert({ a, compact }) {
         </p>
         <div className="alert-reasons">{a.reason.map((r) => <span key={r} className="tag hit">{r}</span>)}</div>
         <div className="alert-actions">
-          <a className="btn primary sm" href={d.url} target="_blank" rel="noopener noreferrer sponsored" onClick={() => trackDealClick(d.id)}>Get this deal ↗</a>
+          <button type="button" className="btn primary sm" onClick={() => booking.open({ ...d, title: d.title || a.title })}>Book now</button>
+          <a className="btn ghost sm" href={d.url} target="_blank" rel="noopener noreferrer sponsored" onClick={() => trackDealClick(d.id)}>Deal page ↗</a>
           <Link className="btn ghost sm" to={a.link}>All deals here</Link>
         </div>
         {!compact && <p className="fine">Partner deal, set by the business and reviewed by us. Never ranked by who pays.</p>}

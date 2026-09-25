@@ -5,6 +5,8 @@ import { usePeople } from "../state/PeopleContext.jsx";
 import { useTrip } from "../state/TripContext.jsx";
 import AlertCard from "../components/AlertCard.jsx";
 import BackLink from "../components/BackLink.jsx";
+import InterestsSheet from "../components/InterestsSheet.jsx";
+import { TAG_LABEL } from "../lib/constants";
 
 const TABS = [["all", "Everything"], ["deal", "Deals"], ["person", "People"], ["message", "Messages"]];
 
@@ -13,6 +15,8 @@ export default function Alerts() {
   const { token } = usePeople();
   const { trip, cityName, form } = useTrip();
   const [tab, setTab] = useState("all");
+  const [likesOpen, setLikesOpen] = useState(false);
+  const [likesNote, setLikesNote] = useState("");
   const [perm, setPerm] = useState(typeof Notification === "undefined" ? "unsupported" : Notification.permission);
   const city = cityName(trip?.req.destination || form.destination);
 
@@ -40,6 +44,12 @@ export default function Alerts() {
           <div className="eyebrow">Radar</div>
           <h1 className="h2">Hot right now {trip ? `for your trip to ${city}` : `in ${city}`}</h1>
           <p className="muted">Deals that fit what you like, people who want the same as you, and messages, the moment they appear.</p>
+          <p className="radar-likes">
+            Matched to {(trip?.req.interests || form.interests).length ? (trip?.req.interests || form.interests).map((k) => TAG_LABEL[k] || k).join(", ") : "no interests yet"}
+            {trip ? <> · <button type="button" className="linkbtn" onClick={() => setLikesOpen(true)}>change what you like</button></>
+              : <> · <Link to="/">set them on the search form</Link></>}
+          </p>
+          {likesNote && <p className="notice ok-notice">{likesNote}</p>}
         </div>
         <button className="btn ghost" onClick={refresh}>↻ Check now</button>
       </div>
@@ -85,6 +95,7 @@ export default function Alerts() {
       <div className="alert-grid">
         {shown.map((a) => <div key={a.id} className={fresh.current.has(a.id) ? "is-new" : ""}><AlertCard a={a} /></div>)}
       </div>
+      <InterestsSheet open={likesOpen} onClose={() => setLikesOpen(false)} say={setLikesNote} />
     </div>
   );
 }

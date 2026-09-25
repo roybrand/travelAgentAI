@@ -24,6 +24,8 @@ For what each feature means and who it is for, see the [feature registry](FEATUR
 | POST | `/api/alerts` | Partner sign-in | Deals for a planned trip or a radius, and (when signed in to People) matches, requests and messages. |
 | POST | `/api/bookings` | Public | Book the trip -- as a demo: nothing is reserved with any airline or hotel and nothing is charged. Returns a reference, confirmation codes and a manage token (shown once) for viewing or cancelling it. |
 | POST | `/api/bookings/checkout` | Public | A traveler opened checkout for a trip. Counted for the booking funnel only; nothing is stored about them. |
+| POST | `/api/bookings/deal` | Public | Book one partner deal for a day, as a demo: nothing is reserved with the business and nothing is charged. The deal must be approved and valid that day; the price comes from our database (price x quantity), never the browser. |
+| POST | `/api/bookings/deal/{reference}/cancel` | Public | Cancel a demo deal booking, for whoever holds its manage token. |
 | GET | `/api/bookings/{reference}` | Public | A demo booking's status, for whoever holds its manage token. |
 | POST | `/api/bookings/{reference}/cancel` | Public | Cancel a demo booking. The demo always refunds in full; a real one would follow each supplier's rules. |
 | POST | `/api/build-trip` | Public | Trip fields plus a traveler profile (keywords, interests, place types) from free text and/or a photo. |

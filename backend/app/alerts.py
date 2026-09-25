@@ -102,7 +102,8 @@ def deal_alerts(ctx: AlertContext) -> list[dict]:
             "image": d["photo_url"], "badge": badge, "reason": reason, "hours_left": hours, "link": f"/deals?dest={d['dest']}",
             "deal": {"id": d["id"], "url": d["url"], "price": d["price"], "reference_price": d["reference_price"], "currency": d["currency"],
                      "city": d["city"], "category": d["category"], "category_label": d["category_label"], "partner_name": d["partner_name"],
-                     "valid_to": d["valid_to"], "discount_pct": d["discount_pct"]},
+                     "valid_to": d["valid_to"], "discount_pct": d["discount_pct"], "valid_from": d["valid_from"], "title": d["title"],
+                     "price_note": d.get("price_note"), "stock": d.get("stock"), "address": d.get("address")},
         })
     out.sort(key=lambda a: -a["score"])
     return out[:MAX_DEALS]

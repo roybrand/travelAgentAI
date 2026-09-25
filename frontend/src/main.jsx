@@ -6,6 +6,7 @@ import { NearbyProvider } from "./state/NearbyContext.jsx";
 import { PeopleProvider } from "./state/PeopleContext.jsx";
 import { AlertsProvider } from "./state/AlertsContext.jsx";
 import { TripProvider } from "./state/TripContext.jsx";
+import { DealBookingProvider } from "./state/DealBookingContext.jsx";
 import "./styles.css";
 
 // Makes the app installable and lets phones show notifications. Needs HTTPS (or localhost) and a production build.
@@ -20,7 +21,9 @@ createRoot(document.getElementById("root")).render(
         <NearbyProvider>
           <PeopleProvider>
             <AlertsProvider>
-              <App />
+              <DealBookingProvider>
+                <App />
+              </DealBookingProvider>
             </AlertsProvider>
           </PeopleProvider>
         </NearbyProvider>

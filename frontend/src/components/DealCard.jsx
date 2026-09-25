@@ -3,6 +3,7 @@ import { TAG_LABEL } from "../lib/constants";
 import { longDate, metres, money } from "../lib/format";
 import { PLACE_TYPE_LABEL } from "../lib/profile";
 import Photo from "./Photo.jsx";
+import { useDealBooking } from "../state/DealBookingContext.jsx";
 
 const label = (k) => TAG_LABEL[k] || PLACE_TYPE_LABEL[k] || k;
 
@@ -25,6 +26,7 @@ function priceText(n, currency) {
 
 /** A partner deal. `preview` disables tracking so the partner form can show a live preview. */
 export default function DealCard({ deal, preview = false }) {
+  const booking = useDealBooking();
   const open = () => {
     if (!preview && deal.id) trackDealClick(deal.id);
   };
@@ -66,9 +68,12 @@ export default function DealCard({ deal, preview = false }) {
           <summary>Terms</summary>
           <p>{deal.terms}</p>
         </details>
-        <a className="btn primary sm" href={preview ? undefined : deal.url} target="_blank" rel="noopener noreferrer sponsored" onClick={open}>
-          Get this deal ↗
-        </a>
+        <div className="deal-actions">
+          {!preview && booking && <button type="button" className="btn primary sm" onClick={() => booking.open(deal)}>Book now</button>}
+          <a className={`btn ${preview ? "primary" : "ghost"} sm`} href={preview ? undefined : deal.url} target="_blank" rel="noopener noreferrer sponsored" onClick={open}>
+            Get this deal ↗
+          </a>
+        </div>
       </div>
     </article>
   );

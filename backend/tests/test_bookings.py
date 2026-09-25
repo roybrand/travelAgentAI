@@ -55,3 +55,38 @@ def test_booking_rejects_bad_input(client):
     bad_day = body(activities=[{"name": "Too late", "day": 9, "part": "night", "cost": 5}])
     assert client.post("/api/bookings", json=bad_day).status_code == 422
     assert client.post("/api/bookings", json=body(travelers=0)).status_code == 422
+
+
+# ---------------------------------------------------------------- booking one partner deal
+
+def _a_live_deal(client):
+    from datetime import date, timedelta
+    from tests.test_partners import approve, deal_body, signup, submit
+    headers, _ = signup(client)
+    deal_id = submit(client, headers)
+    approve(client, deal_id)
+    return {"id": deal_id, **deal_body()}, date.today() + timedelta(days=1)
+
+
+def test_book_a_deal_prices_from_the_database_and_can_be_cancelled_once(client):
+    deal, day = _a_live_deal(client)
+    r = client.post("/api/bookings/deal", json={"deal_id": deal["id"], "date": day.isoformat(), "quantity": 3, "demo_acknowledged": True, "price": 1})
+    assert r.status_code == 200, r.text
+    b = r.json()
+    assert b["demo"] and b["reference"].startswith("WD-") and b["voucher"].startswith("V-")
+    assert b["total"] == deal["price"] * 3 and b["deal"]["title"] == deal["title"]
+    first = client.post(f"/api/bookings/deal/{b['reference']}/cancel", json={"token": b["manage_token"]}).json()
+    again = client.post(f"/api/bookings/deal/{b['reference']}/cancel", json={"token": b["manage_token"]}).json()
+    assert first["status"] == again["status"] == "cancelled" and first["cancelled_at"] == again["cancelled_at"]
+    assert client.post(f"/api/bookings/deal/{b['reference']}/cancel", json={"token": "not-the-token-123"}).status_code == 404
+
+
+def test_book_a_deal_only_when_it_is_live_on_that_day(client):
+    from datetime import date, timedelta
+    deal, _ = _a_live_deal(client)
+    too_late = (date.fromisoformat(deal["valid_to"]) + timedelta(days=1)).isoformat()
+    assert client.post("/api/bookings/deal", json={"deal_id": deal["id"], "date": too_late, "quantity": 1, "demo_acknowledged": True}).status_code == 409
+    yesterday = (date.today() - timedelta(days=1)).isoformat()
+    assert client.post("/api/bookings/deal", json={"deal_id": deal["id"], "date": yesterday, "quantity": 1, "demo_acknowledged": True}).status_code == 422
+    assert client.post("/api/bookings/deal", json={"deal_id": 999999, "date": date.today().isoformat(), "quantity": 1, "demo_acknowledged": True}).status_code == 409
+    assert client.post("/api/bookings/deal", json={"deal_id": deal["id"], "date": date.today().isoformat(), "quantity": 11, "demo_acknowledged": True}).status_code == 422

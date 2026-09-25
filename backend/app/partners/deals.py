@@ -296,6 +296,13 @@ def record_impressions(ids: list[int]) -> None:
             c.execute(f"UPDATE deals SET impressions = impressions + 1 WHERE id IN ({','.join('?' * len(ids))})", ids)
 
 
+def live_on(deal_id: int, day: date) -> dict | None:
+    """One approved, running deal from an active partner, if it is valid on `day`; else None."""
+    with db.tx() as c:
+        row = c.execute(f"{_SELECT} WHERE d.id = ? AND {_LIVE}", (deal_id, day.isoformat(), day.isoformat())).fetchone()
+    return _shape(row, date.today()) if row else None
+
+
 def record_click(deal_id: int) -> bool:
     with db.tx() as c:
         cur = c.execute("UPDATE deals SET clicks = clicks + 1 WHERE id = ? AND status = 'approved'", (deal_id,))

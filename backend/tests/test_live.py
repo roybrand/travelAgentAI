@@ -438,3 +438,15 @@ def test_price_packages_label_the_cheapest_best_and_comfort_options():
     assert [p["vs_best"] for p in packages] == [-200, 0, 500] and packages[0]["price_sources"]["hotel"] == "estimate"
     merged = _packages([best, plush], chosen=best)  # best is also the cheapest: one card, two labels
     assert merged[0]["labels"] == ["Cheapest", "Best match"] and len(merged) == 2
+
+
+def test_amadeus_connections_give_via_airports_layovers_and_arrival():
+    payload = {"dictionaries": {"carriers": {"LH": "Lufthansa"}}, "data": [{
+        "id": "7", "validatingAirlineCodes": ["LH"], "price": {"grandTotal": "300.00", "currency": "GBP"},
+        "itineraries": [{"duration": "PT6H10M", "segments": [
+            {"carrierCode": "LH", "departure": {"at": "2026-11-10T06:00:00"}, "arrival": {"iataCode": "FRA", "at": "2026-11-10T08:40:00"}},
+            {"carrierCode": "LH", "departure": {"at": "2026-11-10T09:55:00"}, "arrival": {"iataCode": "LIS", "at": "2026-11-10T12:10:00"}},
+        ]}],
+    }]}
+    (o,) = amadeus.parse_flight_offers(payload, "LON", "LIS", "2026-11-10", "2026-11-17", 1)
+    assert o["stops"] == 1 and o["via"] == ["FRA"] and o["layover_minutes"] == [75] and o["arrive_time"] == "12:10"

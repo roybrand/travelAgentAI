@@ -13,7 +13,7 @@ export default function CareCard({ phase, place, onDay, onAdd }) {
   const { it, hotel, chosenItems } = trip;
 
   if (phase.phase === "before") {
-    const tasks = careTasks({ phase, nights: it.nights, items: chosenItems, booking, bookingChanged, flight: it.flight, hotel });
+    const tasks = careTasks({ phase, nights: it.nights, items: chosenItems, booking, bookingChanged, flight: trip.flight, hotel });
     const run = (a) => (a.kind === "book" ? navigate("/book") : onDay(a.day));
     const when = phase.daysToGo === 0 ? "today" : phase.daysToGo === 1 ? "tomorrow" : `in ${phase.daysToGo} days`;
     return (

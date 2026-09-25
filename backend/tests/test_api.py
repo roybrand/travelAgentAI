@@ -155,3 +155,12 @@ def test_itinerary_offers_priced_packages_to_compare(client):
     it = client.post("/api/plan-trip", json=VALID_REQUEST).json()["itinerary"]
     assert it["packages"] and all({"labels", "total_cost", "vs_best", "price_sources"} <= set(p) for p in it["packages"])
     assert any("Best match" in p["labels"] for p in it["packages"])
+
+
+def test_itinerary_lists_every_flight_option_labelled_and_includes_the_chosen_one(client):
+    it = client.post("/api/plan-trip", json={"origin": "LON", "destination": "LIS", "start_date": "2026-11-10", "end_date": "2026-11-15", "travelers": 2}).json()["itinerary"]
+    opts = it["flight_options"]
+    assert len(opts) >= 2 and it["flight"]["id"] in {o["id"] for o in opts}
+    assert opts[0]["labels"][0] == "Best value" and [o["score"] for o in opts] == sorted((o["score"] for o in opts), reverse=True)
+    assert any("Cheapest" in o["labels"] for o in opts) and any("Fastest" in o["labels"] for o in opts)
+    assert min(o["total_price"] for o in opts if "Cheapest" in o["labels"]) == min(o["total_price"] for o in opts)

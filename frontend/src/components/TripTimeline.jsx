@@ -6,14 +6,32 @@ import { duration, metres, money } from "../lib/format";
 import { qualityLabel } from "../lib/stay";
 import { dayDate, nextUp, slotSuggestion } from "../lib/tripday";
 import { PlannedRow } from "./PlanSheets.jsx";
+import { connectionText } from "./FlightPicker.jsx";
 import { CATEGORY_ICON, PartnerBadge } from "./DealCard.jsx";
 import MapView from "./MapView.jsx";
+import { useDealBooking } from "../state/DealBookingContext.jsx";
 
 const fmtDay = (iso, opts) => new Date(iso + "T00:00:00").toLocaleDateString("en-GB", opts);
 
-/** A partner deal along the day's route. Labelled, and in the order the server ranked it (never by payment). */
-function RouteDeal({ deal }) {
+/** A deal you booked (demo), in the time slot you chose. Tap it for the voucher, or to cancel. */
+function BookedDealRow({ b, onOpen }) {
   return (
+    <button type="button" className="planned-row booked-deal" onClick={() => onOpen(b)}>
+      <span className="planned-thumb booked-icon" aria-hidden="true">{CATEGORY_ICON[b.deal.category] || "🏷️"}</span>
+      <span className="planned-body">
+        <b>{b.deal.title}</b>
+        <small>✓ Booked · {b.quantity} × · {money(b.total, b.currency)} · {b.reference}</small>
+      </span>
+      <span className="planned-more" aria-label="Voucher and cancel">⋯</span>
+    </button>
+  );
+}
+
+/** A partner deal along the day's route, with "Book" (a demo booking into this day). Labelled, and in the order the
+ * server ranked it (never by payment). */
+function RouteDeal({ deal, booked, onBook }) {
+  return (
+    <div className="route-deal-wrap">
     <a className="route-deal" href={deal.url} target="_blank" rel="noopener noreferrer sponsored" onClick={() => deal.id && trackDealClick(deal.id)}>
       <span className="route-deal-icon" aria-hidden="true">{CATEGORY_ICON[deal.category] || "🏷️"}</span>
       <span className="route-deal-body">
@@ -26,14 +44,21 @@ function RouteDeal({ deal }) {
       </span>
       <PartnerBadge />
     </a>
+    {booked ? <span className="flight-mine">✓ Booked</span> : <button type="button" className="btn primary sm" onClick={() => onBook(deal)}>Book</button>}
+    </div>
   );
 }
 
-function Anchor({ icon, title, sub }) {
+function Anchor({ icon, title, sub, action }) {
   return (
     <li className="tl-slot anchor">
       <div className="tl-mark" aria-hidden="true">{icon}</div>
-      <div className="tl-content"><div className="anchor-body"><b>{title}</b>{sub && <small>{sub}</small>}</div></div>
+      <div className="tl-content">
+        <div className="anchor-row">
+          <div className="anchor-body"><b>{title}</b>{sub && <small>{sub}</small>}</div>
+          {action && <button type="button" className="tl-add-sm" onClick={action.run}>{action.label}</button>}
+        </div>
+      </div>
     </li>
   );
 }
@@ -41,15 +66,17 @@ function Anchor({ icon, title, sub }) {
 /** The whole trip, day by day: flights and stay as anchors, each time of day with what's planned (tap to move or
  * remove) or, if it's free, one fitting idea to add in a tap. Under each day, partner deals along that day's route
  * and a map of its stops. This is the page the traveler lives in, before and during the trip. */
-export default function TripTimeline({ phase, dealsByDay, eventsByDate, sheets }) {
-  const { trip, cityName } = useTrip();
+export default function TripTimeline({ phase, dealsByDay, eventsByDate, sheets, onChangeFlight }) {
+  const { trip, cityName, tripId } = useTrip();
+  const dealBooking = useDealBooking();
+  const booked = dealBooking.forTrip(tripId);
+  const bookedDealIds = new Set(booked.map((b) => b.deal.id));
   const [mapDay, setMapDay] = useState(null);
   const { it, req, hotel, chosenItems, candidates } = trip;
-  const flight = it.flight;
+  const flight = trip.flight;
   const nights = it.nights;
   const scheduled = new Set(chosenItems.map((i) => i.key));
   const taken = new Set(); // one idea is suggested in one empty slot only
-  const stops = flight.stops === 0 ? "Direct" : `${flight.stops} stop${flight.stops > 1 ? "s" : ""}`;
   const quality = qualityLabel(hotel);
   const knownCentre = it.guide?.center || (hotel.lat != null ? [hotel.lat, hotel.lng] : null);
   const live = phase.phase === "during";
@@ -60,7 +87,8 @@ export default function TripTimeline({ phase, dealsByDay, eventsByDate, sheets }
     const rows = [];
     PARTS.forEach((p) => {
       const here = items.filter((x) => x.part === p);
-      if (here.length) return rows.push({ kind: "filled", part: p, items: here });
+      const deals = booked.filter((b) => b.day === d && b.part === p);
+      if (here.length || deals.length) return rows.push({ kind: "filled", part: p, items: here, deals });
       const idea = past ? null : slotSuggestion(candidates, scheduled, taken, p, hotel);
       if (idea) return rows.push({ kind: "idea", part: p, idea });
       const prev = rows[rows.length - 1];
@@ -112,7 +140,7 @@ export default function TripTimeline({ phase, dealsByDay, eventsByDate, sheets }
             <ol className="timeline">
               {d === 1 && (
                 <>
-                  <Anchor icon="✈️" title={`Fly ${cityName(req.origin)} → ${cityName(req.destination)}`} sub={[flight.airline ? `${flight.airline} · ${stops}` : stops, flight.duration_minutes && duration(flight.duration_minutes), flight.depart_time && `departs ${flight.depart_time}`].filter(Boolean).join(" · ")} />
+                  <Anchor icon="✈️" title={`Fly ${cityName(req.origin)} → ${cityName(req.destination)}`} sub={[flight.airline ? `${flight.airline} · ${connectionText(flight)}` : connectionText(flight), flight.duration_minutes && duration(flight.duration_minutes), flight.depart_time && `departs ${flight.depart_time}`].filter(Boolean).join(" · ")} action={trip.flights.length > 1 ? { label: "Change", run: onChangeFlight } : null} />
                   <Anchor icon="🏨" title={`Check in at ${hotel.name}`} sub={[quality, `${money(hotel.price_per_night)} a night`].filter(Boolean).join(" · ")} />
                 </>
               )}
@@ -133,6 +161,7 @@ export default function TripTimeline({ phase, dealsByDay, eventsByDate, sheets }
                             <PlannedRow item={x} onOpen={(i) => sheets.openWhen(i, "move")} />
                           </div>
                         ))}
+                        {row.deals.map((b) => <BookedDealRow key={b.reference} b={b} onOpen={dealBooking.openBooking} />)}
                       </div>
                     </li>
                   );
@@ -172,8 +201,14 @@ export default function TripTimeline({ phase, dealsByDay, eventsByDate, sheets }
               })}
               {lastDay && (
                 <>
+                  {booked.filter((b) => b.day === d).map((b) => (
+                    <li key={b.reference} className="tl-slot filled">
+                      <div className="tl-mark" aria-hidden="true">{PART_ICON[b.part]}</div>
+                      <div className="tl-content"><BookedDealRow b={b} onOpen={dealBooking.openBooking} /></div>
+                    </li>
+                  ))}
                   <Anchor icon="🧳" title={`Check out of ${hotel.name}`} />
-                  <Anchor icon="✈️" title={`Fly home ${cityName(req.destination)} → ${cityName(req.origin)}`} sub="Return flight included in your fare" />
+                  <Anchor icon="✈️" title={`Fly home ${cityName(req.destination)} → ${cityName(req.origin)}`} sub={`Return on the same booking${flight.airline ? ` · ${flight.airline}` : ""}`} action={trip.flights.length > 1 ? { label: "Change", run: onChangeFlight } : null} />
                 </>
               )}
             </ol>
@@ -183,7 +218,7 @@ export default function TripTimeline({ phase, dealsByDay, eventsByDate, sheets }
                 {deals.length > 0 && (
                   <>
                     <div className="tday-extra-h">🏷️ On your way {isToday ? "today" : "this day"}</div>
-                    {deals.map((x) => <RouteDeal key={x.id} deal={x} />)}
+                    {deals.map((x) => <RouteDeal key={x.id} deal={x} booked={bookedDealIds.has(x.id)} onBook={dealBooking.open} />)}
                   </>
                 )}
                 {events.length > 0 && (

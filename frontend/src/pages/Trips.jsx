@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useTrip } from "../state/TripContext.jsx";
-import { groupTrips, tripTitle } from "../lib/trips";
+import { groupTrips, pickFlight, tripTitle } from "../lib/trips";
 import { candidateItems, scheduledItems } from "../lib/dayplan";
 import { money, shortDate } from "../lib/format";
 import Photo from "../components/Photo.jsx";
@@ -13,7 +13,7 @@ function summarize(t) {
   const req = t.result.request;
   const hotel = it.hotel_options?.find((h) => h.id === t.hotelId) || it.hotel;
   const planned = scheduledItems(candidateItems(it.guide), t.schedule || {});
-  const total = it.flight.total_price + hotel.price_per_night * it.nights + planned.reduce((s, i) => s + (i.cost || 0) * req.travelers, 0);
+  const total = pickFlight(it, t.flightId).total_price + hotel.price_per_night * it.nights + planned.reduce((s, i) => s + (i.cost || 0) * req.travelers, 0);
   return { it, req, hotel, planned: planned.length, total };
 }
 

@@ -189,3 +189,7 @@ export const bookings = {
   get: (ref, token) => request(`/api/bookings/${encodeURIComponent(ref)}?${qs({ token })}`),
   cancel: (ref, token) => request(`/api/bookings/${encodeURIComponent(ref)}/cancel`, { method: "POST", body: { token } }),
 };
+export const dealBookings = {
+  create: (body) => request("/api/bookings/deal", { method: "POST", body }),
+  cancel: (ref, token) => request(`/api/bookings/deal/${encodeURIComponent(ref)}/cancel`, { method: "POST", body: { token } }),
+};

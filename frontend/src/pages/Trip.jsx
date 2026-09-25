@@ -17,6 +17,9 @@ import CareCard from "../components/CareCard.jsx";
 import TripTimeline from "../components/TripTimeline.jsx";
 import PlanBar from "../components/PlanBar.jsx";
 import { IdeaRow, usePlanSheets } from "../components/PlanSheets.jsx";
+import FlightPicker, { connectionText } from "../components/FlightPicker.jsx";
+import TravelersSheet from "../components/TravelersSheet.jsx";
+import InterestsSheet from "../components/InterestsSheet.jsx";
 
 const C = { flight: "#818cf8", stay: "#2dd4bf", exp: "#f5c76a" };
 
@@ -47,7 +50,10 @@ function Fold({ title, hint, children, open = false }) {
 /** The trip, as the traveler lives it: a slim header, a card that looks after them, and the itinerary day by day,
  * editable in place, with partner deals along each day's route. Everything else sits folded under Trip details. */
 export default function Trip() {
-  const { trip, cityName, profile, forgetProfile, config, resetSearch, readback, booking, savedTrip, destinations } = useTrip();
+  const { trip, cityName, profile, forgetProfile, config, resetSearch, readback, booking, savedTrip, destinations, choosePackage } = useTrip();
+  const [flightsOpen, setFlightsOpen] = useState(false);
+  const [travelersOpen, setTravelersOpen] = useState(false);
+  const [likesOpen, setLikesOpen] = useState(false);
   const navigate = useNavigate();
   const [activeDay, setActiveDay] = useState(1);
   const [deals, setDeals] = useState([]);
@@ -110,9 +116,8 @@ export default function Trip() {
 
   if (!trip) return <Navigate to="/" replace />;
 
-  const { it, hotel, flightCost, stayCost, expCost, total, chosenItems } = trip;
+  const { it, hotel, flight, flights, flightCost, stayCost, expCost, total, chosenItems } = trip;
   const g = it.guide;
-  const flight = it.flight;
   const place = cityName(req.destination) !== req.destination ? cityName(req.destination) : g?.name || req.destination;
   const perPerson = Math.round(total / req.travelers);
   const budget = req.budget;
@@ -136,12 +141,21 @@ export default function Trip() {
           <div className="eyebrow">Your trip</div>
           <h1 className="h2">{savedTrip?.name || place}</h1>
           <p className="muted trip-top-meta">
-            {savedTrip?.name ? `${place} · ` : ""}{shortDate(req.start_date)} – {shortDate(req.end_date)} · {nights} nights · {req.travelers} traveler{req.travelers > 1 ? "s" : ""}
+            {savedTrip?.name ? `${place} · ` : ""}{shortDate(req.start_date)} – {shortDate(req.end_date)} · {nights} nights
           </p>
           <div className="trip-top-chips">
             <Link to="/book" className={`tag ${booked ? "booked" : ""}`}>{booked ? `✓ Booked · ${booking.reference}` : "Not booked yet"}</Link>
             <span className="tag">{money(total)} · {money(perPerson)} pp</span>
             {budget != null && <span className={`tag ${over ? "" : "hit"}`}>{over ? `${money(total - budget)} over budget` : `${money(budget - total)} under budget`}</span>}
+            <button type="button" className="tag tag-btn" onClick={() => setLikesOpen(true)} title="What the trip, ideas and deals are tuned to">
+              ❤️ {req.interests.length ? req.interests.slice(0, 2).map((k) => TAG_LABEL[k] || k).join(", ") + (req.interests.length > 2 ? ` +${req.interests.length - 2}` : "") : "No interests set"} · edit
+            </button>
+            <button type="button" className="tag tag-btn" onClick={() => setTravelersOpen(true)} title="Change how many are going">
+              👥 {req.travelers} traveler{req.travelers > 1 ? "s" : ""} · change
+            </button>
+            <button type="button" className="tag tag-btn" onClick={() => setFlightsOpen(true)} title="Compare and change your flight">
+              ✈️ {flight.price_source === "estimate" ? connectionText(flight) : `${flight.airline} · ${connectionText(flight).split(" · ")[0]}`} · change
+            </button>
           </div>
         </div>
         <div className="trip-top-actions">
@@ -165,7 +179,7 @@ export default function Trip() {
         })}
       </nav>
 
-      <TripTimeline phase={phase} dealsByDay={dealsByDay} eventsByDate={eventsByDate} sheets={sheets} />
+      <TripTimeline phase={phase} dealsByDay={dealsByDay} eventsByDate={eventsByDate} sheets={sheets} onChangeFlight={() => setFlightsOpen(true)} />
       <p className="fine trip-deals-note">
         {routeDealCount > 0 ? `${DISCLOSURE} ` : "No partner deals along your route yet. We'll show them here as businesses add them. "}
         <Link to="/deals">All deals in {place} →</Link>
@@ -227,20 +241,38 @@ export default function Trip() {
         </Fold>
 
         {it.packages?.length > 0 && (
-          <Fold title="Compare your options" hint={`${it.packages.length} flight and stay combinations`}>
+          <Fold title="Flights and packages" hint={`${flights.length} flights · ${it.packages.length} flight + stay packages`}>
+            <div className="pkg-flight">
+              <div>
+                <span className="tag-strong">Your flight</span>
+                <b>{flight.price_source === "estimate" ? "Typical fare" : flight.airline} · {connectionText(flight)} · {duration(flight.duration_minutes)}</b>
+                <span className="muted">{money(flight.total_price)} for everyone <SourceBadge mode={flight.price_source} /></span>
+              </div>
+              <button type="button" className="btn ghost sm" onClick={() => setFlightsOpen(true)}>Compare all {flights.length} flights</button>
+            </div>
+            <p className="muted fine">A package is one flight with one stay, priced together. Switching changes both at once; you can still change either on its own afterwards.</p>
             <div className="packages">
-              {it.packages.map((p) => (
-                <div key={p.flight.id + p.hotel.id} className={`pkg ${p.labels.includes("Best match") ? "best" : ""}`}>
+              {it.packages.map((p) => {
+                const mine = p.flight.id === flight.id && p.hotel.id === hotel.id;
+                const diff = Math.round(p.total_cost - (flightCost + stayCost));
+                return (
+                <div key={p.flight.id + p.hotel.id} className={`pkg ${mine ? "best" : ""}`}>
                   <div className="pkg-labels">{p.labels.map((l) => <span key={l} className="badge gold">{l}</span>)}</div>
                   <div className="pkg-total">{money(p.total_cost)}</div>
-                  <div className="pkg-delta">{p.vs_best === 0 ? "The agent's pick" : `${money(Math.abs(p.vs_best))} ${p.vs_best < 0 ? "cheaper" : "more"} than the best match`}</div>
+                  <div className="pkg-delta">{mine ? "Your flight and stay now" : diff === 0 ? "Same price as your flight and stay" : `${money(Math.abs(diff))} ${diff < 0 ? "less" : "more"} than your flight and stay`}</div>
                   <ul className="pkg-lines">
                     <li><span>Flight</span><b>{p.flight.stops === 0 ? "Direct" : `${p.flight.stops} stop${p.flight.stops > 1 ? "s" : ""}`} · {duration(p.flight.duration_minutes)}</b><em>{money(p.flight.total_price)} <SourceBadge mode={p.price_sources.flight} /></em></li>
                     <li><span>Stay</span><b>{p.hotel.name}{qualityLabel(p.hotel) ? ` · ${qualityLabel(p.hotel)}` : ""}</b><em>{money(p.hotel.price_per_night)}/night <SourceBadge mode={p.price_sources.hotel} /></em></li>
                   </ul>
                   <p className="muted">{p.blurb}</p>
+                  {mine ? <span className="flight-mine">✓ Your trip now</span> : (
+                    <button type="button" className="btn primary sm" onClick={() => { choosePackage(p.flight.id, p.hotel.id); sheets.say(`Switched to the ${p.labels[0]} package${diff ? `: ${money(Math.abs(diff))} ${diff < 0 ? "less" : "more"}` : ""}`); }}>
+                      Switch to this package
+                    </button>
+                  )}
                 </div>
-              ))}
+                );
+              })}
             </div>
           </Fold>
         )}
@@ -322,6 +354,9 @@ export default function Trip() {
       </div>
 
       <PlanBar say={sheets.say} />
+      <FlightPicker open={flightsOpen} onClose={() => setFlightsOpen(false)} say={sheets.say} />
+      <TravelersSheet open={travelersOpen} onClose={() => setTravelersOpen(false)} say={sheets.say} />
+      <InterestsSheet open={likesOpen} onClose={() => setLikesOpen(false)} say={sheets.say} />
       {sheets.ui}
     </div>
   );

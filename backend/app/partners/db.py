@@ -233,6 +233,21 @@ CREATE TABLE IF NOT EXISTS demo_bookings (
     created_at TEXT NOT NULL,
     cancelled_at TEXT
 );
+
+-- Demo bookings of a single partner deal (app/bookings.py): which deal, which day, how many. Never who.
+CREATE TABLE IF NOT EXISTS demo_deal_bookings (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    reference TEXT NOT NULL UNIQUE,
+    token_hash TEXT NOT NULL,
+    deal_id INTEGER NOT NULL,
+    day TEXT NOT NULL,
+    quantity INTEGER NOT NULL,
+    total REAL NOT NULL,
+    currency TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'confirmed',
+    created_at TEXT NOT NULL,
+    cancelled_at TEXT
+);
 """
 
 # Columns added after the first release. CREATE TABLE IF NOT EXISTS never alters an existing table, so these are

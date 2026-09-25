@@ -64,3 +64,14 @@ export function tripTitle(t, cityName = (c) => c) {
   const fmt = (iso) => new Date(iso + "T00:00:00").toLocaleDateString(undefined, { day: "numeric", month: "short" });
   return t.name || `${cityName(req.destination)}, ${fmt(req.start_date)} to ${fmt(req.end_date)}`;
 }
+
+/** Every flight the traveler can choose from. Trips planned before the full list was sent fall back to the flights
+ * they do contain (the agent's pick and its alternatives), without duplicates. */
+export function flightOptions(it) {
+  if (it.flight_options?.length) return it.flight_options;
+  const seen = new Set();
+  return [it.flight, ...(it.alternatives || []).map((a) => a.flight)].filter((f) => f && !seen.has(f.id) && seen.add(f.id));
+}
+
+/** The flight in use: the traveler's own choice when they made one, else the agent's pick. */
+export const pickFlight = (it, id) => flightOptions(it).find((f) => f.id === id) || it.flight;

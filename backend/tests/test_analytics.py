@@ -67,7 +67,7 @@ def test_admin_analytics_route_needs_the_admin_token_and_shapes_the_summary(clie
     assert r.status_code == 200
     body = r.json()
     assert body["days"] == 30
-    assert set(body["kpis"]) == {"people_registered", "partners_registered", "deals_submitted", "connections_requested", "messages_sent", "reports_filed", "demo_bookings"}
+    assert set(body["kpis"]) == {"people_registered", "partners_registered", "deals_submitted", "connections_requested", "messages_sent", "reports_filed", "demo_bookings", "demo_deal_bookings"}
     assert len(body["daily"]["people_registered"]) == 30
     assert [s["label"] for s in body["people_funnel"]] == ["Registered", "Posted a looking-for request", "Sent a connection request", "Had a request accepted", "Sent a message"]
     assert [s["label"] for s in body["partner_funnel"]] == ["Registered", "Submitted a deal", "Deal approved", "Paid to feature a deal"]

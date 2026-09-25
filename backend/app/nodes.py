@@ -7,7 +7,7 @@ from .live import catalog, llm
 from .partners import deals as partner_deals
 from .mcp_tools.client import MCPToolClient
 from .ranking.combine import rank_and_combine
-from .ranking.score import score_hotels
+from .ranking.score import score_flights, score_hotels
 from .state import TripState
 
 logger = logging.getLogger(__name__)
@@ -134,6 +134,7 @@ async def build_itinerary_node(state: TripState) -> dict:
         },
     ]
     itinerary["packages"] = _packages(ranking["combos"], chosen)
+    itinerary["flight_options"] = _flight_options(state["flights"])
     itinerary["partner_deals"] = _partner_deals(state["request"])
     itinerary["ai"] = await _ai_summary(itinerary, state)
     return {"itinerary": itinerary}
@@ -153,6 +154,22 @@ def _partner_deals(req: dict) -> list[dict]:
     except Exception:
         logger.exception("partner deals lookup failed; continuing without them")
         return []
+
+
+def _flight_options(flights: list[dict]) -> list[dict]:
+    """Every flight found, best value first (the same 60% price / 40% duration score the agent uses), each labelled
+    when it is the cheapest, the fastest or the best value, so the traveler can compare and choose their own."""
+    if not flights:
+        return []
+    scored = score_flights(flights)
+    cheapest = min(f["total_price"] for f in flights)
+    fastest = min(f["duration_minutes"] for f in flights)
+    out = []
+    for n, s in enumerate(scored):
+        f = s["flight"]
+        labels = (["Best value"] if n == 0 else []) + (["Cheapest"] if f["total_price"] == cheapest else [])             + (["Fastest"] if f["duration_minutes"] == fastest else [])
+        out.append({**f, "score": round(s["score"], 3), "labels": labels})
+    return out
 
 
 def _quality(combo: dict) -> float:

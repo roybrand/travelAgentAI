@@ -949,15 +949,15 @@ li.done .tick::after { content: ""; width: 5px; height: 9px; border: solid #0329
 .book-cta.booked { border-color: rgba(52, 211, 153, 0.5); background: rgba(52, 211, 153, 0.06); }
 .book-page { padding-bottom: 40px; }
 .demo-flag { padding: 10px 14px; border-radius: 12px; margin-bottom: 16px; background: rgba(245, 199, 106, 0.08); border: 1px solid rgba(245, 199, 106, 0.35); color: #e6d3a3; font-size: 13.5px; }
-.stepper { list-style: none; display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin: 0 0 20px; padding: 0; }
-.stepper li { display: grid; justify-items: center; gap: 6px; position: relative; color: var(--faint); font-size: 12.5px; font-weight: 600; }
-.stepper li:not(:first-child)::before { content: ""; position: absolute; top: 15px; right: 50%; width: 100%; height: 2px; background: var(--line); z-index: 0; }
-.stepper li.done:not(:first-child)::before, .stepper li.on:not(:first-child)::before { background: var(--teal-2); }
-.stepper-dot { position: relative; z-index: 1; width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; background: var(--surface-2); border: 1px solid var(--line-2); font-weight: 700; }
-.stepper li.on { color: var(--text); }
-.stepper li.on .stepper-dot { background: var(--teal-2); border-color: var(--teal); color: #03201c; box-shadow: 0 0 0 4px rgba(45, 212, 191, 0.18); }
-.stepper li.done { color: #8ff3e4; }
-.stepper li.done .stepper-dot { background: rgba(45, 212, 191, 0.18); border-color: var(--teal-2); color: #8ff3e4; }
+.bk-steps { list-style: none; display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin: 0 0 20px; padding: 0; }
+.bk-steps li { display: grid; justify-items: center; gap: 6px; position: relative; color: var(--faint); font-size: 12.5px; font-weight: 600; }
+.bk-steps li:not(:first-child)::before { content: ""; position: absolute; top: 15px; right: 50%; width: 100%; height: 2px; background: var(--line); z-index: 0; }
+.bk-steps li.done:not(:first-child)::before, .bk-steps li.on:not(:first-child)::before { background: var(--teal-2); }
+.bk-steps-dot { position: relative; z-index: 1; width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; background: var(--surface-2); border: 1px solid var(--line-2); font-weight: 700; }
+.bk-steps li.on { color: var(--text); }
+.bk-steps li.on .bk-steps-dot { background: var(--teal-2); border-color: var(--teal); color: #03201c; box-shadow: 0 0 0 4px rgba(45, 212, 191, 0.18); }
+.bk-steps li.done { color: #8ff3e4; }
+.bk-steps li.done .bk-steps-dot { background: rgba(45, 212, 191, 0.18); border-color: var(--teal-2); color: #8ff3e4; }
 .bk-summary { display: grid; gap: 12px; margin: 14px 0; }
 .bk-trip { padding-bottom: 12px; border-bottom: 1px solid var(--line); }
 .bk-line { display: grid; grid-template-columns: 34px 1fr auto; gap: 12px; align-items: center; }
@@ -1006,7 +1006,7 @@ li.done .tick::after { content: ""; width: 5px; height: 9px; border: solid #0329
 .bk-mini summary { cursor: pointer; }
 .bk-mini .bk-summary { border: 0; padding: 0; background: none; margin-bottom: 0; }
 @media (max-width: 560px) {
-  .stepper-label { font-size: 11px; }
+  .bk-steps-label { font-size: 11px; }
   .bk-act { grid-template-columns: 1fr auto; }
   .bk-act span { grid-column: 1 / -1; }
   .bk-actions .btn.grow { flex-basis: 100%; }
@@ -1117,3 +1117,56 @@ li.done .tick::after { content: ""; width: 5px; height: 9px; border: solid #0329
   .care-next.empty { display: flex; flex-wrap: wrap; gap: 8px; }
   .care-next.empty > span { flex-basis: 100%; }
 }
+
+/* ============ flights: compare and choose ============ */
+.tag-btn { background: none; cursor: pointer; font: inherit; font-size: 12px; color: #c7d2fe; border-color: rgba(129, 140, 248, 0.5); }
+.tag-btn:hover { background: rgba(129, 140, 248, 0.1); }
+.anchor-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.flight-list { display: grid; gap: 8px; }
+.flight-row { display: grid; grid-template-columns: 1fr auto auto; gap: 8px 14px; align-items: center; padding: 12px 14px; border-radius: 14px; border: 1px solid var(--line); background: var(--surface); }
+.flight-row.mine { border-color: var(--teal-2); background: rgba(45, 212, 191, 0.06); }
+.flight-main { display: grid; gap: 4px; min-width: 0; }
+.flight-top { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.flight-top b { font-size: 15px; margin-right: 2px; }
+.flight-times { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 13.5px; }
+.flight-times .direct { color: #86efac; font-weight: 600; }
+.flight-times .stops { color: #fde68a; }
+.flight-price { display: grid; justify-items: end; gap: 2px; }
+.flight-price b { font-size: 17px; }
+.flight-price small { font-size: 12px; color: var(--muted); }
+.flight-price .cheaper { color: #86efac; font-weight: 700; }
+.flight-price .dearer { color: #fca5a5; font-weight: 700; }
+.flight-mine { font-size: 13px; font-weight: 700; color: #8ff3e4; white-space: nowrap; }
+.pkg-flight { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 10px; padding: 12px 14px; border-radius: 14px; border: 1px solid var(--line); background: rgba(129, 140, 248, 0.05); }
+.pkg-flight > div { display: grid; gap: 2px; }
+@media (max-width: 760px) {
+  .flight-row { grid-template-columns: 1fr auto; }
+  .flight-choose, .flight-row .flight-mine { grid-column: 1 / -1; justify-self: stretch; text-align: center; }
+}
+
+/* ============ travelers: change how many are going ============ */
+.travelers-pick { display: grid; grid-template-columns: 64px 1fr 64px; align-items: center; gap: 12px; padding: 8px 0; }
+.tp-btn { width: 64px; height: 64px; border-radius: 50%; border: 1px solid var(--line-2); background: var(--surface-2); color: var(--text); font-size: 28px; cursor: pointer; }
+.tp-btn:disabled { opacity: 0.35; cursor: default; }
+.tp-count { display: grid; justify-items: center; }
+.tp-count b { font-size: 44px; line-height: 1; }
+.tp-count span { color: var(--muted); font-size: 13px; }
+.tp-notes { margin: 0; padding-left: 18px; display: grid; gap: 4px; color: var(--muted); font-size: 13.5px; }
+.bk-count { margin: -2px 0 4px; color: var(--muted); font-size: 14px; }
+
+/* ============ deals: book now (demo) ============ */
+.toast-book { justify-self: start; margin-top: 6px; padding: 5px 14px; border-radius: 999px; border: 0; background: linear-gradient(135deg, var(--teal), var(--teal-2)); color: #03201c; font-weight: 800; font-size: 13px; cursor: pointer; }
+.deal-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.route-deal-wrap { display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: center; }
+.booked-deal { border-color: rgba(52, 211, 153, 0.45); background: rgba(52, 211, 153, 0.05); }
+.booked-icon { display: grid; place-items: center; font-size: 26px; background: rgba(52, 211, 153, 0.12); }
+.db-form, .db-done { display: grid; gap: 10px; }
+.db-date { background: rgba(6, 12, 20, 0.7); border: 1px solid var(--line-2); border-radius: 11px; padding: 10px 12px; color: var(--text); color-scheme: dark; font: inherit; }
+.db-qty { display: grid; grid-template-columns: 48px 1fr 48px; align-items: center; gap: 10px; text-align: center; }
+.tp-btn.sm { width: 48px; height: 48px; font-size: 22px; }
+.db-ref { display: grid; justify-items: center; gap: 2px; padding: 14px; border-radius: 14px; border: 1px dashed var(--teal-2); background: rgba(6, 12, 20, 0.5); }
+.db-ref small, .db-ref span { font-size: 12px; color: var(--muted); text-align: center; }
+.db-ref b { font-size: 26px; letter-spacing: 0.08em; }
+.db-facts { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; font-size: 14px; }
+.ok-notice { background: rgba(52, 211, 153, 0.08); border-color: rgba(52, 211, 153, 0.4); color: #bbf7d0; margin: 0; }
+.radar-likes { margin: 6px 0 0; font-size: 14px; color: var(--muted); }

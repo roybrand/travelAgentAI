@@ -3,7 +3,7 @@ import { fetchConfig, fetchDestinations, planTrip } from "../api";
 import { clearStoredProfile, loadProfile, storeProfile } from "../lib/profile";
 import { isoDate } from "../lib/format";
 import { candidateItems, nextSlot, scheduledItems } from "../lib/dayplan";
-import { loadCurrentTripId, loadTrips, newTripId, storeCurrentTripId, storeTrips } from "../lib/trips";
+import { flightOptions, loadCurrentTripId, loadTrips, newTripId, pickFlight, storeCurrentTripId, storeTrips } from "../lib/trips";
 
 const Ctx = createContext(null);
 export const useTrip = () => useContext(Ctx);
@@ -37,6 +37,8 @@ export function TripProvider({ children }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [hotelId, setHotelId] = useState(initial?.hotelId ?? null);
+  // The traveler's own flight, when they chose one over the agent's pick (null = the agent's pick).
+  const [flightId, setFlightId] = useState(initial?.flightId ?? null);
   // The day plan: { [itemKey]: { day, part, order } }. Nothing goes in here except by an explicit action of the
   // traveler's (a tap to add, or a move) — the plan starts empty and nothing is pre-approved for them.
   const [schedule, setSchedule] = useState(initial?.schedule ?? {});
@@ -93,9 +95,10 @@ export function TripProvider({ children }) {
       const now = new Date().toISOString();
       setResult(data);
       setHotelId(data.itinerary.hotel.id);
+      setFlightId(data.itinerary.flight.id);
       setSchedule({});
       setTripId(id);
-      setSavedTrips((list) => [{ id, savedAt: now, updatedAt: now, result: data, hotelId: data.itinerary.hotel.id, schedule: {} }, ...list]);
+      setSavedTrips((list) => [{ id, savedAt: now, updatedAt: now, result: data, hotelId: data.itinerary.hotel.id, flightId: data.itinerary.flight.id, schedule: {} }, ...list]);
       return true;
     } catch (e) {
       setError(e.message || "Something went wrong.");
@@ -105,11 +108,39 @@ export function TripProvider({ children }) {
     }
   }, []);
 
+  /** Search again for the open trip with some details changed (for now, the number of travelers), because prices
+   * depend on them: every traveler needs a seat, rooms are priced by occupancy, tickets are per person. The same trip
+   * is updated in place, the day plan is kept, and the chosen flight and stay are kept when they are still offered
+   * (matched by id, else by name, or airline, stops and departure time). Returns what was kept, or null on failure. */
+  const replanTrip = useCallback(async (changes) => {
+    if (!result) return null;
+    const req = { ...result.request, ...changes, place_types: changes.place_types ?? result.request.place_types ?? [] };
+    const data = await planTrip(req);
+    const it = data.itinerary;
+    const oldHotel = result.itinerary.hotel_options.find((h) => h.id === hotelId) || result.itinerary.hotel;
+    const oldFlight = pickFlight(result.itinerary, flightId);
+    const hotel = it.hotel_options.find((h) => h.id === oldHotel.id) || it.hotel_options.find((h) => h.name === oldHotel.name);
+    const flight = flightOptions(it).find((f) => f.id === oldFlight.id)
+      || flightOptions(it).find((f) => f.airline === oldFlight.airline && f.stops === oldFlight.stops && f.depart_time === oldFlight.depart_time);
+    const nextHotel = hotel?.id ?? it.hotel.id;
+    const nextFlight = flight?.id ?? it.flight.id;
+    setResult(data);
+    setHotelId(nextHotel);
+    setFlightId(nextFlight);
+    // The search form is its own process: a trip change never writes back into it (nor the prompt's profile).
+    if (tripId) {
+      setSavedTrips((list) => list.map((t) => (t.id === tripId
+        ? { ...t, result: data, hotelId: nextHotel, flightId: nextFlight, updatedAt: new Date().toISOString() } : t)));
+    }
+    return { keptHotel: !!hotel, keptFlight: !!flight };
+  }, [result, hotelId, flightId, tripId]);
+
   /** Close the current trip (it stays saved) and put the search form back to its defaults. The profile is kept. */
   const resetSearch = useCallback(() => {
     setTripId(null);
     setResult(null);
     setHotelId(null);
+    setFlightId(null);
     setSchedule({});
     setError("");
     setReadback(null);
@@ -135,9 +166,9 @@ export function TripProvider({ children }) {
   // Keep the open trip's saved copy in step with the traveler's choices, and remember which trip is open.
   useEffect(() => {
     if (!tripId) return;
-    setSavedTrips((list) => list.map((t) => (t.id === tripId && (t.hotelId !== hotelId || JSON.stringify(t.schedule) !== JSON.stringify(schedule))
-      ? { ...t, hotelId, schedule, updatedAt: new Date().toISOString() } : t)));
-  }, [tripId, hotelId, schedule]);
+    setSavedTrips((list) => list.map((t) => (t.id === tripId && (t.hotelId !== hotelId || t.flightId !== flightId || JSON.stringify(t.schedule) !== JSON.stringify(schedule))
+      ? { ...t, hotelId, flightId, schedule, updatedAt: new Date().toISOString() } : t)));
+  }, [tripId, hotelId, flightId, schedule]);
   useEffect(() => {
     setSaveError(storeTrips(savedTrips) ? "" : "This browser's storage is full, so the latest changes are not saved. Delete an old trip to make room.");
   }, [savedTrips]);
@@ -149,6 +180,7 @@ export function TripProvider({ children }) {
     if (!t) return false;
     setResult(t.result);
     setHotelId(t.hotelId ?? t.result.itinerary.hotel.id);
+    setFlightId(t.flightId ?? t.result.itinerary.flight.id);
     setSchedule(t.schedule || {});
     setError("");
     setReadback(null);
@@ -168,10 +200,10 @@ export function TripProvider({ children }) {
     if (tripId && savedTrips.some((t) => t.id === tripId)) return tripId;
     const id = newTripId();
     const now = new Date().toISOString();
-    setSavedTrips((list) => [{ id, name: (name || "").trim().slice(0, 60) || null, savedAt: now, updatedAt: now, result, hotelId, schedule }, ...list]);
+    setSavedTrips((list) => [{ id, name: (name || "").trim().slice(0, 60) || null, savedAt: now, updatedAt: now, result, hotelId, flightId, schedule }, ...list]);
     setTripId(id);
     return id;
-  }, [result, tripId, savedTrips, hotelId, schedule]);
+  }, [result, tripId, savedTrips, hotelId, flightId, schedule]);
 
   /** Delete saved trips for good. Deleting the open trip also closes it. */
   const deleteTrips = useCallback((ids) => {
@@ -181,6 +213,7 @@ export function TripProvider({ children }) {
       setTripId(null);
       setResult(null);
       setHotelId(null);
+      setFlightId(null);
       setSchedule({});
     }
   }, [tripId]);
@@ -191,9 +224,9 @@ export function TripProvider({ children }) {
    * stay and day plan it was made for, so a later change can be flagged. Traveler details live only here. */
   const recordBooking = useCallback((booking) => {
     const id = saveCurrentTrip();
-    const snapshot = { hotelId, schedule };
+    const snapshot = { hotelId, flightId: pickFlight(result.itinerary, flightId).id, travelers: result.request.travelers, schedule };
     setSavedTrips((list) => list.map((t) => (t.id === id ? { ...t, booking: { ...booking, snapshot }, updatedAt: new Date().toISOString() } : t)));
-  }, [saveCurrentTrip, hotelId, schedule]);
+  }, [saveCurrentTrip, hotelId, flightId, schedule, result]);
 
   /** Update a trip's booking after a cancel (or a status refresh) from the server. */
   const updateBooking = useCallback((id, patch) => {
@@ -201,8 +234,17 @@ export function TripProvider({ children }) {
   }, []);
 
   const booking = savedTrip?.booking || null;
+  const currentFlightId = result ? pickFlight(result.itinerary, flightId).id : null;
   const bookingChanged = !!booking && booking.status !== "cancelled" &&
-    (booking.snapshot?.hotelId !== hotelId || JSON.stringify(booking.snapshot?.schedule || {}) !== JSON.stringify(schedule));
+    (booking.snapshot?.hotelId !== hotelId || (booking.snapshot?.flightId ?? result?.itinerary.flight.id) !== currentFlightId ||
+      (booking.snapshot?.travelers ?? result?.request.travelers) !== result?.request.travelers ||
+      JSON.stringify(booking.snapshot?.schedule || {}) !== JSON.stringify(schedule));
+
+  /** Switch to one of the compared flight + stay packages in one go. */
+  const choosePackage = useCallback((fid, hid) => {
+    setFlightId(fid);
+    setHotelId(hid);
+  }, []);
 
   /** Move an already-planned item to a different day or time of day. */
   const moveItem = useCallback((key, day, part) => {
@@ -213,19 +255,24 @@ export function TripProvider({ children }) {
     if (!result) return null;
     const { itinerary: it, request: req } = result;
     const hotel = it.hotel_options.find((h) => h.id === hotelId) || it.hotel;
+    const flight = pickFlight(it, flightId);
+    const flights = flightOptions(it);
     const candidates = candidateItems(it.guide);
     const chosenItems = scheduledItems(candidates, schedule);
-    const flightCost = it.flight.total_price;
+    const flightCost = flight.total_price;
     const stayCost = hotel.price_per_night * it.nights;
     const expCost = chosenItems.reduce((sum, i) => sum + (i.cost || 0) * req.travelers, 0);
     const total = flightCost + stayCost + expCost;
-    return { it, req, hotel, flightCost, stayCost, expCost, total, chosenItems, candidates, isBest: hotel.id === it.hotel.id };
-  }, [result, hotelId, schedule]);
+    return {
+      it, req, hotel, flight, flights, flightCost, stayCost, expCost, total, chosenItems, candidates,
+      isBest: hotel.id === it.hotel.id, isBestFlight: flight.id === it.flight.id,
+    };
+  }, [result, hotelId, flightId, schedule]);
 
   const planned = trip ? trip.chosenItems.map((i) => i.key) : [];
 
   const value = {
-    form, setForm, result, trip, loading, error, setError, plan, hotelId, setHotelId, planned, toggleItem, moveItem,
+    form, setForm, result, trip, loading, error, setError, plan, hotelId, setHotelId, flightId, setFlightId, choosePackage, replanTrip, planned, toggleItem, moveItem,
     config, destinations, cityName, profile, setProfile, forgetProfile, resetSearch, readback, setReadback,
     savedTrips, tripId, savedTrip, openTrip, deleteTrips, renameTrip, saveCurrentTrip, saveError,
     booking, bookingChanged, recordBooking, updateBooking,

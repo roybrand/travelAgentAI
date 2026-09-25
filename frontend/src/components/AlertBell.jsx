@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { useAlerts } from "../state/AlertsContext.jsx";
+import { useDealBooking } from "../state/DealBookingContext.jsx";
 import AlertCard from "./AlertCard.jsx";
 import { Avatar } from "./PersonCard.jsx";
 
@@ -41,6 +42,7 @@ export function AlertBell() {
 /** Pop-ups that slide in when something new and good appears, wherever you are in the app. */
 export function AlertToasts() {
   const { toasts, dismissToast, markSeen } = useAlerts();
+  const booking = useDealBooking();
   return (
     <div className="alert-toasts" aria-live="polite">
       {toasts.map(({ id, alert: a }) => (
@@ -51,6 +53,11 @@ export function AlertToasts() {
             <small>{a.kind === "deal" ? "🔥 Hot deal for you" : a.kind === "message" ? "💬 New message" : a.kind === "request" ? "👋 Wants to meet you" : "✨ New match"}</small>
             <b>{a.title}</b>
             <span>{a.person ? a.body : a.reason.slice(0, 2).join(" · ") || a.body}</span>
+            {a.kind === "deal" && a.deal && (
+              <button type="button" className="toast-book" onClick={(e) => { e.preventDefault(); e.stopPropagation(); markSeen([a.id]); dismissToast(id); booking.open({ ...a.deal, title: a.deal.title || a.title }); }}>
+                Book now
+              </button>
+            )}
           </span>
           <button className="toast-x" aria-label="Dismiss" onClick={(e) => { e.preventDefault(); e.stopPropagation(); dismissToast(id); }}>×</button>
         </Link>

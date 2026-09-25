@@ -17,7 +17,7 @@ from typing import Literal
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field, model_validator
 
-from app.partners import activity, db, security
+from app.partners import activity, db, deals, security
 
 router = APIRouter()
 
@@ -170,3 +170,74 @@ def cancel_booking(reference: str, body: CancelIn):
                       (datetime.now(timezone.utc).isoformat(), row["id"]))
         activity.record("booking.cancelled", destination=row["destination"])
     return _view(_row(reference, body.token))
+
+
+# ---------------------------------------------------------------- one partner deal (the "Book now" on a deal)
+
+class DealBookingIn(BaseModel):
+    deal_id: int = Field(ge=1)
+    date: date
+    quantity: int = Field(ge=1, le=10)
+    demo_acknowledged: bool
+
+    @model_validator(mode="after")
+    def check(self):
+        if not self.demo_acknowledged:
+            raise ValueError("Please confirm you understand this is a demo booking.")
+        if self.date < date.today():
+            raise ValueError("Pick today or a later date.")
+        return self
+
+
+def _deal_view(row, deal: dict | None) -> dict:
+    return {
+        "demo": True, "reference": row["reference"], "status": row["status"], "date": row["day"], "quantity": row["quantity"],
+        "total": row["total"], "currency": row["currency"], "cancelled_at": row["cancelled_at"],
+        "deal": deal and {k: deal[k] for k in ("id", "title", "partner_name", "address", "category", "category_label", "price", "price_note", "lat", "lng")},
+    }
+
+
+@router.post("/api/bookings/deal")
+def book_deal(body: DealBookingIn, request: Request):
+    """Book one partner deal for a day, as a demo: nothing is reserved with the business and nothing is charged. The
+    deal must be approved and valid that day; the price comes from our database (price x quantity), never the browser."""
+    security.limit(f"booking-deal:{_ip(request)}", 30, 3600)
+    deal = deals.live_on(body.deal_id, body.date)
+    if not deal:
+        raise HTTPException(status_code=409, detail="This deal isn't available on that date. Pick a day inside its dates.")
+    if deal["stock"] is not None and body.quantity > deal["stock"]:
+        raise HTTPException(status_code=409, detail=f"Only {deal['stock']} left, per the business.")
+    token = secrets.token_urlsafe(24)
+    total = round(deal["price"] * body.quantity, 2)
+    with db.tx() as c:
+        for _ in range(5):
+            reference = f"WD-{_code(_REF_CHARS, 6)}"
+            if not c.execute("SELECT 1 FROM demo_deal_bookings WHERE reference = ?", (reference,)).fetchone():
+                break
+        c.execute(
+            "INSERT INTO demo_deal_bookings (reference, token_hash, deal_id, day, quantity, total, currency, created_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (reference, security.sha256(token), deal["id"], body.date.isoformat(), body.quantity, total, deal["currency"],
+             datetime.now(timezone.utc).isoformat()),
+        )
+        row = c.execute("SELECT * FROM demo_deal_bookings WHERE reference = ?", (reference,)).fetchone()
+    deals.record_click(deal["id"])
+    activity.record("booking.deal_created", deal=deal["id"])
+    return {**_deal_view(row, deal), "manage_token": token, "voucher": f"V-{_code(_REF_CHARS, 8)}"}
+
+
+@router.post("/api/bookings/deal/{reference}/cancel")
+def cancel_deal_booking(reference: str, body: CancelIn):
+    """Cancel a demo deal booking, for whoever holds its manage token."""
+    with db.tx() as c:
+        row = c.execute("SELECT * FROM demo_deal_bookings WHERE reference = ?", (reference.upper(),)).fetchone()
+        if not row or not secrets.compare_digest(row["token_hash"], security.sha256(body.token)):
+            raise HTTPException(status_code=404, detail="No booking with that reference.")
+        changed = row["status"] != "cancelled"
+        if changed:
+            c.execute("UPDATE demo_deal_bookings SET status = 'cancelled', cancelled_at = ? WHERE id = ?",
+                      (datetime.now(timezone.utc).isoformat(), row["id"]))
+        row = c.execute("SELECT * FROM demo_deal_bookings WHERE id = ?", (row["id"],)).fetchone()
+    if changed:
+        activity.record("booking.deal_cancelled", deal=row["deal_id"])
+    return _deal_view(row, None)

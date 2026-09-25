@@ -8,6 +8,7 @@ import { duration, longDate, money } from "../lib/format";
 import { tripCalendar, downloadCalendar } from "../lib/ics";
 import BackLink from "../components/BackLink.jsx";
 import SourceBadge from "../components/SourceBadge.jsx";
+import TravelersSheet from "../components/TravelersSheet.jsx";
 
 const STEPS = [["review", "Review"], ["travelers", "Travelers"], ["pay", "Payment"], ["done", "Confirmed"]];
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -15,11 +16,11 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 function Stepper({ step }) {
   const at = STEPS.findIndex(([k]) => k === step);
   return (
-    <ol className="stepper" aria-label="Booking steps">
+    <ol className="bk-steps" aria-label="Booking steps">
       {STEPS.map(([k, label], i) => (
         <li key={k} className={i < at ? "done" : i === at ? "on" : ""} aria-current={i === at ? "step" : undefined}>
-          <span className="stepper-dot">{i < at ? "✓" : i + 1}</span>
-          <span className="stepper-label">{label}</span>
+          <span className="bk-steps-dot">{i < at ? "✓" : i + 1}</span>
+          <span className="bk-steps-label">{label}</span>
         </li>
       ))}
     </ol>
@@ -47,6 +48,8 @@ export default function Book() {
   const [progress, setProgress] = useState(-1);
   const [error, setError] = useState("");
   const [copied, setCopied] = useState(false);
+  const [travelersOpen, setTravelersOpen] = useState(false);
+  const [changeNote, setChangeNote] = useState("");
   const counted = useRef(false);
 
   useEffect(() => {
@@ -59,8 +62,7 @@ export default function Book() {
   useEffect(() => { window.scrollTo({ top: 0, behavior: "smooth" }); }, [step]);
 
   if (!trip) return <Navigate to="/" replace />;
-  const { it, req, hotel, flightCost, stayCost, expCost, total, chosenItems } = trip;
-  const flight = it.flight;
+  const { it, req, hotel, flight, flightCost, stayCost, expCost, total, chosenItems } = trip;
   const from = cityName(req.origin);
   const to = cityName(req.destination);
   const nights = it.nights;
@@ -131,7 +133,7 @@ export default function Book() {
         <div>
           <div className="eyebrow">{from} → {to}</div>
           <b>{longDate(req.start_date)} – {longDate(req.end_date)}</b>
-          <div className="muted">{nights} night{nights > 1 ? "s" : ""} · {req.travelers} traveler{req.travelers > 1 ? "s" : ""}</div>
+          <div className="muted">{nights} night{nights > 1 ? "s" : ""} · {req.travelers} traveler{req.travelers > 1 ? "s" : ""} · <button type="button" className="linkbtn" onClick={() => setTravelersOpen(true)}>change</button></div>
         </div>
       </div>
       <Line icon="✈️" title={`${flight.airline || "Flights"} · ${stops}`} sub={[`Return, ${from} ⇄ ${to}`, flight.duration_minutes && duration(flight.duration_minutes), flight.depart_time && `departs ${flight.depart_time}`].filter(Boolean).join(" · ")} amount={money(flightCost)} badge={<SourceBadge mode={flight.price_source} />} />
@@ -171,6 +173,7 @@ export default function Book() {
           {step === "review" && (
             <>
               <h1 className="h2">Review your trip</h1>
+              {changeNote && <p className="notice">{changeNote}</p>}
               {live && bookingChanged && (
                 <p className="notice">You changed your stay or day plan after booking <b>{booking.reference}</b>. Book again to replace it. The old demo booking is cancelled automatically.</p>
               )}
@@ -187,6 +190,8 @@ export default function Book() {
           {step === "travelers" && (
             <form className="card pad bk-form" onSubmit={(e) => { e.preventDefault(); setStep("pay"); }}>
               <h1 className="h2">Who's traveling?</h1>
+              <p className="bk-count">{req.travelers} traveler{req.travelers > 1 ? "s" : ""} on this booking · <button type="button" className="linkbtn" onClick={() => setTravelersOpen(true)}>add or remove travelers</button></p>
+              {changeNote && <p className="notice">{changeNote}</p>}
               <p className="muted fine">Names as on each passport. These details stay on this device. In the demo they are never sent to our server.</p>
               <label className="field"><span>Lead traveler, full name</span>
                 <input required autoComplete="name" maxLength={80} value={who.name} onChange={(e) => setWho({ ...who, name: e.target.value })} />
@@ -283,6 +288,7 @@ export default function Book() {
         </motion.div>
       </AnimatePresence>
 
+      <TravelersSheet open={travelersOpen} onClose={() => setTravelersOpen(false)} say={setChangeNote} />
       {step !== "done" && step !== "review" && (
         <details className="bk-mini card pad">
           <summary>Trip summary · <b>{money(total)}</b></summary>
