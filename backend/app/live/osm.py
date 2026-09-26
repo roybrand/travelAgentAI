@@ -6,6 +6,7 @@ this module never invents either. Prices come from Amadeus (if configured) or th
 Overpass gives the richest data but its free public servers are often busy, so if it fails we fall back to
 Nominatim (fewer results, and no bar/beach signals), and callers fall back further to demo data.
 """
+import math
 import re
 import time
 
@@ -77,6 +78,16 @@ def _nominatim(dest: dict, query: str) -> list[dict]:
         })
         r.raise_for_status()
         time.sleep(1.1)  # Nominatim's usage policy: at most one request per second
+        return r.json()
+
+
+def _nominatim_global(query: str, limit: int = 5) -> list[dict]:
+    with client(30) as c:
+        r = c.get("https://nominatim.openstreetmap.org/search", params={
+            "q": query, "format": "jsonv2", "limit": limit, "extratags": 1, "addressdetails": 1,
+        })
+        r.raise_for_status()
+        time.sleep(1.1)
         return r.json()
 
 
@@ -300,6 +311,268 @@ def _fetch_types_nominatim(dest: dict, wanted: list[str]) -> list[dict]:
                 tags = {**(it.get("extratags") or {}), "name": it["name"]}
                 out.append(_place_record(dest, it["osm_type"], it["osm_id"], tags, (float(it["lat"]), float(it["lon"])), key))
     return out
+
+
+def route_stop_names(label: str) -> list[str]:
+    """Split a human route label into likely waypoint names without treating every word as a place."""
+    text = re.sub(r"\b(day\s+\d+|route|area|drive|road\s*trip|build|create|show|map|plan)\b", " ", str(label or ""), flags=re.I)
+    parts = re.split(r"\s*(?:→|->|—|–|-|/|\bto\b|\bthen\b|\band then\b|\bvia\b|,|;)\s*", text, flags=re.I)
+    seen, out = set(), []
+    for part in parts:
+        clean = re.sub(r"\s+", " ", part).strip(" .:")
+        clean = re.sub(r"\b(?:with|please|keep|stay|hotel|not\s+more\s+than|no\s+more\s+than|within|less\s+than)\b.*$", "", clean, flags=re.I).strip(" .:")
+        clean = re.sub(r"^(?:me\s+a|me|a|an)\s+", "", clean, flags=re.I).strip(" .:")
+        clean = re.sub(r"^(?:from|starting\s+from|start(?:ing)?\s+at)\s+", "", clean, flags=re.I).strip(" .:")
+        if re.search(r"\bfrom\b", clean, flags=re.I):
+            clean = re.split(r"\bfrom\b", clean, flags=re.I)[-1].strip(" .:")
+        if len(clean) < 3:
+            continue
+        key = clean.lower()
+        if key not in seen:
+            seen.add(key)
+            out.append(clean)
+    if len(out) == 1 and " " in out[0]:
+        try:
+            from app.live import catalog
+            low = out[0].lower()
+            for dest in sorted(catalog.DESTINATIONS, key=lambda d: len(d["city"]), reverse=True):
+                city = dest["city"].split("&")[0].strip()
+                c_low = city.lower()
+                if low.startswith(c_low + " "):
+                    rest = out[0][len(city):].strip(" ,.-")
+                    if len(rest) >= 3:
+                        out = [city, rest]
+                    break
+        except Exception:
+            pass
+    return out[:6]
+
+
+_ROUTE_PLACE_ALIASES = {
+    "monaco": {"name": "Monaco", "lat": 43.7384, "lng": 7.4246},
+    "montecarlo": {"name": "Monte Carlo", "lat": 43.7401, "lng": 7.4266},
+}
+
+
+def _route_geocode_score(row: dict, query: str, country: str | None) -> tuple[int, float]:
+    """Prefer real settlements/admin places over same-name peaks, roads or hamlets."""
+    address = row.get("address") or {}
+    row_country = (address.get("country") or "").lower()
+    name = (row.get("name") or "").lower()
+    display = (row.get("display_name") or "").lower()
+    category = row.get("category")
+    typ = row.get("type")
+    addresstype = row.get("addresstype")
+    query_low = query.lower()
+    country_low = (country or "").lower()
+    city_like = {"city", "town", "village", "municipality", "administrative", "city_district", "suburb"}
+    weak_place = {"hamlet", "isolated_dwelling", "peak", "road", "street", "locality"}
+    score = 0
+    if name == query_low:
+        score += 30
+    elif query_low in display:
+        score += 10
+    if category == "boundary" and typ == "administrative":
+        score += 35
+    if category == "place" and typ in city_like:
+        score += 30
+    if addresstype in city_like:
+        score += 20
+    if typ in weak_place or addresstype in weak_place:
+        score -= 30
+    if category in {"natural", "highway"}:
+        score -= 35
+    if country_low and row_country == country_low:
+        score += 8
+    try:
+        importance = float(row.get("importance") or 0)
+    except (TypeError, ValueError):
+        importance = 0
+    return score, importance
+
+
+def _geocode_stop(name: str, country: str | None) -> dict | None:
+    try:
+        from app.live import catalog
+        low = re.sub(r"[^a-z0-9]+", "", name.lower())
+        if low in _ROUTE_PLACE_ALIASES:
+            return _ROUTE_PLACE_ALIASES[low].copy()
+        matches = [
+            d for d in catalog.DESTINATIONS
+            if re.sub(r"[^a-z0-9]+", "", d["city"].lower()).startswith(low)
+            or low.startswith(re.sub(r"[^a-z0-9]+", "", d["city"].lower()))
+            or re.sub(r"[^a-z0-9]+", "", d.get("code", "").lower()) == low
+        ]
+        if matches:
+            d = min(matches, key=lambda x: len(x["city"]))
+            return {"name": d["city"], "lat": float(d["lat"]), "lng": float(d["lng"])}
+    except Exception:
+        pass
+
+    q = f"{name}, {country}" if country else name
+
+    def fetch():
+        return _nominatim_global(q, 5)
+
+    rows = cached(f"osmgeo_v2_{q}", 30 * DAY, fetch)
+    for it in sorted(rows, key=lambda row: _route_geocode_score(row, name, country), reverse=True):
+        try:
+            if it.get("lat") and it.get("lon") and it.get("name"):
+                return {"name": it["name"], "lat": float(it["lat"]), "lng": float(it["lon"])}
+        except (TypeError, ValueError):
+            continue
+    return None
+
+
+def route_waypoints(label: str, country: str | None = None) -> list[dict]:
+    """Geocoded route waypoints for maps, using the same parsing/search as route attractions."""
+    stops = [_geocode_stop(name, country) for name in route_stop_names(label)]
+    return [s for s in stops if s]
+
+
+def _nominatim_around(lat: float, lng: float, query: str, radius_km: float = 35, limit: int = 20) -> list[dict]:
+    d_lat = radius_km / 111
+    d_lng = radius_km / max(20, 111)
+    box = f"{lng - d_lng},{lat + d_lat},{lng + d_lng},{lat - d_lat}"
+    with client(30) as c:
+        r = c.get("https://nominatim.openstreetmap.org/search", params={
+            "q": query, "format": "jsonv2", "limit": limit, "viewbox": box, "bounded": 1,
+            "extratags": 1, "addressdetails": 1,
+        })
+        r.raise_for_status()
+        time.sleep(1.1)
+        return r.json()
+
+
+_ROUTE_NAME_PREFIXES = (
+    "rue ", "avenue ", "boulevard ", "route ", "chemin ", "impasse ", "allee ", "allée ",
+    "passage ", "passerelle ", "quai ", "sentier ", "voie ", "rampe ",
+)
+
+
+def _route_result_name_ok(name: str, query: str) -> bool:
+    low = name.lower().strip()
+    generic = {query.lower(), "restaurant", "restaurants", "cafe", "café", "bar", "pub", "park", "museum", "viewpoint", "attraction"}
+    return bool(re.search(r"[A-Za-zÀ-ÿ]", name)) and low not in generic and not low.startswith(_ROUTE_NAME_PREFIXES)
+
+
+def _route_projection(stops: list[dict], lat: float, lng: float) -> tuple[float, float] | None:
+    """(distance from route in metres, progress 0..1). None means the point projects outside every route segment."""
+    if len(stops) < 2:
+        return (0, 0)
+    scale = 111_320
+    cos_lat = max(0.2, abs(math.cos(math.radians(lat))))
+    px, py = lng * scale * cos_lat, lat * scale
+    lengths = [haversine_m(a["lat"], a["lng"], b["lat"], b["lng"]) for a, b in zip(stops, stops[1:])]
+    total = sum(lengths) or 1
+    done = 0
+    best: tuple[float, float] | None = None
+    for idx, (a, b) in enumerate(zip(stops, stops[1:])):
+        ax, ay = a["lng"] * scale * cos_lat, a["lat"] * scale
+        bx, by = b["lng"] * scale * cos_lat, b["lat"] * scale
+        vx, vy = bx - ax, by - ay
+        denom = vx * vx + vy * vy
+        if not denom:
+            done += lengths[idx]
+            continue
+        t = ((px - ax) * vx + (py - ay) * vy) / denom
+        if 0 <= t <= 1:
+            cx, cy = ax + t * vx, ay + t * vy
+            d = ((px - cx) ** 2 + (py - cy) ** 2) ** 0.5
+            if best is None or d < best[0]:
+                best = (d, (done + lengths[idx] * t) / total)
+        done += lengths[idx]
+    return best
+
+
+def _route_anchors(stops: list[dict]) -> list[dict]:
+    """Search anchors spaced along the route so suggestions do not all cluster at the endpoints."""
+    if len(stops) < 2:
+        return stops
+    fractions = [0, 0.25, 0.5, 0.75, 1]
+    out = []
+    a, b = stops[0], stops[-1]
+    for f in fractions:
+        out.append({
+            "name": a["name"] if f == 0 else b["name"] if f == 1 else f"{a['name']} to {b['name']}",
+            "lat": a["lat"] + (b["lat"] - a["lat"]) * f,
+            "lng": a["lng"] + (b["lng"] - a["lng"]) * f,
+            "progress": f,
+        })
+    return out
+
+
+def route_attractions(label: str, country: str | None = None, types: list[str] | None = None, per_stop: int = 4, corridor_m: int = 5000) -> dict:
+    """Attractions around human route waypoints, e.g. 'Adelaide to Coober Pedy to Alice Springs'.
+    This is intentionally route-aware but bounded: it searches near named waypoints, not every metre of highway."""
+    stops = route_waypoints(label, country)
+    wanted = [t for t in dict.fromkeys(types or ["attraction", "viewpoint", "historic", "museum", "park"]) if t in PLACE_TYPES]
+    max_corridor_m = max(500, min(corridor_m, 25000))
+    found_items, seen = [], set()
+    anchors = _route_anchors(stops)
+    for anchor in anchors:
+        searches = [(t, PLACE_TYPES[t][3]) for t in wanted[:5]]
+        for kind, word in searches:
+            key = f"osmroute_{anchor['lat']:.3f}_{anchor['lng']:.3f}_{word}"
+
+            def fetch(word=word, anchor=anchor):
+                return _nominatim_around(anchor["lat"], anchor["lng"], word, radius_km=28, limit=14)
+
+            try:
+                found = cached(key, 14 * DAY, fetch)
+            except Exception:
+                continue
+            for it in found:
+                name = (it.get("name") or it.get("display_name", "").split(",")[0]).strip()
+                if not name or not _route_result_name_ok(name, word):
+                    continue
+                tags = it.get("extratags") or {}
+                try:
+                    lat, lng = float(it["lat"]), float(it["lon"])
+                except (KeyError, TypeError, ValueError):
+                    continue
+                projection = _route_projection(stops, lat, lng)
+                if projection is None:
+                    continue
+                distance_to_route_m, progress = projection
+                if distance_to_route_m > max_corridor_m:
+                    continue
+                dedupe = name.lower()
+                if dedupe in seen:
+                    continue
+                seen.add(dedupe)
+                nearest = min(stops or [anchor], key=lambda s: haversine_m(s["lat"], s["lng"], lat, lng))
+                distance = haversine_m(nearest["lat"], nearest["lng"], lat, lng)
+                found_items.append({
+                    "name": name,
+                    "why": f"Along your route near {nearest['name']}",
+                    "lat": round(lat, 5), "lng": round(lng, 5),
+                    "distance_to_route_stop_m": distance,
+                    "distance_to_route_m": distance_to_route_m,
+                    "route_progress": round(progress, 3),
+                    "route_stop": nearest["name"],
+                    "type": kind,
+                    "typeLabel": PLACE_TYPES[kind][0],
+                    "tags": [kind],
+                    "matches": [kind],
+                    "website": tags.get("website") or tags.get("contact:website"),
+                    "wikipedia": tags.get("wikipedia"),
+                    "wikidata": tags.get("wikidata"),
+                    "osm_url": f"https://www.openstreetmap.org/{it.get('osm_type')}/{it.get('osm_id')}" if it.get("osm_type") and it.get("osm_id") else None,
+                    "source": "OpenStreetMap",
+                })
+    limit = max(8, per_stop * max(1, len(stops)))
+    bins: dict[int, list[dict]] = {i: [] for i in range(5)}
+    for item in found_items:
+        bins[min(4, max(0, int(item.get("route_progress", 0) * 5)))].append(item)
+    for bucket in bins.values():
+        bucket.sort(key=lambda x: (x["distance_to_route_m"], x["distance_to_route_stop_m"]))
+    spread = []
+    while len(spread) < limit and any(bins.values()):
+        for i in range(5):
+            if bins[i] and len(spread) < limit:
+                spread.append(bins[i].pop(0))
+    return {"stops": stops, "places": spread}
 
 
 def places_of_type(dest: dict, types: list[str], per_type: int = 8) -> dict[str, list[dict]]:

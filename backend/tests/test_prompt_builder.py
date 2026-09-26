@@ -4,6 +4,7 @@ from datetime import date
 import pytest
 
 from app.live import catalog, llm
+from app.live.osm import route_stop_names, route_waypoints
 
 TODAY = date(2026, 9, 21)
 
@@ -46,6 +47,28 @@ def test_the_origin_city_is_never_mistaken_for_the_destination(monkeypatch):
     assert "destination" not in result and cities(result) == ["Lisbon", "Porto"]
 
 
+def test_several_named_cities_become_an_ordered_route(monkeypatch):
+    fake_model(monkeypatch, trip={"destination": None})
+    result = llm.build_trip("10 days across Paris, Rome and Athens", today=TODAY)
+    assert result["destination"] == "PAR"
+    assert result["destinations"] == ["PAR", "ROM", "ATH"]
+    assert "Paris → Rome → Athens" in " ".join(result["assumptions"])
+
+
+def test_route_area_text_splits_into_waypoints():
+    assert route_stop_names("Adelaide to Coober Pedy to Alice Springs") == ["Adelaide", "Coober Pedy", "Alice Springs"]
+    assert route_stop_names("Day 4 route: Lisbon via Sintra, then Cascais") == ["Lisbon", "Sintra", "Cascais"]
+    assert route_stop_names("build route from geneva to monaco") == ["geneva", "monaco"]
+    assert route_stop_names("build me a route from paris to geneva with history sites nature good food please keep it not more than 5 km from straight line route") == ["paris", "geneva"]
+
+
+def test_route_waypoints_keep_monaco_on_the_riviera():
+    stops = route_waypoints("build route from geneva to monaco", "France")
+    assert [s["name"] for s in stops] == ["Geneva", "Monaco"]
+    assert stops[1]["lat"] == 43.7384
+    assert stops[1]["lng"] == 7.4246
+
+
 def test_a_country_with_one_catalog_city_is_used_directly(monkeypatch):
     fake_model(monkeypatch, trip={"destination": None})
     assert llm.build_trip("a long weekend in Austria", today=TODAY)["destination"] == "VIE"
@@ -62,7 +85,7 @@ def test_a_country_we_do_not_cover_is_not_swapped_for_another_place(monkeypatch)
     fake_model(monkeypatch, trip={"destination": "CUN", "place_mentioned": "Egypt", "place_kind": "country",
                                   "assumptions": ["The traveler likely meant Cancun"]})
     result = llm.build_trip("Egypt in winter, pyramids and diving", today=TODAY)
-    assert "destination" not in result and "destination_choices" not in result
+    assert result["destination"] == "Egypt" and result["dynamic_places"] == ["Egypt"]
     assert result["place_mentioned"] == "Egypt" and "place_kind" not in result
 
 
@@ -84,7 +107,16 @@ def test_a_model_pick_that_contradicts_the_named_place_loses_to_the_words(monkey
 def test_a_place_we_do_not_cover_is_reported_not_replaced(monkeypatch):
     fake_model(monkeypatch, trip={"destination": None, "place_mentioned": "Egypt"})
     result = llm.build_trip("two weeks in Egypt", today=TODAY)
-    assert "destination" not in result and "destination_choices" not in result and result["place_mentioned"] == "Egypt"
+    assert result["destination"] == "Egypt" and result["dynamic_places"] == ["Egypt"]
+
+
+def test_unsupported_prompt_places_are_not_replaced_with_los_angeles(monkeypatch):
+    fake_model(monkeypatch, trip={"destination": "LAX", "place_mentioned": "Hawaii, New Zealand and Australia", "place_kind": "region"})
+    result = llm.build_trip("I want Hawaii, New Zealand and Australia", today=TODAY)
+    assert result["destination"] == "Hawaii"
+    assert result["destinations"] == ["Hawaii", "New Zealand", "Australia"]
+    assert result["dynamic_places"] == ["Hawaii", "New Zealand"]
+    assert "destination_choices" not in result
 
 
 def test_invalid_model_destinations_are_dropped_then_resolved_from_the_text(monkeypatch):

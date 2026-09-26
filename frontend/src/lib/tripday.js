@@ -60,13 +60,13 @@ export function dayStops(items, day, hotel, centre) {
 /** Partner deals along each day's route: valid on that date and within ROUTE_RADIUS_M of one of that day's stops.
  * The server's order is kept (match, real discount, distance -- never payment); distance only breaks ties. Each deal
  * appears on one day only, the first it fits, except that `pinDay` (today, during the trip) always gets its own. */
-export function routeDeals(deals, { days, startIso, items, hotel, centre, pinDay = null, perDay = 2, moodFor = () => null }) {
+export function routeDeals(deals, { days, startIso, items, hotel, centre, hotelForDay = () => hotel, centreForDay = () => centre, pinDay = null, perDay = 2, moodFor = () => null }) {
   const out = {};
   const used = new Set();
   const order = [...days].sort((a, b) => (a === pinDay ? -1 : b === pinDay ? 1 : a - b));
   order.forEach((d) => {
     const date = dayDate(startIso, d);
-    const stops = dayStops(items, d, hotel, centre);
+    const stops = dayStops(items, d, hotelForDay(d), centreForDay(d));
     out[d] = deals
       .map((deal, rank) => {
         if (deal.lat == null || (deal.valid_from && deal.valid_from > date) || (deal.valid_to && deal.valid_to < date)) return null;
@@ -88,15 +88,32 @@ export function routeDeals(deals, { days, startIso, items, hotel, centre, pinDay
 
 /** How well an idea fits a slot: its time of day, what the traveler likes, the day's mood, and the weather. */
 export function slotScore(i, part, { mood = null, wet = false } = {}) {
-  return (guessPart(i) === part ? 2 : 0) + (i.matches?.length ? 1 : 0) + moodScore(i, mood) + weatherScore(i, wet);
+  return (guessPart(i) === part ? 2 : 0) + (i.matches?.length ? 1 : 0) + (isRouteAreaItem(i) ? 3 : 0) + moodScore(i, mood) + weatherScore(i, wet);
+}
+
+function isRouteAreaItem(i) {
+  return i.source === "route" || i.area || i.route_stop || i.source === "custom" || i.source === "live-night";
+}
+
+function routeSpreadPenalty(item, part, ctx) {
+  if (!ctx.routeArea || item.route_progress == null) return 0;
+  const targets = { morning: 0.18, afternoon: 0.5, evening: 0.82, night: 0.95 };
+  const target = targets[part] ?? 0.5;
+  return Math.abs(Number(item.route_progress) - target);
 }
 
 /** One idea for an empty slot: the best fit (see slotScore) that isn't planned or already suggested, with a short
  * reason when the mood or the weather is what put it first. */
 export function slotSuggestion(candidates, scheduled, taken, part, hotel, ctx = {}) {
-  const pick = candidates
-    .filter((c) => !scheduled.has(c.key) && !taken.has(c.key))
-    .sort((a, b) => slotScore(b, part, ctx) - slotScore(a, part, ctx))[0];
+  const scoped = candidates.filter((c) => !scheduled.has(c.key) && !taken.has(c.key) && (!c.fixed_day || !ctx.day || c.fixed_day === ctx.day) && (!c.day || !ctx.day || c.day === ctx.day));
+  const local = scoped.filter((c) => (!ctx.destination || !c.destination || c.destination === ctx.destination) && (!ctx.routeArea || isRouteAreaItem(c)));
+  const pool = ctx.destination ? local : scoped;
+  const pick = pool
+    .sort((a, b) => (
+      slotScore(b, part, ctx) - slotScore(a, part, ctx)
+      || routeSpreadPenalty(a, part, ctx) - routeSpreadPenalty(b, part, ctx)
+      || (a.distance_to_route_m ?? 0) - (b.distance_to_route_m ?? 0)
+    ))[0];
   if (!pick || slotScore(pick, part, ctx) < 2) return null;
   taken.add(pick.key);
   const away = hotel?.lat != null && pick.lat != null ? Math.round(distanceM(hotel, pick)) : null;

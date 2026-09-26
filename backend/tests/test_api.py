@@ -42,6 +42,53 @@ def test_plan_trip_valid_request_returns_itinerary(client):
     assert isinstance(itinerary["alternatives"], list)
 
 
+def test_plan_trip_accepts_a_multi_stop_route(client):
+    res = client.post("/api/plan-trip", json={**VALID_REQUEST, "destination": "PAR", "destinations": ["PAR", "ROM", "ATH"]})
+    assert res.status_code == 200
+    body = res.json()
+    assert body["request"]["destination"] == "PAR"
+    assert body["request"]["destinations"] == ["PAR", "ROM", "ATH"]
+    assert body["itinerary"]["destinations"] == ["PAR", "ROM", "ATH"]
+    assert [s["city"] for s in body["itinerary"]["route"]] == ["Paris", "Rome", "Athens"]
+    stays = body["itinerary"]["stay_segments"]
+    assert [s["destination"] for s in stays] == ["PAR", "ROM", "ATH"]
+    assert sum(s["nights"] for s in stays) == 10
+    assert all(s["hotel"] and s["hotel_options"] for s in stays)
+
+
+def test_plan_trip_accepts_per_day_city_choices(client):
+    day_locations = [
+        {"day": 1, "destination": "PAR"},
+        {"day": 2, "destination": "PAR"},
+        {"day": 3, "destination": "ROM"},
+        {"day": 4, "destination": "ROM"},
+        {"day": 5, "destination": "ATH"},
+        {"day": 6, "destination": "ATH"},
+        {"day": 7, "destination": "ATH"},
+        {"day": 8, "destination": "ATH"},
+        {"day": 9, "destination": "ATH"},
+        {"day": 10, "destination": "ATH"},
+        {"day": 11, "destination": "ATH"},
+    ]
+    res = client.post("/api/plan-trip", json={**VALID_REQUEST, "destination": "PAR", "destinations": ["PAR", "ROM", "ATH"], "day_locations": day_locations})
+    assert res.status_code == 200
+    body = res.json()
+    assert body["request"]["day_locations"] == day_locations
+    stays = body["itinerary"]["stay_segments"]
+    assert [(s["destination"], s["start_day"], s["end_day"], s["nights"]) for s in stays] == [
+        ("PAR", 1, 2, 2),
+        ("ROM", 3, 4, 2),
+        ("ATH", 5, 10, 6),
+    ]
+
+
+def test_plan_trip_accepts_day_route_areas(client):
+    day_areas = [{"day": 2, "country": "Australia", "label": "Adelaide to Coober Pedy to Alice Springs"}]
+    res = client.post("/api/plan-trip", json={**VALID_REQUEST, "destination": "ADL", "destinations": ["ADL"], "day_areas": day_areas})
+    assert res.status_code == 200
+    assert res.json()["request"]["day_areas"] == day_areas
+
+
 def test_plan_trip_missing_required_fields_returns_422(client):
     res = client.post("/api/plan-trip", json={"origin": "LON"})
     assert res.status_code == 422

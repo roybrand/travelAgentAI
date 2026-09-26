@@ -41,7 +41,7 @@ function Line({ icon, title, sub, amount, badge }) {
 /** The whole booking journey for the open trip -- review, traveler details, payment, confirmation -- as a demo:
  * nothing is reserved with an airline or hotel and nothing is charged, and every step says so. */
 export default function Book() {
-  const { trip, cityName, booking, bookingChanged, ticketChanges, recordBooking, updateBooking, tripId } = useTrip();
+  const { trip, cityName, booking, bookingChanged, ticketChanges, recordBooking, updateBooking, tripId, readback } = useTrip();
   const [ticketsOpen, setTicketsOpen] = useState(false);
   const [step, setStep] = useState(booking && !bookingChanged ? "done" : "review");
   const [who, setWho] = useState(() => booking?.lead ? { ...booking.lead, others: booking.others || [] } : { name: "", email: "", phone: "", others: [] });
@@ -65,8 +65,13 @@ export default function Book() {
 
   if (!trip) return <Navigate to="/" replace />;
   const { it, req, hotel, flight, flightCost, stayCost, expCost, total, chosenItems } = trip;
-  const from = cityName(req.origin);
-  const to = cityName(req.destination);
+  const originKnown = !readback || readback.said?.includes("origin") || readback.selected?.includes("origin");
+  const route = req.destinations?.length ? req.destinations : [req.destination];
+  const firstStop = route[0] || req.destination;
+  const finalStop = route.at(-1) || req.destination;
+  const from = originKnown ? cityName(req.origin) : "Departure city";
+  const to = cityName(firstStop);
+  const backFrom = cityName(finalStop);
   const nights = it.nights;
   const stops = flight.stops === 0 ? "Direct" : `${flight.stops} stop${flight.stops > 1 ? "s" : ""}`;
   const paid = chosenItems.filter((i) => i.cost);
@@ -133,12 +138,12 @@ export default function Book() {
     <div className="bk-summary card pad">
       <div className="bk-trip">
         <div>
-          <div className="eyebrow">{from} → {to}</div>
+          <div className="eyebrow">{originKnown ? `${from} → ${to}` : to}</div>
           <b>{longDate(req.start_date)} – {longDate(req.end_date)}</b>
           <div className="muted">{nights} night{nights > 1 ? "s" : ""} · {req.travelers} traveler{req.travelers > 1 ? "s" : ""} · <button type="button" className="linkbtn" onClick={() => setTravelersOpen(true)}>change</button></div>
         </div>
       </div>
-      <Line icon="✈️" title={`${flight.airline || "Flights"} · ${stops}`} sub={[`Return, ${from} ⇄ ${to}`, flight.duration_minutes && duration(flight.duration_minutes), flight.depart_time && `departs ${flight.depart_time}`].filter(Boolean).join(" · ")} amount={money(flightCost)} badge={<SourceBadge mode={flight.price_source} />} />
+      <Line icon="✈️" title={`${flight.airline || "Flights"} · ${stops}`} sub={[originKnown ? `Outbound ${from} → ${to}${backFrom !== to ? ` · return ${backFrom} → ${from}` : ` · return ${to} → ${from}`}` : `Return flight · departure city was not in your request`, flight.duration_minutes && duration(flight.duration_minutes), flight.depart_time && `departs ${flight.depart_time}`].filter(Boolean).join(" · ")} amount={money(flightCost)} badge={<SourceBadge mode={flight.price_source} />} />
       <Line icon="🏨" title={hotel.name} sub={`${nights} night${nights > 1 ? "s" : ""} × ${money(hotel.price_per_night)}`} amount={money(stayCost)} badge={<SourceBadge mode={hotel.price_source} />} />
       {paid.length > 0 && (
         <div className="bk-acts">
@@ -271,7 +276,7 @@ export default function Book() {
               </div>
 
               <div className="card pad bk-codes">
-                <Line icon="✈️" title={`${booking.flight.airline || "Flights"} · ${from} ⇄ ${to}`} sub={`Airline reference (PNR) ${booking.flight.pnr}`} amount={money(booking.totals.flight)} />
+                <Line icon="✈️" title={`${booking.flight.airline || "Flights"} · ${originKnown ? `${from} → ${to}${backFrom !== to ? ` / ${backFrom} → ${from}` : ` / ${to} → ${from}`}` : to}`} sub={`Airline reference (PNR) ${booking.flight.pnr}`} amount={money(booking.totals.flight)} />
                 <Line icon="🏨" title={booking.stay.name} sub={`Hotel confirmation ${booking.stay.confirmation} · ${booking.totals.nights} nights`} amount={money(booking.totals.stay)} />
                 {(booking.tickets || []).map((t) => (
                   <Line key={t.code} icon="🎟️" title={t.name} sub={`Day ${t.day} · ${PART_LABEL[t.part]} · ticket ${t.code}`} />

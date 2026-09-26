@@ -1,9 +1,15 @@
-"""The 109 selectable destinations: 41 in Europe, 30 in the Americas, 30 in Asia (incl. the Middle East), 8 in Australia.
+"""The 109 selectable destinations plus a dynamic world-place fallback.
 
 `code` is the IATA city/airport code (also what Amadeus expects). `cost` is a rough price level
 1 (cheap) to 4 (expensive) used only by the price ESTIMATOR. `wiki` overrides the Wikipedia article
 title when the plain city name is ambiguous. Coordinates are city centres.
 """
+import re
+import os
+import time
+import zlib
+
+from app.live.http import DAY, cached, client
 
 EUROPE, AMERICAS, ASIA, OCEANIA = "Europe", "Americas", "Asia", "Oceania"
 
@@ -143,17 +149,67 @@ def _build() -> list[dict]:
 
 DESTINATIONS: list[dict] = _build()
 BY_CODE: dict[str, dict] = {d["code"]: d for d in DESTINATIONS}
+WORLD = "World"
+
+
+def _dyn_code(name: str, lat: float, lng: float) -> str:
+    return f"GEO{zlib.crc32(f'{name}:{lat:.3f}:{lng:.3f}'.encode()) % 1000000:06d}"
+
+
+def _dynamic_place(value: str) -> dict | None:
+    if os.environ.get("WAYFINDER_OFFLINE") == "1":
+        return None
+    q = re.sub(r"\s+", " ", str(value or "")).strip()
+    if len(q) < 2:
+        return None
+
+    def fetch():
+        with client(30) as c:
+            r = c.get("https://nominatim.openstreetmap.org/search", params={
+                "q": q, "format": "jsonv2", "limit": 1, "addressdetails": 1, "extratags": 1,
+            })
+            r.raise_for_status()
+            time.sleep(1.1)
+            return r.json()
+
+    try:
+        rows = cached(f"geocode_place_{q}", 30 * DAY, fetch)
+    except Exception:
+        return None
+    if not rows:
+        return None
+    row = rows[0]
+    try:
+        lat, lng = float(row["lat"]), float(row["lon"])
+    except (KeyError, TypeError, ValueError):
+        return None
+    address = row.get("address") or {}
+    city = row.get("name") or q
+    country = address.get("country") or ""
+    return {
+        "code": _dyn_code(city, lat, lng),
+        "city": city,
+        "country": country,
+        "region": WORLD,
+        "lat": lat,
+        "lng": lng,
+        "cost": 3,
+        "wiki": city,
+        "dynamic": True,
+        "query": q,
+    }
 
 
 def resolve(value: str | None) -> dict | None:
-    """Find a destination by IATA code or (case-insensitive) city name."""
+    """Find a destination by IATA code/city name, or geocode a world place dynamically."""
     if not value:
         return None
     v = value.strip()
     if v.upper() in BY_CODE:
         return BY_CODE[v.upper()]
     low = v.lower()
-    return next((d for d in DESTINATIONS if d["city"].lower() == low), None)
+    fixed = next((d for d in DESTINATIONS if d["city"].lower() == low), None)
+    return fixed or _dynamic_place(v)
 
 
 COUNTRY_ALIASES = {

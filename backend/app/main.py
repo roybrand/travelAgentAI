@@ -9,7 +9,7 @@ from fastapi.staticfiles import StaticFiles
 
 from . import config
 from .graph import build_trip_planning_graph
-from .live import catalog, forecast, llm, nearby, nightlife
+from .live import catalog, forecast, llm, nearby, nightlife, osm
 from .mcp_tools.client import MCPToolClient
 from .partners.routes import router as partner_router
 from .social.routes import router as people_router
@@ -190,6 +190,46 @@ async def tonight(dest: str, day: date | None = Query(default=None, alias="date"
         raise HTTPException(status_code=502, detail=f"Could not look up tonight's venues right now ({type(exc).__name__}).") from exc
 
 
+@app.get("/api/route-ideas")
+async def route_ideas(label: str, country: str | None = None, q: str = "", types: str = "", radius_m: int = Query(default=5000, ge=500, le=25000)):
+    """Search for places around a day route/area such as Paris to Courtenay, without rebuilding the whole trip."""
+    if len(label.strip()) < 3:
+        raise HTTPException(status_code=422, detail="Enter a route or area for this day first.")
+    words = q.lower()
+    guessed = []
+    aliases = {
+        "park": "park", "parks": "park", "garden": "park",
+        "museum": "museum", "museums": "museum",
+        "historic": "historic", "castle": "historic", "ruins": "historic",
+        "view": "viewpoint", "viewpoint": "viewpoint",
+        "restaurant": "restaurant", "food": "restaurant",
+        "cafe": "cafe", "coffee": "cafe",
+        "beach": "beach",
+        "bar": "pub", "pub": "pub",
+        "club": "nightclub", "party": "nightclub",
+    }
+    for token, typ in aliases.items():
+        if token in words and typ not in guessed:
+            guessed.append(typ)
+    requested = [t for t in types.split(",") if t]
+    wanted = requested or guessed or ["attraction", "viewpoint", "historic", "museum", "park"]
+    try:
+        return await asyncio.wait_for(asyncio.to_thread(osm.route_attractions, label, country, wanted, 5, radius_m), timeout=75)
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Could not search that route right now ({type(exc).__name__}).") from exc
+
+
+@app.get("/api/route-stops")
+async def route_stops(label: str, country: str | None = None):
+    """Geocode a free-text day route/area into map waypoints, e.g. Paris to Versailles."""
+    if len(label.strip()) < 3:
+        raise HTTPException(status_code=422, detail="Enter a route or area for this day first.")
+    try:
+        return {"stops": await asyncio.wait_for(asyncio.to_thread(osm.route_waypoints, label, country), timeout=30)}
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Could not map that route right now ({type(exc).__name__}).") from exc
+
+
 @app.post("/api/plan-trip")
 async def plan_trip(req: TripRequest):
     """Plan a trip: flights, stays, ranking, guide, packages, partner deals and an optional AI summary."""
@@ -197,12 +237,15 @@ async def plan_trip(req: TripRequest):
     request_dict = {
         "origin": req.origin,
         "destination": req.destination,
+        "destinations": req.destinations,
         "start_date": req.start_date.isoformat(),
         "end_date": req.end_date.isoformat(),
         "budget": req.budget,
         "travelers": req.travelers,
         "interests": req.interests,
         "place_types": req.place_types,
+        "day_locations": [loc.model_dump() for loc in req.day_locations],
+        "day_areas": [area.model_dump() for area in req.day_areas],
     }
 
     result = await app.state.graph.ainvoke({"request": request_dict, "nights": nights})

@@ -22,8 +22,8 @@ const FEATURES = [
 const EXAMPLES = [
   "5 days in Tokyo this spring, we love food, temples and a good night out",
   "Long weekend in Barcelona for 4 friends — nightlife, beach and tapas",
+  "10 days across Paris, Rome and Athens for two, food, ruins and a little beach time",
   "A week in Sydney in December, beaches, hikes and good coffee",
-  "Romantic 6 nights in Paris, museums and wine, nothing too rushed",
 ];
 
 export default function Home() {
@@ -44,6 +44,7 @@ export default function Home() {
   const [assumptions, setAssumptions] = useState([]);
   // Set when the words did not name a usable city: we ask instead of guessing.
   const [ask, setAsk] = useState(null);
+  const [originPick, setOriginPick] = useState("");
 
   useEffect(() => {
     const t = setInterval(() => setSlide((s) => (s + 1) % SHOWCASE.length), 6500);
@@ -51,13 +52,26 @@ export default function Home() {
   }, []);
 
   const set = (patch) => setForm((f) => ({ ...f, ...patch }));
+  const route = form.destinations?.length ? form.destinations : [form.destination].filter(Boolean);
+  const setRoute = (next) => {
+    const clean = next.filter(Boolean);
+    set({ destinations: clean, destination: clean[0] || "" });
+  };
+  const setStop = (index, code) => setRoute(route.map((x, i) => (i === index ? code : x)));
+  const addStop = () => {
+    const next = destinations.find((d) => d.code !== form.origin && !route.includes(d.code));
+    if (next) setRoute([...route, next.code]);
+  };
+  const removeStop = (index) => setRoute(route.filter((_, i) => i !== index));
   const toggleInterest = (k) =>
     set({ interests: form.interests.includes(k) ? form.interests.filter((x) => x !== k) : [...form.interests, k] });
 
   function validate(p) {
     if (!p.origin) return "Choose where you are flying from.";
-    if (!p.destination) return "Choose a destination.";
-    if (p.origin === p.destination) return "Origin and destination must differ.";
+    const stops = p.destinations?.length ? p.destinations : [p.destination].filter(Boolean);
+    if (!stops.length) return "Choose at least one stop.";
+    if (stops.includes(p.origin)) return "Your route stops must differ from where you are flying from.";
+    if (new Set(stops).size !== stops.length) return "Each stop in the route should be different.";
     if (!p.start_date || !p.end_date || p.end_date <= p.start_date) return "The return date must be after departure.";
     if (p.budget !== null && !(p.budget > 0)) return "Budget must be greater than zero.";
     return "";
@@ -76,6 +90,7 @@ export default function Home() {
     setImage(null);
     setAssumptions([]);
     setAsk(null);
+    setOriginPick("");
     setPromptError("");
     setError("");
   }
@@ -107,18 +122,33 @@ export default function Home() {
   /** Plan from the words alone. Anything they did not say gets a fixed default (never a value from the form). */
   async function planFromPrompt(built, prof) {
     const base = tripDefaults();
+    const { _originPicked, ...builtFields } = built;
     const payload = {
       ...base,
-      ...built,
-      interests: prof?.interests?.length ? prof.interests : built.interests || [],
-      budget: built.budget ?? null,
+      ...builtFields,
+      destinations: builtFields.destinations?.length ? builtFields.destinations : (builtFields.destination ? [builtFields.destination] : []),
+      destination: builtFields.destinations?.[0] || builtFields.destination,
+      interests: prof?.interests?.length ? prof.interests : builtFields.interests || [],
+      budget: builtFields.budget ?? null,
       place_types: prof?.place_types ?? [],
     };
+    if (!payload.origin) {
+      setOriginPick("");
+      setAsk({ kind: "origin", prof, built });
+      return;
+    }
     const msg = validate(payload);
     if (msg) throw new Error(`${msg} Try describing the trip again.`);
-    setReadback({ said: [...new Set([...Object.keys(built), ...(prof?.interests?.length ? ["interests"] : [])])], prompt: freeText.trim().slice(0, 240), photo: !!image });
+    const saidKeys = Object.keys(builtFields).filter((k) => !(_originPicked && k === "origin"));
+    const rb = {
+      said: [...new Set([...saidKeys, ...(prof?.interests?.length ? ["interests"] : [])])],
+      selected: _originPicked ? ["origin"] : [],
+      prompt: freeText.trim().slice(0, 240),
+      photo: !!image,
+    };
+    setReadback(rb);
     setActive("prompt");
-    if (await plan(payload)) navigate("/trip");
+    if (await plan(payload, { readback: rb })) navigate("/trip");
   }
 
   /** Prompt (and optional photo) -> trip fields + a traveler profile -> plan the whole trip. */
@@ -130,13 +160,14 @@ export default function Home() {
     setAsk(null);
     setActive("prompt");
     try {
-      const { assumptions: notes = [], profile: prof, destination_choices: choices = [], place_mentioned: mentioned, ...built } = await buildTrip(freeText, image);
-      const gotSomething = Object.keys(built).length || choices.length || prof?.place_types?.length || prof?.interests?.length;
+      const { assumptions: notes = [], profile: prof, destination_choices: choices = [], place_mentioned: mentioned, unsupported_places: unsupported = [], ...built } = await buildTrip(freeText, image);
+      const gotSomething = Object.keys(built).length || choices.length || unsupported.length || prof?.place_types?.length || prof?.interests?.length;
       if (!gotSomething) throw new Error("I could not find any trip details in that. Try adding a place, or a photo of somewhere you like.");
       setAssumptions(notes);
+      setOriginPick("");
       if (prof) setProfile(prof);
-      if (!built.destination) {
-        setAsk({ choices, mentioned, prof, built });
+      if (!built.destination && !built.destinations?.length) {
+        setAsk({ kind: "destination", choices, mentioned, unsupported, prof, built });
         return;
       }
       setParsing(false);
@@ -153,13 +184,28 @@ export default function Home() {
     setAsk(null);
     setPromptError("");
     try {
-      await planFromPrompt({ ...built, destination: code }, prof);
+      await planFromPrompt({ ...built, destination: code, destinations: [code] }, prof);
     } catch (e) {
       setPromptError(e.message);
     }
   }
 
-  const chosen = SHOWCASE.find((s) => s.code === form.destination);
+  async function pickOrigin() {
+    const { prof, built } = ask;
+    if (!originPick) {
+      setPromptError("Choose where you are flying from.");
+      return;
+    }
+    setAsk(null);
+    setPromptError("");
+    try {
+      await planFromPrompt({ ...built, origin: originPick, _originPicked: true }, prof);
+    } catch (e) {
+      setPromptError(e.message);
+    }
+  }
+
+  const chosen = SHOWCASE.find((s) => s.code === (route[0] || form.destination));
   const today = isoDate(new Date());
 
   return (
@@ -195,7 +241,7 @@ export default function Home() {
                     <span className="ai-orb" aria-hidden="true" />
                     <div>
                       <h2 className="process-title">Tell me about your dream trip</h2>
-                      <p className="muted">Talk to me the way you'd tell a friend. I'll work out the destination, dates and vibe, then search real flights, hotels and things to do myself.</p>
+                      <p className="muted">Talk to me the way you'd tell a friend. I'll work out the route, dates and vibe, then search real flights, hotels and things to do myself.</p>
                     </div>
                   </div>
                   <label className="field">
@@ -204,7 +250,7 @@ export default function Home() {
                       rows={3}
                       value={freeText}
                       maxLength={1500}
-                      placeholder="e.g. Four days in Porto in December for two, about £1,500. We love wine, old pubs, museums and a good market."
+                      placeholder="e.g. Ten days across Paris, Rome and Athens for two. We love food, ruins, museums and a beach day."
                       onChange={(e) => setFreeText(e.target.value)}
                     />
                   </label>
@@ -235,20 +281,37 @@ export default function Home() {
                   {(promptError || (active === "prompt" && error)) && <p className="err" role="alert">{promptError || error}</p>}
                   {ask && (
                     <div className="ask" role="alert">
-                      <b>
-                        {ask.choices.length
+                      {ask.kind === "origin" ? (
+                        <>
+                          <b>Where are you flying from?</b>
+                          <p className="muted">I will not assume London or any other city. Pick your departure city and I will plan the same trip.</p>
+                          <div className="ask-origin">
+                            <DestSelect value={originPick} onChange={setOriginPick} destinations={destinations} exclude={ask.built?.destinations || ask.built?.destination} placeholder="Flying from" />
+                            <button type="button" className="btn primary sm" onClick={pickOrigin}>Continue</button>
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          <b>
+                            {ask.unsupported?.length
+                          ? `${ask.unsupported.join(", ")} ${ask.unsupported.length > 1 ? "are" : "is"} not in this planner yet.`
+                          : ask.choices.length
                           ? `Which city did you mean${ask.mentioned ? ` in ${ask.mentioned}` : ""}?`
                           : ask.mentioned
                             ? `“${ask.mentioned}” is not one of our ${destinations.length || 109} cities yet.`
-                            : "I could not tell where you want to go."}
-                      </b>
-                      <p className="muted">
-                        {ask.choices.length ? "Pick one and I will plan it with everything else you said." : "Name one of the cities in your description and try again."}
-                      </p>
-                      {ask.choices.length > 0 && (
-                        <div className="chips">
-                          {ask.choices.map((c) => <button type="button" key={c.code} className="chip" onClick={() => pickCity(c.code)}>{c.city}</button>)}
-                        </div>
+                              : "I could not tell where you want to go."}
+                          </b>
+                          <p className="muted">
+                            {ask.unsupported?.length && ask.choices.length
+                          ? "I can plan the supported part below, or you can change the request."
+                          : ask.choices.length ? "Pick one and I will plan it with everything else you said." : "Name one of the cities in your description and try again."}
+                          </p>
+                          {ask.choices.length > 0 && (
+                            <div className="chips">
+                              {ask.choices.map((c) => <button type="button" key={c.code} className="chip" onClick={() => pickCity(c.code)}>{c.city}</button>)}
+                            </div>
+                          )}
+                        </>
                       )}
                     </div>
                   )}
@@ -304,7 +367,7 @@ export default function Home() {
                     role="radio"
                     aria-checked={chosen?.code === s.code}
                     className={`dest ${chosen?.code === s.code ? "on" : ""}`}
-                    onClick={() => set({ destination: s.code })}
+                    onClick={() => setRoute([s.code])}
                   >
                     <Photo k={s.photo} className="dest-photo" />
                     <span className="dest-name">
@@ -318,11 +381,20 @@ export default function Home() {
               <div className="fields">
                 <label className="field">
                   <span>From</span>
-                  <DestSelect value={form.origin} onChange={(v) => set({ origin: v })} destinations={destinations} exclude={form.destination} />
+                  <DestSelect value={form.origin} onChange={(v) => set({ origin: v })} destinations={destinations} exclude={form.destination} placeholder="Flying from" />
                 </label>
                 <label className="field">
-                  <span>To</span>
-                  <DestSelect value={form.destination} onChange={(v) => set({ destination: v })} destinations={destinations} exclude={form.origin} />
+                  <span>Route stops</span>
+                  <div className="route-stops">
+                    {route.map((code, index) => (
+                      <div className="route-stop" key={`${code}-${index}`}>
+                        <b>{index + 1}</b>
+                        <DestSelect value={code} onChange={(v) => setStop(index, v)} destinations={destinations} exclude={[form.origin, ...route.filter((_, i) => i !== index)]} />
+                        {route.length > 1 && <button type="button" className="linkbtn danger" onClick={() => removeStop(index)}>Remove</button>}
+                      </div>
+                    ))}
+                    <button type="button" className="btn ghost sm" onClick={addStop} disabled={!destinations.length || route.length >= 8}>+ Add another city or country stop</button>
+                  </div>
                 </label>
                 <label className="field">
                   <span>Depart</span>
@@ -383,7 +455,7 @@ export default function Home() {
               key={s.code}
               className="showcard"
               onClick={() => {
-                set({ destination: s.code });
+                setRoute([s.code]);
                 window.scrollTo({ top: 0, behavior: "smooth" });
               }}
             >

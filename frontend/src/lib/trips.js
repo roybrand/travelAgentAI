@@ -45,7 +45,8 @@ export const newTripId = () => `t${Date.now().toString(36)}${Math.random().toStr
 export function groupTrips(trips, today = new Date().toISOString().slice(0, 10)) {
   const groups = new Map();
   trips.forEach((t) => {
-    const code = t.result.request.destination;
+    const route = t.result.request.destinations?.length ? t.result.request.destinations : [t.result.request.destination];
+    const code = route.join("-");
     if (!groups.has(code)) groups.set(code, { code, trips: [] });
     groups.get(code).trips.push(t);
   });
@@ -62,7 +63,8 @@ export function groupTrips(trips, today = new Date().toISOString().slice(0, 10))
 export function tripTitle(t, cityName = (c) => c) {
   const req = t.result.request;
   const fmt = (iso) => new Date(iso + "T00:00:00").toLocaleDateString(undefined, { day: "numeric", month: "short" });
-  return t.name || `${cityName(req.destination)}, ${fmt(req.start_date)} to ${fmt(req.end_date)}`;
+  const route = (req.destinations?.length ? req.destinations : [req.destination]).map(cityName).join(" → ");
+  return t.name || `${route}, ${fmt(req.start_date)} to ${fmt(req.end_date)}`;
 }
 
 /** Every flight the traveler can choose from. Trips planned before the full list was sent fall back to the flights

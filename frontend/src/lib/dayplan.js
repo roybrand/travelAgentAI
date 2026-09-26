@@ -9,7 +9,7 @@ const AFTERNOON_TAGS = ["market", "shopping", "beachfront", "beach", "spa", "caf
 /** A reasonable time of day for an item, guessed from its tags and type. The traveler can move it afterwards. */
 export function guessPart(item) {
   const tags = [...(item.tags || []), item.type].filter(Boolean);
-  if (tags.some((t) => NIGHT_TAGS.includes(t))) return "evening";
+  if (tags.some((t) => NIGHT_TAGS.includes(t))) return "night";
   if (tags.some((t) => MORNING_TAGS.includes(t))) return "morning";
   if (tags.some((t) => AFTERNOON_TAGS.includes(t))) return "afternoon";
   return "afternoon";
@@ -18,13 +18,17 @@ export function guessPart(item) {
 /** Everything a traveler could add to their plan: sights, adventures, and the real places they asked to see. */
 export function candidateItems(guide) {
   if (!guide) return [];
-  const places = (guide.places || []).map((p) => ({ ...p, key: p.name, source: "sight" }));
-  const adventures = (guide.adventures || []).map((a) => ({ ...a, key: a.name, source: "adventure" }));
+  const withKey = (item, source) => {
+    return { ...item, fixed_day: item.day || null, key: `${source}:${item.destination || ""}:${item.name}`, source, why: item.city && item.why ? `${item.city} · ${item.why}` : item.why || item.city || "" };
+  };
+  const places = (guide.places || []).map((p) => withKey(p, "sight"));
+  const adventures = (guide.adventures || []).map((a) => withKey(a, "adventure"));
+  const routes = (guide.route_ideas || []).map((p) => withKey({ ...p, why: p.area ? `${p.area} · ${p.why || "Along your route"}` : p.why }, "route"));
   const typed = Object.entries(guide.by_type || {}).flatMap(([type, group]) =>
-    (group.places || []).map((p) => ({ ...p, key: p.name, source: "place", type, typeLabel: group.label, why: p.opening_hours ? `${group.label} · open ${p.opening_hours}` : group.label })),
+    (group.places || []).map((p) => withKey({ ...p, type, typeLabel: group.label, why: p.opening_hours ? `${group.label} · open ${p.opening_hours}` : group.label }, "place")),
   );
   const seen = new Set();
-  return [...places, ...adventures, ...typed].filter((i) => {
+  return [...places, ...adventures, ...routes, ...typed].filter((i) => {
     if (seen.has(i.key)) return false;
     seen.add(i.key);
     return true;
@@ -55,9 +59,13 @@ export function nextSlot(schedule, nights, item, target) {
 
 /** The candidates already on the plan, in day and time-of-day order, each carrying its schedule slot. */
 export function scheduledItems(candidates, schedule) {
-  return candidates
-    .filter((i) => schedule[i.key])
-    .map((i) => ({ ...i, ...schedule[i.key] }))
+  const byKey = new Map(candidates.map((i) => [i.key, i]));
+  return Object.entries(schedule)
+    .map(([key, slot]) => {
+      const item = byKey.get(key) || slot.item;
+      return item ? { ...item, ...slot, item: undefined } : null;
+    })
+    .filter(Boolean)
     .sort((a, b) => a.day - b.day || PARTS.indexOf(a.part) - PARTS.indexOf(b.part) || a.order - b.order);
 }
 

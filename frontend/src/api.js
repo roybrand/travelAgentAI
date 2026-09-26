@@ -134,6 +134,8 @@ export const admin = {
 };
 
 export const fetchTonight = (params) => request(`/api/tonight?${qs(params)}`);
+export const fetchRouteIdeas = (params) => request(`/api/route-ideas?${qs(params)}`);
+export const fetchRouteStops = (params) => request(`/api/route-stops?${qs(params)}`);
 
 // ---------------------------------------------------------------- People (accounts, places, finding people, chat)
 

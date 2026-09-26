@@ -18,6 +18,18 @@ from app.live.http import client
 logger = logging.getLogger(__name__)
 
 INTERESTS = ["beachfront", "nightlife", "food-scene", "old-town", "spa", "quiet", "pet-friendly"]
+UNSUPPORTED_PLACE_ALIASES = {
+    "hawaii": "Hawaii",
+    "honolulu": "Honolulu",
+    "maui": "Maui",
+    "oahu": "Oahu",
+    "kauai": "Kauai",
+    "new zealand": "New Zealand",
+    "aotearoa": "New Zealand",
+    "auckland": "Auckland",
+    "queenstown": "Queenstown",
+    "wellington": "Wellington",
+}
 
 
 def enabled() -> bool:
@@ -51,6 +63,14 @@ def normalize_request(raw: dict, today: date) -> dict:
         dest = catalog.resolve(str(raw.get(key) or ""))
         if dest:
             out[key] = dest["code"]
+    route = []
+    for value in _as_list(raw.get("destinations")):
+        dest = catalog.resolve(str(value or ""))
+        if dest and dest["code"] not in route:
+            route.append(dest["code"])
+    if route:
+        out["destinations"] = route
+        out.setdefault("destination", route[0])
 
     def to_date(v):
         try:
@@ -90,9 +110,26 @@ def resolve_place(result: dict, text: str) -> dict:
     as choices instead of guessing. Never fall back silently: the caller must ask when nothing is found."""
     kind = result.pop("place_kind", None)
     found = catalog.find_in_text(text)
+    unsupported = _unsupported_places_in_text(text)
     origin = result.get("origin")
     dest = catalog.BY_CODE.get(result.get("destination", ""))
-    named = bool(found["cities"] or found["countries"])
+    named = bool(found["cities"] or found["countries"] or unsupported)
+    cities = _cities_in_text_order(text, found["cities"])
+    cities = [c for c in cities if c["code"] != origin]
+    if unsupported:
+        country_stops = [country for country in found["countries"] if country not in unsupported]
+        stops = [*unsupported, *[c["code"] for c in cities], *country_stops]
+        result["destinations"] = stops[:8]
+        result["destination"] = result["destinations"][0]
+        result["dynamic_places"] = unsupported
+        result["assumptions"] = [*result.get("assumptions", []), f"I used live map lookup for: {', '.join(unsupported)}."][:5]
+        result.setdefault("place_mentioned", ", ".join([*unsupported, *found["countries"]])[:60])
+        return result
+    if len(cities) > 1:
+        result["destinations"] = [c["code"] for c in cities[:8]]
+        result["destination"] = result["destinations"][0]
+        result["assumptions"] = [*result.get("assumptions", []), f"I treated this as a route: {' → '.join(c['city'] for c in cities[:8])}."][:5]
+        return result
     if dest and named:
         # The words name a place we know: the model's pick must fit it, or the words win.
         fits = dest in found["cities"] or dest["country"] in found["countries"]
@@ -106,19 +143,46 @@ def resolve_place(result: dict, text: str) -> dict:
         result["assumptions"] = [a for a in result.get("assumptions", []) if catalog.resolve(a) is None][:5]
     if dest:
         return result
-    cities = [c for c in found["cities"] if c["code"] != origin]
     if len(cities) == 1:
         result["destination"] = cities[0]["code"]
+        result["destinations"] = [cities[0]["code"]]
         result["assumptions"] = [*result.get("assumptions", []), f"You mentioned {cities[0]['city']}, so I planned that."][:5]
         return result
     options = cities or [c for country in found["countries"] for c in catalog.cities_in(country)
                          if c["code"] != origin]
     if len(options) == 1:
         result["destination"] = options[0]["code"]
+        result["destinations"] = [options[0]["code"]]
     elif options:
         result["destination_choices"] = [{"code": c["code"], "city": c["city"], "country": c["country"]} for c in options][:12]
         result.setdefault("place_mentioned", ", ".join(found["countries"] or [c["city"] for c in cities])[:60])
+    elif result.get("place_mentioned") and kind in (None, "city", "country", "region"):
+        result["destination"] = result["place_mentioned"]
+        result["destinations"] = [result["place_mentioned"]]
+        result["dynamic_places"] = [result["place_mentioned"]]
+        result["assumptions"] = [*result.get("assumptions", []), f"I used live map lookup for {result['place_mentioned']}."][:5]
     return result
+
+
+def _cities_in_text_order(text: str, cities: list[dict]) -> list[dict]:
+    """Catalog order is geographical; a route should follow the person's words."""
+    plain = catalog._plain(text or "")
+
+    def pos(d):
+        names = [catalog._plain(d["city"]), catalog._plain(d["wiki"])]
+        found = [plain.find(n) for n in names if n and plain.find(n) >= 0]
+        return min(found) if found else 10**9
+
+    return sorted(cities, key=pos)
+
+
+def _unsupported_places_in_text(text: str) -> list[str]:
+    plain = catalog._plain(text or "")
+    found = []
+    for alias, label in UNSUPPORTED_PLACE_ALIASES.items():
+        if re.search(rf"(?<![a-z0-9]){re.escape(alias)}(?![a-z0-9])", plain) and label not in found:
+            found.append(label)
+    return found
 
 
 def _as_list(value) -> list:
@@ -133,7 +197,7 @@ def parse_trip_request(text: str, today: date | None = None) -> dict:
     places = ", ".join(f"{d['code']}={d['city']}" for d in catalog.DESTINATIONS)
     system = (
         "You turn a traveler's free-text trip request into JSON. Reply with a JSON object with these keys: "
-        "origin, destination (each MUST be one of these codes: " + places + " ; use null if unclear or not listed), "
+        "origin, destination (the first/main stop) and destinations (ordered route stops; each MUST be one of these codes: " + places + " ; use null/[] if unclear or not listed), "
         "place_mentioned (the place the person named as their destination, exactly as they wrote it, or null), "
         "place_kind (one of: city, country, region, vague; 'vague' for things like 'somewhere warm'), "
         "start_date, end_date (ISO YYYY-MM-DD), nights (integer, only if dates are not given), budget (number, "
@@ -180,10 +244,10 @@ def build_trip(text: str, image: str | None = None, today: date | None = None) -
     types = ", ".join(f"{k} ({v[0]})" for k, v in PLACE_TYPES.items())
     system = (
         "You build a trip and a traveler profile from what the person wrote" + (" and the photo they shared" if image else "") + ". "
-        "Reply with one JSON object with two keys. 'trip': origin, destination (each MUST be one of these codes: " + places + "; null if unclear), "
+        "Reply with one JSON object with two keys. 'trip': origin, destination (the first/main stop) and destinations (ordered route stops; each MUST be one of these codes: " + places + "; null/[] if unclear), "
         "start_date, end_date (ISO), nights (integer, only if no dates), budget (number, GBP total), travelers (integer), "
         "assumptions (list of short strings for anything you guessed). "
-        "If the person names a country or region instead of a city, pick the single best matching city from the list for what they like and say so in assumptions. "
+        "If the person names several cities, keep them in destinations in the order they should visit them. If they name a country or region instead of cities, pick the single best matching city from the list for what they like and say so in assumptions. "
         "Set place_mentioned to the place they named as their destination exactly as they wrote it (or null), and place_kind to one of: city, country, region, vague. "
         "If they name a specific city or country that is not in the list, set destination to null rather than choosing a different place. "
         "'profile': summary (max 2 sentences, addressed to 'you'), keywords (up to 8 short words for what they like), "

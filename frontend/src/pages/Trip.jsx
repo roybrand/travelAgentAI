@@ -16,22 +16,59 @@ import SourceBadge from "../components/SourceBadge.jsx";
 import CareCard from "../components/CareCard.jsx";
 import TripTimeline from "../components/TripTimeline.jsx";
 import PlanBar from "../components/PlanBar.jsx";
-import { IdeaRow, usePlanSheets } from "../components/PlanSheets.jsx";
+import { IdeaRow, IdeaSearch, filterIdeaGroups, usePlanSheets } from "../components/PlanSheets.jsx";
 import { useDealBooking } from "../state/DealBookingContext.jsx";
 import FlightPicker, { connectionText } from "../components/FlightPicker.jsx";
 import TravelersSheet from "../components/TravelersSheet.jsx";
 import InterestsSheet from "../components/InterestsSheet.jsx";
 import TicketsSheet from "../components/TicketsSheet.jsx";
 import AccountPanel from "../components/AccountPanel.jsx";
+import MapView from "../components/MapView.jsx";
 
 const C = { flight: "#818cf8", stay: "#2dd4bf", exp: "#f5c76a" };
+const DEFAULT_ROUTE_RADIUS_M = 5000;
+const DEFAULT_ROUTE_TYPES = ["attraction", "viewpoint", "historic", "museum", "park"];
+
+function routePrefsFromText(text = "") {
+  const lower = text.toLowerCase();
+  const km = lower.match(/\b(\d+(?:\.\d+)?)\s*km\b/);
+  const m = lower.match(/\b(\d{3,5})\s*m(?:eter|etre|eters|etres)?\b/);
+  const types = [];
+  const add = (keys, type) => keys.some((k) => lower.includes(k)) && !types.includes(type) && types.push(type);
+  add(["restaurant", "restaurants", "food", "dining"], "restaurant");
+  add(["history", "historic", "heritage", "castle", "ruins"], "historic");
+  add(["museum", "museums"], "museum");
+  add(["park", "parks", "garden", "nature"], "park");
+  add(["view", "viewpoint", "lookout"], "viewpoint");
+  add(["cafe", "café", "coffee"], "cafe");
+  return {
+    radius_m: Math.max(500, Math.min(25000, km ? Math.round(Number(km[1]) * 1000) : m ? Number(m[1]) : DEFAULT_ROUTE_RADIUS_M)),
+    types,
+  };
+}
+
+function routePrefs(area = {}, label = "") {
+  const inferred = routePrefsFromText(label || area.label || "");
+  return {
+    routeRadiusM: area.radius_m || inferred.radius_m || DEFAULT_ROUTE_RADIUS_M,
+    routeTypes: area.types?.length ? area.types : inferred.types.length ? inferred.types : DEFAULT_ROUTE_TYPES,
+  };
+}
+
+const endpointNameFromRouteLabel = (label) => {
+  const clean = String(label || "").trim();
+  if (!clean) return "";
+  const parts = clean.split(/\s+\bto\b\s+/i);
+  if (parts.length < 2) return "";
+  return parts.at(-1).split(/\s+\bvia\b\s+|\s+[–-]\s+|\s*,\s*/i)[0].trim();
+};
 
 /** One line per part of the trip, split by whether the person's words gave it or the form did. */
-function readbackLines(said, req, cityName, fromWords) {
+function readbackLines(said, req, cityName, routeName, fromWords) {
   const has = (k) => said.includes(k);
   const parts = [
-    ["origin", `Flying from ${cityName(req.origin)}`],
-    ["destination", `Going to ${cityName(req.destination)}`],
+    ...(has("origin") ? [["origin", `Flying from ${cityName(req.origin)}`, true]] : []),
+    ["destination", `Route: ${routeName(req)}`, has("destinations") || has("destination")],
     ["dates", `${shortDate(req.start_date)} to ${shortDate(req.end_date)}`, has("start_date")],
     ["travelers", `${req.travelers} traveler${req.travelers > 1 ? "s" : ""}`],
     ["budget", req.budget ? `Budget ${money(req.budget)}` : "No budget set"],
@@ -53,7 +90,7 @@ function Fold({ title, hint, children, open = false }) {
 /** The trip, as the traveler lives it: a slim header, a card that looks after them, and the itinerary day by day,
  * editable in place, with partner deals along each day's route. Everything else sits folded under Trip details. */
 export default function Trip() {
-  const { trip, cityName, profile, forgetProfile, config, resetSearch, readback, booking, savedTrip, destinations, choosePackage, moods } = useTrip();
+  const { trip, cityName, routeName, profile, forgetProfile, config, resetSearch, readback, booking, savedTrip, destinations, choosePackage, moods } = useTrip();
   const [weather, setWeather] = useState(null);
   const [flightsOpen, setFlightsOpen] = useState(false);
   const [travelersOpen, setTravelersOpen] = useState(false);
@@ -64,7 +101,9 @@ export default function Trip() {
   const [activeDay, setActiveDay] = useState(1);
   const [deals, setDeals] = useState([]);
   const [events, setEvents] = useState([]);
+  const [ideaQuery, setIdeaQuery] = useState("");
   const stripRef = useRef(null);
+  const req = trip?.req;
 
   const scrollToDay = (d) => {
     setActiveDay(d);
@@ -76,9 +115,29 @@ export default function Trip() {
     el.classList.add("flash");
   };
   const wetOn = (d) => !!(trip && weather?.days?.[dayDate(trip.req.start_date, d)]?.wet);
-  const sheets = usePlanSheets({ onShowDay: scrollToDay, dayContext: (d) => ({ mood: moods[d], wet: wetOn(d) }) });
+  const dayDestination = (d) => trip?.dayLocations?.[d] || trip?.staySegments?.find((s) => d >= s.start_day && d <= s.end_day)?.destination || req?.destination;
+  const inferredRouteFocus = (d) => {
+    if (!trip || trip.dayAreas?.[d]?.label?.trim() || d <= 1 || d > (trip.it.nights || 0)) return null;
+    const from = endpointNameFromRouteLabel(trip.dayAreas?.[d - 1]?.label);
+    if (!from) return null;
+    const route = trip.req.destinations?.length ? trip.req.destinations : [trip.req.destination];
+    const current = dayDestination(d);
+    const target = (trip.staySegments || []).find((s) => s.start_day >= d && s.destination !== current)?.destination
+      || (current && cityName(current).toLowerCase() !== from.toLowerCase() ? current : null)
+      || (route.at(-1) && cityName(route.at(-1)).toLowerCase() !== from.toLowerCase() ? route.at(-1) : null)
+      || route.find((code) => cityName(code).toLowerCase() !== from.toLowerCase() && code !== current);
+    const to = target ? cityName(target) : "";
+    if (!to || to.toLowerCase() === from.toLowerCase()) return null;
+    return { label: `${from} to ${to}`, country: destinations.find((x) => x.code === target)?.country || "" };
+  };
+  const sheets = usePlanSheets({ onShowDay: scrollToDay, dayContext: (d) => {
+    const destination = dayDestination(d);
+    const inferred = inferredRouteFocus(d);
+    const routeArea = trip?.dayAreas?.[d]?.label?.trim() || inferred?.label || "";
+    const country = trip?.dayAreas?.[d]?.country || inferred?.country || destinations.find((x) => x.code === destination)?.country || "";
+    return { day: d, destination, country, routeArea, ...routePrefs(trip?.dayAreas?.[d], routeArea), label: `${routeArea || cityName(destination)} · ${shortDate(dayDate(trip.req.start_date, d))}`, mood: moods[d], wet: wetOn(d) };
+  } });
 
-  const req = trip?.req;
   const nights = trip?.it.nights || 0;
   const phase = useMemo(() => (req ? tripPhase(req, nights) : null), [req, nights]);
 
@@ -119,17 +178,24 @@ export default function Trip() {
     if (!trip) return {};
     return routeDeals(deals, {
       days: Array.from({ length: nights + 1 }, (_, i) => i + 1), startIso: req.start_date, items: trip.chosenItems, hotel: trip.hotel,
-      centre: destinations.find((x) => x.code === req.destination), pinDay: phase?.phase === "during" ? phase.day : null,
+      centre: destinations.find((x) => x.code === req.destination),
+      hotelForDay: (d) => trip.staySegments?.find((s) => d >= s.start_day && d <= s.end_day)?.hotel || trip.hotel,
+      centreForDay: (d) => destinations.find((x) => x.code === (trip.dayLocations?.[d] || req.destination)),
+      pinDay: phase?.phase === "during" ? phase.day : null,
       moodFor: (d) => moods[d],
     });
   }, [deals, trip, nights, req, phase, destinations, moods]);
   const eventsByDate = useMemo(() => events.reduce((m, e) => ({ ...m, [e.date]: [...(m[e.date] || []), e] }), {}), [events]);
+  const visibleIdeaGroups = useMemo(() => filterIdeaGroups(sheets.groups, ideaQuery), [sheets.groups, ideaQuery]);
+  const ideaTotal = sheets.groups.reduce((n, g) => n + g.items.length, 0);
+  const ideaShown = visibleIdeaGroups.reduce((n, g) => n + g.items.length, 0);
 
   if (!trip) return <Navigate to="/" replace />;
 
   const { it, hotel, flight, flights, flightCost, stayCost, expCost, total, chosenItems } = trip;
   const g = it.guide;
-  const place = cityName(req.destination) !== req.destination ? cityName(req.destination) : g?.name || req.destination;
+  const place = it.route?.length ? it.route.map((s) => s.country ? `${s.city}, ${s.country}` : s.city).join(" → ") : routeName(req);
+  const primaryPlace = cityName(req.destination) !== req.destination ? cityName(req.destination) : g?.name || req.destination;
   const perPerson = Math.round(total / req.travelers);
   const budget = req.budget;
   const over = budget != null && total > budget;
@@ -143,6 +209,11 @@ export default function Trip() {
   const months = g ? g.months.map((score, i) => ({ month: MONTHS[i], score, trip: g.timing.trip_months.includes(i + 1) })) : [];
   const counts = chosenItems.reduce((m, i) => ({ ...m, [i.day]: (m[i.day] || 0) + 1 }), {});
   const routeDealCount = Object.values(dealsByDay).reduce((n, list) => n + list.length, 0);
+  const routePath = (it.route || []).filter((s) => s.lat != null && s.lng != null);
+  const routePins = [
+    ...routePath.map((s, i) => ({ id: `route-${s.code}-${i}`, lat: s.lat, lng: s.lng, kind: "sight", label: String(i + 1), title: `${s.city}${s.country ? `, ${s.country}` : ""}`, color: "#f5c76a" })),
+    ...(trip.staySegments || []).filter((s) => s.hotel?.lat != null).map((s) => ({ id: `stay-${s.destination}`, lat: s.hotel.lat, lng: s.hotel.lng, kind: "hotel", label: "Stay", title: `${s.hotel.name} · ${cityName(s.destination)}`, color: "#2dd4bf" })),
+  ];
 
   return (
     <div className="wrap page trip-page">
@@ -154,6 +225,16 @@ export default function Trip() {
           <p className="muted trip-top-meta">
             {savedTrip?.name ? `${place} · ` : ""}{shortDate(req.start_date)} – {shortDate(req.end_date)} · {nights} nights
           </p>
+          {(req.destinations?.length || 0) > 1 && (
+            <div className="route-mini" aria-label="Trip route">
+              {req.destinations.map((code, i) => <span key={code}>{i > 0 && <em>→</em>}{cityName(code)}</span>)}
+            </div>
+          )}
+          {trip.staySegments?.length > 1 && (
+            <div className="stay-mini" aria-label="Stay allocation">
+              {trip.staySegments.map((s) => <span key={s.destination}>{cityName(s.destination)}: Days {s.start_day}-{s.end_day}, {s.hotel.name}</span>)}
+            </div>
+          )}
           <div className="trip-top-chips">
             <Link to="/book" className={`tag ${booked ? "booked" : ""}`}>{booked ? `✓ Booked · ${booking.reference}` : "Not booked yet"}</Link>
             <span className="tag">{money(total)} · {money(perPerson)} pp</span>
@@ -190,17 +271,33 @@ export default function Trip() {
         })}
       </nav>
 
+      {routePins.length > 1 && (
+        <section className="card route-map-card">
+          <div className="route-map-head">
+            <div>
+              <span className="tag-strong">Route map</span>
+              <b>{place}</b>
+            </div>
+            <Link to="/explore" className="btn ghost sm">Explore route ideas</Link>
+          </div>
+          <MapView center={[routePath[0]?.lat || g?.center?.[0] || 0, routePath[0]?.lng || g?.center?.[1] || 0]} pins={routePins} path={routePath} height={320} />
+          <p className="fine">Gold pins are route stops in order. Stay pins show where each hotel segment is based.</p>
+        </section>
+      )}
+
       <TripTimeline phase={phase} dealsByDay={dealsByDay} eventsByDate={eventsByDate} sheets={sheets} onChangeFlight={() => setFlightsOpen(true)} weather={weather} />
       <p className="fine trip-deals-note">
         {routeDealCount > 0 ? `${DISCLOSURE} ` : "No partner deals along your route yet. We'll show them here as businesses add them. "}
-        <Link to="/deals">All deals in {place} →</Link>
+        <Link to="/deals">All deals in {primaryPlace} →</Link>
       </p>
 
       {sheets.groups.length > 0 && (
         <details className="fold card ideas-fold" open={chosenItems.length === 0}>
           <summary><b>Ideas for your trip</b><span className="muted">Tap + Add, then pick the day and time</span></summary>
           <div className="fold-body plan-suggestions">
-            {sheets.groups.map((grp) => (
+            <IdeaSearch value={ideaQuery} onChange={setIdeaQuery} groups={sheets.groups} total={ideaTotal} shown={ideaShown} />
+            {visibleIdeaGroups.length === 0 && <p className="muted">No ideas match that search. Try another word, like beach, food, museum or rooftop.</p>}
+            {visibleIdeaGroups.map((grp) => (
               <div key={grp.key} className="suggest-group">
                 <span className="tag-strong">{grp.label}</span>
                 <div className="idea-grid">
@@ -353,11 +450,11 @@ export default function Trip() {
         )}
 
         {readback && (
-          <Fold title="How I read your request" hint="What came from your words, and what I assumed">
+          <Fold title="How I read your request" hint="What came from your words, and what I assumed" open>
             {readback.prompt && <p className="quote">“{readback.prompt}”{readback.photo ? " + your photo" : ""}</p>}
             <div className="readback-cols">
-              <div><span className="tag-strong">From your words</span><ul>{readbackLines(readback.said, req, cityName, true).map((l) => <li key={l}>{l}</li>)}</ul></div>
-              <div><span className="tag-strong">Not mentioned, so I assumed</span><ul>{readbackLines(readback.said, req, cityName, false).map((l) => <li key={l}>{l}</li>)}</ul></div>
+              <div><span className="tag-strong">From your words</span><ul>{readbackLines(readback.said, req, cityName, routeName, true).map((l) => <li key={l}>{l}</li>)}</ul></div>
+              <div><span className="tag-strong">Not mentioned, so I assumed</span><ul>{readbackLines(readback.said, req, cityName, routeName, false).map((l) => <li key={l}>{l}</li>)}</ul></div>
             </div>
             {profile && (
               <div className="profile-inline">

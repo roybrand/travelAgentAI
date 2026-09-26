@@ -51,6 +51,7 @@ function TripCard({ t, open, onOpen, onDelete, onRename, today, cityName }) {
   const { it, req, hotel, planned, total } = summarize(t);
   const g = it.guide;
   const past = req.end_date < today;
+  const originKnown = !t.readback || t.readback.said?.includes("origin") || t.readback.selected?.includes("origin");
   return (
     <article className={`trips-card ${open ? "open" : ""}`}>
       <button className="trips-card-main" onClick={onOpen} title="Open this trip">
@@ -63,7 +64,7 @@ function TripCard({ t, open, onOpen, onDelete, onRename, today, cityName }) {
           </div>
           {t.booking && <span className={`tag trips-booked ${t.booking.status === "cancelled" ? "" : "booked"}`}>{t.booking.status === "cancelled" ? "Booking cancelled" : `✓ Booked (demo) · ${t.booking.reference}`}</span>}
           <span className="muted">
-            {it.nights} nights · {req.travelers} {req.travelers === 1 ? "traveler" : "travelers"} · from {req.origin}
+            {it.nights} nights · {req.travelers} {req.travelers === 1 ? "traveler" : "travelers"}{originKnown ? ` · from ${req.origin}` : ""}
           </span>
           <span className="muted">🏨 {hotel.name}</span>
           <div className="facts-row">
@@ -84,7 +85,7 @@ function TripCard({ t, open, onOpen, onDelete, onRename, today, cityName }) {
 }
 
 export default function Trips() {
-  const { savedTrips, tripId, openTrip, deleteTrips, renameTrip, cityName, saveError, trip } = useTrip();
+  const { savedTrips, tripId, openTrip, deleteTrips, renameTrip, cityName, routeName, saveError, trip } = useTrip();
   const navigate = useNavigate();
   const today = new Date().toISOString().slice(0, 10);
   const groups = useMemo(() => groupTrips(savedTrips, today), [savedTrips, today]);
@@ -119,7 +120,7 @@ export default function Trips() {
       {groups.map((grp) => (
         <section key={grp.code} className="card pad trips-group">
           <div className="trips-group-head">
-            <h2 className="card-title">📍 {cityName(grp.code)} <span className="muted">· {grp.trips.length} {grp.trips.length === 1 ? "trip" : "trips"}</span></h2>
+            <h2 className="card-title">📍 {routeName(grp.trips[0].result.request)} <span className="muted">· {grp.trips.length} {grp.trips.length === 1 ? "trip" : "trips"}</span></h2>
             {grp.trips.length > 1 && <DeleteButton label={`Delete all ${grp.trips.length}`} onConfirm={() => deleteTrips(grp.trips.map((t) => t.id))} />}
           </div>
           <div className="trips-grid">

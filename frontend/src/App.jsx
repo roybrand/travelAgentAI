@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react";
-import { AnimatePresence, motion } from "framer-motion";
 import { Link, NavLink, Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { checkHealth } from "./api";
 import { useNearby } from "./state/NearbyContext.jsx";
@@ -120,13 +119,13 @@ function BottomNav() {
 
 /** A bar inside the pages of an open trip, so its parts are always one tap apart. */
 function TripNav() {
-  const { trip, cityName } = useTrip();
+  const { trip, routeName } = useTrip();
   const { pathname } = useLocation();
   if (!trip || !["/trip", "/stays", "/explore", "/book"].includes(pathname)) return null;
   return (
     <nav className="subnav" aria-label="This trip">
       <div className="wrap subnav-in">
-        <span className="subnav-title">🧳 {cityName(trip.req.destination)}</span>
+        <span className="subnav-title">🧳 {routeName(trip.req)}</span>
         <NavLink to="/trip">Itinerary</NavLink>
         <NavLink to="/stays">Stays</NavLink>
         <NavLink to="/explore">Explore</NavLink>
@@ -182,35 +181,27 @@ export default function App() {
     <div className="app">
       <Header />
       <TripNav />
-      <AnimatePresence mode="wait">
-        <motion.main
-          key={location.pathname}
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0 }}
-          transition={{ duration: 0.28 }}
-        >
-          <Routes location={location}>
-            <Route path="/" element={<Home />} />
-            <Route path="/trip" element={<Trip />} />
-            <Route path="/plan" element={<Navigate to="/trip" replace />} />
-            <Route path="/book" element={<Book />} />
-            <Route path="/trips" element={<Trips />} />
-            <Route path="/stays" element={<Stays />} />
-            <Route path="/explore" element={<Explore />} />
-            <Route path="/nearby" element={<Nearby />} />
-            <Route path="/deals" element={<Deals />} />
-            <Route path="/tonight" element={<Tonight />} />
-            <Route path="/people" element={<People />} />
-            <Route path="/alerts" element={<Alerts />} />
-            <Route path="/safety/:token" element={<SafetyCheckin />} />
-            <Route path="/partners" element={<Partners />} />
-            <Route path="/admin" element={<Admin />} />
-            <Route path="/credits" element={<Credits />} />
-            <Route path="*" element={<Home />} />
-          </Routes>
-        </motion.main>
-      </AnimatePresence>
+      <main>
+        <Routes>
+          <Route path="/" element={<Home />} />
+          <Route path="/trip" element={<Trip />} />
+          <Route path="/plan" element={<Navigate to="/trip" replace />} />
+          <Route path="/book" element={<Book />} />
+          <Route path="/trips" element={<Trips />} />
+          <Route path="/stays" element={<Stays />} />
+          <Route path="/explore" element={<Explore />} />
+          <Route path="/nearby" element={<Nearby />} />
+          <Route path="/deals" element={<Deals />} />
+          <Route path="/tonight" element={<Tonight />} />
+          <Route path="/people" element={<People />} />
+          <Route path="/alerts" element={<Alerts />} />
+          <Route path="/safety/:token" element={<SafetyCheckin />} />
+          <Route path="/partners" element={<Partners />} />
+          <Route path="/admin" element={<Admin />} />
+          <Route path="/credits" element={<Credits />} />
+          <Route path="*" element={<Home />} />
+        </Routes>
+      </main>
       <Toasts />
       <AlertToasts />
       <Footer />

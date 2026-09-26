@@ -150,47 +150,60 @@ function HotelCard({ h, best, selected, hovered, interests, nights, onSelect, on
 }
 
 export default function Stays() {
-  const { trip, hotelId, setHotelId } = useTrip();
+  const { trip, hotelId, setHotelId, setHotelForSegment, cityName } = useTrip();
   if (!trip) return <Navigate to="/" replace />;
-  return <StaysView trip={trip} hotelId={hotelId} setHotelId={setHotelId} />;
+  return <StaysView trip={trip} hotelId={hotelId} setHotelId={setHotelId} setHotelForSegment={setHotelForSegment} cityName={cityName} />;
 }
 
-function StaysView({ trip, hotelId, setHotelId }) {
+function StaysView({ trip, hotelId, setHotelId, setHotelForSegment, cityName }) {
   const [sort, setSort] = useState("best");
   const [dealsOnly, setDealsOnly] = useState(false);
   const [hover, setHover] = useState(null);
+  const [segIndex, setSegIndex] = useState(0);
 
   const { it, req } = trip;
-  const stats = it.hotel_price_stats;
-  const bestId = it.hotel.id;
-  const anyDeals = it.hotel_options.some((h) => h.deal);
-  const estimated = it.hotel_options.some((h) => h.price_source === "estimate");
+  const segments = trip.staySegments?.length ? trip.staySegments : [{ destination: req.destination, nights: it.nights, check_in: req.start_date, check_out: req.end_date, hotel: trip.hotel, hotel_options: it.hotel_options }];
+  const segment = segments[Math.min(segIndex, segments.length - 1)];
+  const options = segment.hotel_options || it.hotel_options;
+  const selectedId = segment.selectedHotelId || (segment.primary ? hotelId : segment.hotel.id);
+  const stats = {
+    avg: Math.round(options.reduce((s, h) => s + h.price_per_night, 0) / options.length),
+    min: Math.min(...options.map((h) => h.price_per_night)),
+    max: Math.max(...options.map((h) => h.price_per_night)),
+  };
+  const bestId = segment.hotel.id;
+  const anyDeals = options.some((h) => h.deal);
+  const estimated = options.some((h) => h.price_source === "estimate");
+  const chooseHotel = (id) => {
+    if (setHotelForSegment) setHotelForSegment(segment.destination, id);
+    else setHotelId(id);
+  };
 
   const list = useMemo(() => {
-    const filtered = dealsOnly ? it.hotel_options.filter((h) => h.deal) : it.hotel_options;
+    const filtered = dealsOnly ? options.filter((h) => h.deal) : options;
     return [...filtered].sort(SORTS[sort][1]);
-  }, [it.hotel_options, sort, dealsOnly]);
+  }, [options, sort, dealsOnly]);
 
-  const located = useMemo(() => it.hotel_options.filter((h) => h.lat != null), [it.hotel_options]);
+  const located = useMemo(() => options.filter((h) => h.lat != null), [options]);
   const center = it.guide?.center || (located[0] && [located[0].lat, located[0].lng]);
 
   const chartData = useMemo(() => {
     const seen = {};
-    return [...it.hotel_options]
+    return [...options]
       .sort((a, b) => a.price_per_night - b.price_per_night)
       .map((h) => {
         seen[h.name] = (seen[h.name] || 0) + 1;
         const name = h.name.length > 22 ? h.name.slice(0, 21) + "…" : h.name;
         return { id: h.id, label: seen[h.name] > 1 ? `${name} (${seen[h.name]})` : name, price: h.price_per_night, deal: !!h.deal };
       });
-  }, [it.hotel_options]);
+  }, [options]);
 
   const pins = useMemo(
     () => located.map((h) => ({ id: h.id, lat: h.lat, lng: h.lng, kind: "hotel", label: money(h.price_per_night), title: h.name, color: h.deal ? "#f5c76a" : "#2dd4bf" })),
     [located],
   );
   const cheapest = chartData[0];
-  const below = it.hotel_options.filter((h) => h.price_per_night < stats.avg).length;
+  const below = options.filter((h) => h.price_per_night < stats.avg).length;
 
   return (
     <div className="wrap page">
@@ -198,10 +211,10 @@ function StaysView({ trip, hotelId, setHotelId }) {
       <div className="page-head">
         <div>
           <div className="eyebrow">Stays</div>
-          <h1 className="h2">{it.hotel_options.length} places to stay, compared</h1>
+          <h1 className="h2">{options.length} places to stay in {cityName(segment.destination)}, compared</h1>
           <p className="muted">
-            Average nightly rate here is <b>{money(stats.avg)}</b>{estimated && " (estimated)"}. {below} of {it.hotel_options.length} are below it.
-            Cheapest: {cheapest.label} at {money(cheapest.price)}.
+            {segment.nights} night{segment.nights > 1 ? "s" : ""}, {segment.check_in} to {segment.check_out}. Average nightly rate here is <b>{money(stats.avg)}</b>{estimated && " (estimated)"}. {below} of {options.length} are below it.
+            {cheapest && <> Cheapest: {cheapest.label} at {money(cheapest.price)}.</>}
           </p>
         </div>
         <div className="controls">
@@ -214,6 +227,15 @@ function StaysView({ trip, hotelId, setHotelId }) {
           {anyDeals && <button className="chip" aria-pressed={dealsOnly} onClick={() => setDealsOnly((v) => !v)}>Deals only</button>}
         </div>
       </div>
+      {segments.length > 1 && (
+        <div className="segment-tabs" role="tablist" aria-label="Route stays">
+          {segments.map((s, i) => (
+            <button key={s.destination} type="button" className="chip" aria-pressed={i === segIndex} onClick={() => { setSegIndex(i); setHover(null); }}>
+              {i + 1}. {cityName(s.destination)} · {s.nights} night{s.nights > 1 ? "s" : ""}
+            </button>
+          ))}
+        </div>
+      )}
 
       {estimated && (
         <div className="notice">
@@ -241,7 +263,7 @@ function StaysView({ trip, hotelId, setHotelId }) {
 
         <section className="card mapcard">
           {center && located.length > 0 ? (
-            <MapView center={center} pins={pins} selectedId={hotelId} highlightId={hover} onSelect={setHotelId} height={Math.max(300, chartData.length * 38 + 84)} />
+            <MapView center={center} pins={pins} selectedId={selectedId} highlightId={hover} onSelect={chooseHotel} height={Math.max(300, chartData.length * 38 + 84)} />
           ) : (
             <div className="nomap"><b>No map for this destination</b><span>Hotel coordinates were not available.</span></div>
           )}
@@ -254,11 +276,11 @@ function StaysView({ trip, hotelId, setHotelId }) {
             key={h.id}
             h={h}
             best={h.id === bestId}
-            selected={h.id === hotelId}
+            selected={h.id === selectedId}
             hovered={hover === h.id}
             interests={req.interests}
-            nights={it.nights}
-            onSelect={setHotelId}
+            nights={segment.nights}
+            onSelect={chooseHotel}
             onHover={setHover}
           />
         ))}

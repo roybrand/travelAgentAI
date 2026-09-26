@@ -9,14 +9,42 @@ import { keepPrivate, recordDeletion } from "../lib/sync";
 const Ctx = createContext(null);
 export const useTrip = () => useContext(Ctx);
 
+function routeAreaItem(item) {
+  return item.source === "route" || item.source === "live-route" || item.area || item.route_stop || item.source === "custom" || item.source === "live-night";
+}
+
+function invalidRoutePlace(item) {
+  const name = String(item.name || "").toLowerCase().trim();
+  return routeAreaItem(item) && ["restaurant", "restaurants", "cafe", "café", "bar", "pub", "park", "museum", "viewpoint", "attraction"].includes(name);
+}
+
+function dayLocationsFromTrip(result) {
+  const it = result?.itinerary;
+  const req = result?.request;
+  if (!it || !req) return {};
+  const explicit = {};
+  (req.day_locations || []).forEach((loc) => {
+    if (loc.day && loc.destination) explicit[loc.day] = loc.destination;
+  });
+  if (Object.keys(explicit).length) return explicit;
+  const out = {};
+  (it.stay_segments || []).forEach((s) => {
+    for (let d = s.start_day; d <= s.end_day; d += 1) out[d] = s.destination;
+  });
+  const route = req.destinations?.length ? req.destinations : [req.destination];
+  if (it.nights) out[it.nights + 1] = route.at(-1) || req.destination;
+  return out;
+}
+
 export function tripDefaults() {
   const start = new Date();
   start.setDate(start.getDate() + 45);
   const end = new Date(start);
   end.setDate(end.getDate() + 7);
   return {
-    origin: "LON",
+    origin: "",
     destination: "TLV",
+    destinations: ["TLV"],
     start_date: isoDate(start),
     end_date: isoDate(end),
     budget: 2500,
@@ -38,6 +66,7 @@ export function TripProvider({ children }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [hotelId, setHotelId] = useState(initial?.hotelId ?? null);
+  const [hotelIds, setHotelIds] = useState(initial?.hotelIds ?? {});
   // The traveler's own flight, when they chose one over the agent's pick (null = the agent's pick).
   const [flightId, setFlightId] = useState(initial?.flightId ?? null);
   // The day plan: { [itemKey]: { day, part, order } }. Nothing goes in here except by an explicit action of the
@@ -45,6 +74,10 @@ export function TripProvider({ children }) {
   const [schedule, setSchedule] = useState(initial?.schedule ?? {});
   // The traveler's mood per trip day ({ [day]: moodKey }). It re-orders that day's ideas and deals, nothing else.
   const [moods, setMoods] = useState(initial?.moods ?? {});
+  // The traveler's city for each trip day ({ [day]: destinationCode }). Replanning turns this into route stay segments.
+  const [dayLocations, setDayLocations] = useState(initial?.dayLocations ?? dayLocationsFromTrip(initial?.result));
+  // The traveler's own route/area focus for each day, separate from where they sleep.
+  const [dayAreas, setDayAreas] = useState(initial?.dayAreas ?? {});
   // Saved trips (browser only) and which one is open. Every planned trip is saved; it stays until deleted.
   const [savedTrips, setSavedTrips] = useState(loadTrips);
   const [tripId, setTripId] = useState(initial?.id ?? null);
@@ -85,24 +118,34 @@ export function TripProvider({ children }) {
     (code) => destinations.find((d) => d.code === String(code).toUpperCase())?.city || code,
     [destinations],
   );
+  const routeName = useCallback(
+    (req, sep = " → ") => ((req?.destinations?.length ? req.destinations : [req?.destination]).filter(Boolean).map(cityName).join(sep)),
+    [cityName],
+  );
 
-  const plan = useCallback(async (payload) => {
+  const plan = useCallback(async (payload, meta = null) => {
     setLoading(true);
     setError("");
     try {
       // Hold the overlay briefly so the agent steps read as a sequence; live lookups may take longer.
       // The form and the prompt builder are separate processes: place types come only from what the caller sends.
-      const withTypes = { ...payload, place_types: payload.place_types ?? [] };
+      const route = (payload.destinations?.length ? payload.destinations : [payload.destination]).filter(Boolean);
+      const withTypes = { ...payload, destination: route[0] || payload.destination, destinations: route, place_types: payload.place_types ?? [] };
       const [data] = await Promise.all([planTrip(withTypes), new Promise((r) => setTimeout(r, 2300))]);
       const id = newTripId();
       const now = new Date().toISOString();
+      const tripReadback = meta?.readback || readback || null;
       setResult(data);
       setHotelId(data.itinerary.hotel.id);
+      setHotelIds(Object.fromEntries((data.itinerary.stay_segments || []).map((s) => [s.destination, s.hotel.id])));
       setFlightId(data.itinerary.flight.id);
       setSchedule({});
       setMoods({});
+      setDayLocations(dayLocationsFromTrip(data));
+      setDayAreas({});
+      setReadback(tripReadback);
       setTripId(id);
-      setSavedTrips((list) => [{ id, savedAt: now, updatedAt: now, result: data, hotelId: data.itinerary.hotel.id, flightId: data.itinerary.flight.id, schedule: {} }, ...list]);
+      setSavedTrips((list) => [{ id, savedAt: now, updatedAt: now, result: data, readback: tripReadback, hotelId: data.itinerary.hotel.id, hotelIds: Object.fromEntries((data.itinerary.stay_segments || []).map((s) => [s.destination, s.hotel.id])), flightId: data.itinerary.flight.id, schedule: {}, dayLocations: dayLocationsFromTrip(data), dayAreas: {} }, ...list]);
       return true;
     } catch (e) {
       setError(e.message || "Something went wrong.");
@@ -127,26 +170,36 @@ export function TripProvider({ children }) {
     const flight = flightOptions(it).find((f) => f.id === oldFlight.id)
       || flightOptions(it).find((f) => f.airline === oldFlight.airline && f.stops === oldFlight.stops && f.depart_time === oldFlight.depart_time);
     const nextHotel = hotel?.id ?? it.hotel.id;
+    const nextHotelIds = Object.fromEntries((it.stay_segments || []).map((s) => {
+      const oldId = hotelIds[s.destination];
+      const kept = s.hotel_options.find((h) => h.id === oldId) || s.hotel_options.find((h) => h.name === oldHotel.name);
+      return [s.destination, kept?.id || s.hotel.id];
+    }));
     const nextFlight = flight?.id ?? it.flight.id;
     setResult(data);
     setHotelId(nextHotel);
+    setHotelIds(nextHotelIds);
     setFlightId(nextFlight);
+    setDayLocations(dayLocationsFromTrip(data));
     // The search form is its own process: a trip change never writes back into it (nor the prompt's profile).
     if (tripId) {
       setSavedTrips((list) => list.map((t) => (t.id === tripId
-        ? { ...t, result: data, hotelId: nextHotel, flightId: nextFlight, updatedAt: new Date().toISOString() } : t)));
+        ? { ...t, result: data, hotelId: nextHotel, hotelIds: nextHotelIds, flightId: nextFlight, dayLocations: dayLocationsFromTrip(data), updatedAt: new Date().toISOString() } : t)));
     }
     return { keptHotel: !!hotel, keptFlight: !!flight };
-  }, [result, hotelId, flightId, tripId]);
+  }, [result, hotelId, hotelIds, flightId, tripId]);
 
   /** Close the current trip (it stays saved) and put the search form back to its defaults. The profile is kept. */
   const resetSearch = useCallback(() => {
     setTripId(null);
     setResult(null);
     setHotelId(null);
+    setHotelIds({});
     setFlightId(null);
     setSchedule({});
     setMoods({});
+    setDayLocations({});
+    setDayAreas({});
     setError("");
     setReadback(null);
     setForm(tripDefaults());
@@ -164,16 +217,52 @@ export function TripProvider({ children }) {
         return next;
       }
       const nights = result?.itinerary?.nights || 1;
-      return { ...s, [key]: { ...nextSlot(s, nights, item, target), order: Date.now() } };
+      const dayDestination = (day) => dayLocations?.[day]
+        || (result?.itinerary?.stay_segments || []).find((seg) => day >= seg.start_day && day <= seg.end_day)?.destination
+        || result?.request?.destination;
+      const matchingDay = item.fixed_day
+        || (item.destination ? Array.from({ length: nights }, (_, i) => i + 1).find((day) => dayDestination(day) === item.destination) : null);
+      const safeTarget = target || (matchingDay ? { day: matchingDay, part: undefined } : null);
+      const snapshot = {
+        key,
+        name: item.name,
+        why: item.why || "",
+        source: item.source || "custom",
+        type: item.type || null,
+        typeLabel: item.typeLabel || null,
+        tags: item.tags || [],
+        destination: item.destination || null,
+        city: item.city || null,
+        area: item.area || null,
+        route_stop: item.route_stop || null,
+        distance_to_route_stop_m: item.distance_to_route_stop_m ?? null,
+        distance_to_route_m: item.distance_to_route_m ?? null,
+        route_progress: item.route_progress ?? null,
+        fixed_day: item.fixed_day || null,
+        lat: item.lat ?? null,
+        lng: item.lng ?? null,
+        photo: item.photo || null,
+        photo_url: item.photo_url || null,
+        photo_credit: item.photo_credit || null,
+        website: item.website || null,
+        osm_url: item.osm_url || null,
+        url: item.url || null,
+        wikipedia: item.wikipedia || null,
+        wikidata: item.wikidata || null,
+        matches: item.matches || [],
+        cost: item.cost ?? null,
+        duration: item.duration || null,
+      };
+      return { ...s, [key]: { ...nextSlot(s, nights, item, safeTarget), item: snapshot, order: Date.now() } };
     });
-  }, [result]);
+  }, [result, dayLocations]);
 
   // Keep the open trip's saved copy in step with the traveler's choices, and remember which trip is open.
   useEffect(() => {
     if (!tripId) return;
-    setSavedTrips((list) => list.map((t) => (t.id === tripId && (t.hotelId !== hotelId || t.flightId !== flightId || JSON.stringify(t.schedule) !== JSON.stringify(schedule) || JSON.stringify(t.moods || {}) !== JSON.stringify(moods))
-      ? { ...t, hotelId, flightId, schedule, moods, updatedAt: new Date().toISOString() } : t)));
-  }, [tripId, hotelId, flightId, schedule, moods]);
+    setSavedTrips((list) => list.map((t) => (t.id === tripId && (t.hotelId !== hotelId || JSON.stringify(t.hotelIds || {}) !== JSON.stringify(hotelIds) || t.flightId !== flightId || JSON.stringify(t.schedule) !== JSON.stringify(schedule) || JSON.stringify(t.moods || {}) !== JSON.stringify(moods) || JSON.stringify(t.dayLocations || {}) !== JSON.stringify(dayLocations || {}) || JSON.stringify(t.dayAreas || {}) !== JSON.stringify(dayAreas || {}))
+      ? { ...t, hotelId, hotelIds, flightId, schedule, moods, dayLocations, dayAreas, updatedAt: new Date().toISOString() } : t)));
+  }, [tripId, hotelId, hotelIds, flightId, schedule, moods, dayLocations, dayAreas]);
   useEffect(() => {
     setSaveError(storeTrips(savedTrips) ? "" : "This browser's storage is full, so the latest changes are not saved. Delete an old trip to make room.");
   }, [savedTrips]);
@@ -185,11 +274,14 @@ export function TripProvider({ children }) {
     if (!t) return false;
     setResult(t.result);
     setHotelId(t.hotelId ?? t.result.itinerary.hotel.id);
+    setHotelIds(t.hotelIds || Object.fromEntries((t.result.itinerary.stay_segments || []).map((s) => [s.destination, s.hotel.id])));
     setFlightId(t.flightId ?? t.result.itinerary.flight.id);
     setSchedule(t.schedule || {});
     setMoods(t.moods || {});
+    setDayLocations(t.dayLocations || dayLocationsFromTrip(t.result));
+    setDayAreas(t.dayAreas || {});
     setError("");
-    setReadback(null);
+    setReadback(t.readback || null);
     setTripId(t.id);
     return true;
   }, [savedTrips]);
@@ -217,15 +309,22 @@ export function TripProvider({ children }) {
       setTripId(null);
       setResult(null);
       setHotelId(null);
+      setHotelIds({});
       setFlightId(null);
       setSchedule({});
       setMoods({});
+      setDayLocations({});
+      setDayAreas({});
     } else if (mine?.data?.result) {
       setResult(mine.data.result);
       setHotelId(mine.data.hotelId ?? mine.data.result.itinerary.hotel.id);
+      setHotelIds(mine.data.hotelIds || Object.fromEntries((mine.data.result.itinerary.stay_segments || []).map((s) => [s.destination, s.hotel.id])));
       setFlightId(mine.data.flightId ?? mine.data.result.itinerary.flight.id);
       setSchedule(mine.data.schedule || {});
       setMoods(mine.data.moods || {});
+      setDayLocations(mine.data.dayLocations || dayLocationsFromTrip(mine.data.result));
+      setDayAreas(mine.data.dayAreas || {});
+      setReadback(mine.data.readback || null);
     }
   }, [tripId]);
 
@@ -237,9 +336,12 @@ export function TripProvider({ children }) {
       setTripId(null);
       setResult(null);
       setHotelId(null);
+      setHotelIds({});
       setFlightId(null);
       setSchedule({});
       setMoods({});
+      setDayLocations({});
+      setDayAreas({});
     }
   }, [tripId]);
 
@@ -255,10 +357,10 @@ export function TripProvider({ children }) {
     if (tripId && savedTrips.some((t) => t.id === tripId)) return tripId;
     const id = newTripId();
     const now = new Date().toISOString();
-    setSavedTrips((list) => [{ id, name: (name || "").trim().slice(0, 60) || null, savedAt: now, updatedAt: now, result, hotelId, flightId, schedule, moods }, ...list]);
+    setSavedTrips((list) => [{ id, name: (name || "").trim().slice(0, 60) || null, savedAt: now, updatedAt: now, result, readback, hotelId, hotelIds, flightId, schedule, moods, dayLocations, dayAreas }, ...list]);
     setTripId(id);
     return id;
-  }, [result, tripId, savedTrips, hotelId, flightId, schedule, moods]);
+  }, [result, tripId, savedTrips, readback, hotelId, hotelIds, flightId, schedule, moods, dayLocations, dayAreas]);
 
   /** Delete saved trips for good. Deleting the open trip also closes it. */
   const deleteTrips = useCallback((ids) => {
@@ -269,9 +371,12 @@ export function TripProvider({ children }) {
       setTripId(null);
       setResult(null);
       setHotelId(null);
+      setHotelIds({});
       setFlightId(null);
       setSchedule({});
       setMoods({});
+      setDayLocations({});
+      setDayAreas({});
     }
   }, [tripId]);
 
@@ -281,9 +386,9 @@ export function TripProvider({ children }) {
    * stay and day plan it was made for, so a later change can be flagged. Traveler details live only here. */
   const recordBooking = useCallback((booking) => {
     const id = saveCurrentTrip();
-    const snapshot = { hotelId, flightId: pickFlight(result.itinerary, flightId).id, travelers: result.request.travelers, schedule };
+    const snapshot = { hotelId, hotelIds, flightId: pickFlight(result.itinerary, flightId).id, travelers: result.request.travelers, schedule, dayLocations, dayAreas };
     setSavedTrips((list) => list.map((t) => (t.id === id ? { ...t, booking: { ...booking, snapshot }, updatedAt: new Date().toISOString() } : t)));
-  }, [saveCurrentTrip, hotelId, flightId, schedule, result]);
+  }, [saveCurrentTrip, hotelId, hotelIds, flightId, schedule, dayLocations, dayAreas, result]);
 
   /** Update a trip's booking after a cancel (or a status refresh) from the server. */
   const updateBooking = useCallback((id, patch) => {
@@ -295,14 +400,20 @@ export function TripProvider({ children }) {
   // Only a new flight, stay or number of travelers means booking again. Day plan changes never do: free activities
   // need nothing, and paid ones are handled as ticket changes (see ticketChanges below).
   const bookingChanged = !!booking && booking.status !== "cancelled" &&
-    (booking.snapshot?.hotelId !== hotelId || (booking.snapshot?.flightId ?? result?.itinerary.flight.id) !== currentFlightId ||
-      (booking.snapshot?.travelers ?? result?.request.travelers) !== result?.request.travelers);
+    (booking.snapshot?.hotelId !== hotelId || JSON.stringify(booking.snapshot?.hotelIds || {}) !== JSON.stringify(hotelIds || {}) || (booking.snapshot?.flightId ?? result?.itinerary.flight.id) !== currentFlightId ||
+      (booking.snapshot?.travelers ?? result?.request.travelers) !== result?.request.travelers || JSON.stringify(booking.snapshot?.dayLocations || dayLocationsFromTrip(result)) !== JSON.stringify(dayLocations || {}));
 
   /** Switch to one of the compared flight + stay packages in one go. */
   const choosePackage = useCallback((fid, hid) => {
     setFlightId(fid);
     setHotelId(hid);
-  }, []);
+    const firstDest = (result?.itinerary.stay_segments || [])[0]?.destination;
+    if (firstDest) setHotelIds((m) => ({ ...m, [firstDest]: hid }));
+  }, [result]);
+  const setHotelForSegment = useCallback((dest, id) => {
+    setHotelIds((m) => ({ ...m, [dest]: id }));
+    if ((result?.itinerary.stay_segments || [])[0]?.destination === dest) setHotelId(id);
+  }, [result]);
 
   /** Set (or clear, with null) the mood for one trip day. */
   const setMood = useCallback((day, key) => {
@@ -317,25 +428,59 @@ export function TripProvider({ children }) {
   /** Move an already-planned item to a different day or time of day. */
   const moveItem = useCallback((key, day, part) => {
     setSchedule((s) => (s[key] ? { ...s, [key]: { ...s[key], day, part } } : s));
-  }, []);
+  }, [readback]);
+
+  /** Apply the day-by-day city plan by rerunning the trip search. Consecutive days in the same city become one stay. */
+  const applyDayLocations = useCallback(async (locations, dayAreas = null) => {
+    const entries = Object.entries(locations || {})
+      .map(([day, destination]) => ({ day: Number(day), destination }))
+      .filter((x) => x.day && x.destination)
+      .sort((a, b) => a.day - b.day);
+    const destinations = entries.reduce((list, loc) => (list.at(-1) === loc.destination ? list : [...list, loc.destination]), []);
+    return replanTrip({ destination: destinations[0], destinations, day_locations: entries, ...(dayAreas ? { day_areas: dayAreas } : {}) });
+  }, [replanTrip]);
+
+  const applyDayFocus = useCallback(async (locations, areas) => {
+    const entries = Object.entries(areas || {})
+      .map(([day, area]) => ({ day: Number(day), country: area.country || null, label: (area.label || "").trim() }))
+      .filter((x) => x.day && (x.country || x.label));
+    const kept = await applyDayLocations(locations, entries);
+    setDayAreas(areas || {});
+    return kept;
+  }, [applyDayLocations]);
 
   const trip = useMemo(() => {
     if (!result) return null;
     const { itinerary: it, request: req } = result;
     const hotel = it.hotel_options.find((h) => h.id === hotelId) || it.hotel;
+    const staySegments = (it.stay_segments || []).map((s, idx) => {
+      const selected = s.hotel_options.find((h) => h.id === hotelIds[s.destination]) || s.hotel;
+      return { ...s, hotel: selected, selectedHotelId: selected.id, primary: idx === 0 };
+    });
     const flight = pickFlight(it, flightId);
     const flights = flightOptions(it);
     const candidates = candidateItems(it.guide);
-    const chosenItems = scheduledItems(candidates, schedule);
+    const dayDestination = (day) => dayLocations?.[day] || staySegments.find((s) => day >= s.start_day && day <= s.end_day)?.destination || req.destination;
+    const chosenItems = scheduledItems(candidates, schedule).filter((item) => {
+      if (item.fixed_day && item.fixed_day !== item.day) return false;
+      if (invalidRoutePlace(item)) return false;
+      if (item.destination && item.destination !== dayDestination(item.day)) return false;
+      if (dayAreas?.[item.day]?.label?.trim() && !routeAreaItem(item)) return false;
+      if (!item.destination && item.segment != null) {
+        const seg = staySegments.find((s) => s.index === item.segment);
+        if (seg && seg.destination !== dayDestination(item.day)) return false;
+      }
+      return true;
+    });
     const flightCost = flight.total_price;
-    const stayCost = hotel.price_per_night * it.nights;
+    const stayCost = staySegments.length ? staySegments.reduce((sum, s) => sum + s.hotel.price_per_night * s.nights, 0) : hotel.price_per_night * it.nights;
     const expCost = chosenItems.reduce((sum, i) => sum + (i.cost || 0) * req.travelers, 0);
     const total = flightCost + stayCost + expCost;
     return {
-      it, req, hotel, flight, flights, flightCost, stayCost, expCost, total, chosenItems, candidates,
+      it, req, hotel: staySegments[0]?.hotel || hotel, staySegments, dayLocations, dayAreas, flight, flights, flightCost, stayCost, expCost, total, chosenItems, candidates,
       isBest: hotel.id === it.hotel.id, isBestFlight: flight.id === it.flight.id,
     };
-  }, [result, hotelId, flightId, schedule]);
+  }, [result, hotelId, hotelIds, flightId, schedule, dayLocations, dayAreas]);
 
   const planned = trip ? trip.chosenItems.map((i) => i.key) : [];
 
@@ -362,15 +507,15 @@ export function TripProvider({ children }) {
     const activities = trip.chosenItems.map((i) => ({ name: i.name.slice(0, 160), day: i.day, part: i.part, cost: i.cost ?? null }));
     const r = await bookingsApi.updateTickets(booking.reference, booking.manage_token, activities);
     setSavedTrips((list) => list.map((t) => (t.id === tripId && t.booking ? {
-      ...t, booking: { ...t.booking, tickets: r.tickets, totals: r.totals, free_activities: trip.chosenItems.filter((i) => !i.cost).map((i) => i.name), snapshot: { ...t.booking.snapshot, schedule } },
+      ...t, booking: { ...t.booking, tickets: r.tickets, totals: r.totals, free_activities: trip.chosenItems.filter((i) => !i.cost).map((i) => i.name), snapshot: { ...t.booking.snapshot, schedule, dayLocations, dayAreas } },
       updatedAt: new Date().toISOString(),
     } : t)));
     return r;
-  }, [trip, booking, tripId, schedule]);
+  }, [trip, booking, tripId, schedule, dayLocations, dayAreas]);
 
   const value = {
-    form, setForm, result, trip, loading, error, setError, plan, hotelId, setHotelId, flightId, setFlightId, choosePackage, replanTrip, moods, setMood, planned, toggleItem, moveItem,
-    config, destinations, cityName, profile, setProfile, forgetProfile, resetSearch, readback, setReadback,
+    form, setForm, result, trip, loading, error, setError, plan, hotelId, setHotelId, hotelIds, setHotelForSegment, flightId, setFlightId, choosePackage, replanTrip, dayLocations, dayAreas, applyDayLocations, applyDayFocus, moods, setMood, planned, toggleItem, moveItem,
+    config, destinations, cityName, routeName, profile, setProfile, forgetProfile, resetSearch, readback, setReadback,
     savedTrips, tripId, savedTrip, openTrip, deleteTrips, renameTrip, saveCurrentTrip, saveError, mergeRemoteTrips, forgetLocalTrips,
     booking, bookingChanged, ticketChanges, applyTicketChanges, recordBooking, updateBooking,
   };

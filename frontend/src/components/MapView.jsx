@@ -20,7 +20,7 @@ function pinElement(pin, selected) {
  * pins: [{ id, lat, lng, kind: "hotel" | "sight" | "venue", label, title, color }]
  * Map tiles need internet; offline the pins still render over a dark background.
  */
-export default function MapView({ center, pins, selectedId, highlightId, onSelect, height = 440 }) {
+export default function MapView({ center, pins, path = [], paths = null, selectedId, highlightId, onSelect, height = 440 }) {
   const box = useRef(null);
   const map = useRef(null);
   const layer = useRef(null);
@@ -56,27 +56,52 @@ export default function MapView({ center, pins, selectedId, highlightId, onSelec
     layer.current.clearLayers();
     markers.current.clear();
     const pts = [];
+    const routePaths = paths || (path?.length ? [{ points: path }] : []);
+    const pathPts = [];
+    routePaths.forEach((routePath) => {
+      const points = (routePath.points || routePath || []).filter((p) => p?.lat != null && p?.lng != null).map((p) => [p.lat, p.lng]);
+      if (points.length > 1) {
+        L.polyline(points, {
+          color: routePath.color || "#f5c76a",
+          weight: routePath.weight || 4,
+          opacity: routePath.opacity ?? 0.9,
+          dashArray: routePath.dashArray ?? "8 8",
+        }).addTo(layer.current);
+        pathPts.push(...points);
+      }
+    });
+    pts.push(...pathPts);
     pins.forEach((pin) => {
       const small = pin.kind === "venue";
+      const offset = pin.zIndexOffset ?? (small ? 0 : pin.kind === "hotel" ? 300 : 500);
+      const markerLat = pin.displayLat ?? pin.lat;
+      const markerLng = pin.displayLng ?? pin.lng;
+      if (pin.displayLat != null && pin.displayLng != null && (pin.displayLat !== pin.lat || pin.displayLng !== pin.lng)) {
+        L.polyline([[pin.lat, pin.lng], [pin.displayLat, pin.displayLng]], { color: pin.color || "#ffffff", weight: 1.5, opacity: 0.65 }).addTo(layer.current);
+      }
       const icon = L.divIcon({
         html: pinElement(pin, pin.id === selectedRef.current),
         className: "pin-wrap",
         iconSize: small ? [16, 16] : pin.kind === "hotel" ? [64, 30] : pin.kind === "you" ? [22, 22] : [34, 34],
         iconAnchor: small ? [8, 8] : pin.kind === "hotel" ? [32, 15] : pin.kind === "you" ? [11, 11] : [17, 17],
       });
-      const m = L.marker([pin.lat, pin.lng], { icon, title: pin.title, zIndexOffset: small ? 0 : 400 });
-      m.on("click", () => onSelectRef.current && onSelectRef.current(pin.id));
+      const m = L.marker([markerLat, markerLng], { icon, title: pin.title, zIndexOffset: offset });
+      if (pin.title) m.bindTooltip(pin.title, { direction: "top", offset: [0, -10], opacity: 0.95 });
+      m.on("click", () => {
+        if (pin.title) m.openTooltip();
+        if (onSelectRef.current) onSelectRef.current(pin.id);
+      });
       m.addTo(layer.current);
       markers.current.set(pin.id, m);
-      pts.push([pin.lat, pin.lng]);
+      pts.push([markerLat, markerLng], [pin.lat, pin.lng]);
     });
     fit.current = () => {
       if (!map.current) return;
-      if (pts.length > 1) map.current.fitBounds(pts, { padding: [46, 46], maxZoom: 14, animate: false });
+      if (pts.length > 1) map.current.fitBounds(pts, { padding: pathPts.length > 1 ? [34, 34] : [46, 46], maxZoom: pathPts.length > 1 ? 10 : 14, animate: false });
       else if (pts.length === 1) map.current.setView(pts[0], 13, { animate: false });
     };
     fit.current();
-  }, [pins]);
+  }, [pins, path, paths]);
 
   // Highlight follows hover or selection; the map only flies when the selection itself changes,
   // and not on first render (so the initial view keeps every pin in frame).
