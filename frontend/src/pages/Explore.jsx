@@ -8,6 +8,7 @@ import { km, metres, money } from "../lib/format";
 import MapView from "../components/MapView.jsx";
 import Photo from "../components/Photo.jsx";
 import BackLink from "../components/BackLink.jsx";
+import { usePlanSheets } from "../components/PlanSheets.jsx";
 
 function Venue({ v }) {
   const meta = KIND_META[v.kind] || KIND_META.experience;
@@ -89,6 +90,7 @@ export default function Explore() {
 function ExploreView({ trip, planned, toggleItem, cityName }) {
   const { it, req } = trip;
   const g = it.guide;
+  const sheets = usePlanSheets();
   const [tab, setTab] = useState("all");
   const [selected, setSelected] = useState(null);
   const byType = g?.by_type || {};
@@ -97,6 +99,7 @@ function ExploreView({ trip, planned, toggleItem, cityName }) {
   const activeType = typeTab && byType[typeTab] ? typeTab : typeKeys.find((k) => byType[k].places.length) || typeKeys[0];
 
   const all = useMemo(() => (g ? [...g.places, ...g.adventures] : []), [g]);
+  const candidateByName = useMemo(() => new Map((trip.candidates || []).map((item) => [item.name, item])), [trip.candidates]);
   const numbering = useMemo(() => {
     const located = all.filter((i) => i.lat != null);
     return new Map(located.map((i, idx) => [i.name, idx + 1]));
@@ -124,6 +127,13 @@ function ExploreView({ trip, planned, toggleItem, cityName }) {
   const place = cityName(req.destination) !== req.destination ? cityName(req.destination) : g?.name || req.destination;
   const venueSel = selected?.startsWith("v:") ? g?.venues.find((v) => v.name === selected.slice(2)) : null;
   const totalSave = dealChart.reduce((s, d) => s + d.saving, 0);
+  const planItem = (item) => candidateByName.get(item.name) || item;
+  const isPlanned = (item) => planned.includes(planItem(item).key || item.name);
+  const planFromExplore = (item) => {
+    const canonical = planItem(item);
+    if (isPlanned(item)) toggleItem(canonical);
+    else sheets.openWhen(canonical, "add", 1);
+  };
 
   if (!g) {
     return (
@@ -175,10 +185,10 @@ function ExploreView({ trip, planned, toggleItem, cityName }) {
               item={item}
               n={numbering.get(item.name) ?? null}
               selected={selected === `s:${item.name}`}
-              planned={planned.includes(item.name)}
+              planned={isPlanned(item)}
               travelers={req.travelers}
               onSelect={setSelected}
-              onToggle={toggleItem}
+              onToggle={planFromExplore}
             />
           ))}
           {shown.length === 0 && <p className="muted">Nothing to show here yet.</p>}
@@ -272,6 +282,7 @@ function ExploreView({ trip, planned, toggleItem, cityName }) {
         </div>
         <Link to="/trip" className="btn primary sm">View trip · {money(trip.total)}</Link>
       </div>
+      {sheets.ui}
     </div>
   );
 }

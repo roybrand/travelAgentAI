@@ -152,9 +152,9 @@ export function TripProvider({ children }) {
     setForm(tripDefaults());
   }, []);
 
-  /** Add or remove an item from the plan. `target` ({ day, part }) is the slot the traveler picked on the Day plan
-   * tab; without it (e.g. from Explore) the item goes to the fewest-filled day at a time guessed from its tags. The
-   * traveler can move or remove it afterwards. Nothing is added without this being called from an explicit tap. */
+  /** Add or remove an item from the plan. `target` ({ day, part }) is the slot the traveler picked in the shared
+   * "when?" sheet or from an exact day/time slot. Without a target, this keeps the legacy least-filled fallback for
+   * internal callers only; traveler-facing add buttons should ask for a slot first. */
   const toggleItem = useCallback((item, target) => {
     const key = item.key || item.name;
     setSchedule((s) => {
