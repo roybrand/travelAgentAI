@@ -504,11 +504,12 @@ export default function TripTimeline({ phase, dealsByDay, eventsByDate, sheets, 
     }
     const fallbackPoint = pointAlongRoute(dayPath, target) || basePointForDay(d);
     if (!hasPoint(fallbackPoint)) return null;
-    const placeName = routeDisplayName(fallbackPoint, routeDisplayLabelForDay(d));
+    const realPlaceName = cleanActivityPlaceName(realRoutePointName(fallbackPoint));
+    const placeName = realPlaceName || cleanActivityPlaceName(cityName(cityForDay(d))) || routeDisplayLabelForDay(d);
     const label = PART_LABEL[part];
     return {
       key: `default-slot:${d}:${part}`,
-      name: `${label} activity${placeName ? ` near ${placeName}` : ""}`,
+      name: `${label} activity${placeName ? ` ${realPlaceName ? "near" : "in"} ${placeName}` : ""}`,
       why: `Default ${label.toLowerCase()} stop on ${routeDisplayLabelForDay(d)}`,
       source: "custom",
       type: "route",
@@ -1446,6 +1447,11 @@ const cleanName = (value) => String(value || "").trim().toLowerCase();
 const cleanRouteAreaLabel = (value) => {
   const text = String(value || "").trim();
   return /^Route section \d+\/\d+$/i.test(text) ? "" : text;
+};
+const cleanActivityPlaceName = (value) => {
+  const text = String(value || "").trim().replace(/\s+\bto\b\s*$/i, "");
+  if (!text || /^Route point$/i.test(text) || /^Day \d+ route$/i.test(text)) return "";
+  return text;
 };
 const isRouteCandidate = (item) => item?.source === "route" || item?.source === "live-route" || item?.route_stop || item?.area;
 const dedupeRouteIdeas = (items) => {
