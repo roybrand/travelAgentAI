@@ -300,22 +300,13 @@ export default function TripTimeline({ phase, dealsByDay, eventsByDate, sheets, 
   const routeBoundaryFallbackName = (index) => {
     if (index <= 0) return tripRoutePath[0]?.name || cityName(firstStop);
     if (index >= nights) return tripRoutePath.at(-1)?.name || cityName(finalStop);
-    const boundaryProgress = index / Math.max(1, nights);
-    const endpointNames = new Set([cleanName(tripRoutePath[0]?.name), cleanName(tripRoutePath.at(-1)?.name), cleanName(cityName(firstStop)), cleanName(cityName(finalStop))].filter(Boolean));
-    const ideas = Object.values(defaultRouteIdeasByDay).flat().filter((item) => item?.name && !isGeneratedRoutePlaceholder(item));
-    const nearby = ideas
-      .map((item) => ({
-        ...item,
-        delta: Math.abs(Number(item.global_route_progress ?? item.route_progress ?? 0.5) - boundaryProgress),
-      }))
-      .filter((item) => item.delta <= 0.24 && !endpointNames.has(cleanName(item.name)))
-      .sort((a, b) => a.delta - b.delta || (a.distance_to_route_m ?? 0) - (b.distance_to_route_m ?? 0))[0];
-    return nearby?.name || "";
+    return "";
   };
   const routeBoundaryName = (index) => routeBoundaryNames[index] || routeBoundaryFallbackName(index);
+  const routeBoundaryLabel = (index, fallback) => routeBoundaryName(index) || fallback;
   const dayRouteLabelForDay = (d) => {
-    const startName = routeBoundaryName(d - 1);
-    const endName = routeBoundaryName(d);
+    const startName = routeBoundaryLabel(d - 1, `Day ${d} start`);
+    const endName = routeBoundaryLabel(d, `Day ${d} end`);
     return startName && endName ? `${startName} to ${endName}` : "";
   };
   const cityPointForDay = (d) => {
@@ -394,7 +385,23 @@ export default function TripTimeline({ phase, dealsByDay, eventsByDate, sheets, 
     if (!area) return null;
     const target = PART_PROGRESS[part] ?? 0.5;
     const used = new Set(chosenItems.filter((item) => item.day === d).map((item) => item.key));
-    const all = (defaultRouteIdeasByDay[d] || []).filter((item) => item.source === "live-route");
+    const dayStart = (d - 1) / Math.max(1, nights);
+    const dayEnd = d / Math.max(1, nights);
+    const extra = Math.min(0.16, 0.75 / Math.max(1, nights));
+    const scoped = (defaultRouteIdeasByDay[d] || []).map((item) => ({ ...item, borrowed: false }));
+    const borrowed = Object.entries(defaultRouteIdeasByDay)
+      .filter(([day]) => Number(day) !== d)
+      .flatMap(([, items]) => items)
+      .filter((item) => {
+        const global = Number(item.global_route_progress ?? item.route_progress);
+        return Number.isFinite(global) && global >= Math.max(0, dayStart - extra) && global <= Math.min(1, dayEnd + extra);
+      })
+      .map((item) => {
+        const global = Number(item.global_route_progress ?? item.route_progress);
+        const local = dayEnd > dayStart ? (global - dayStart) / (dayEnd - dayStart) : item.route_progress;
+        return { ...item, fixed_day: d, route_progress: Math.max(0, Math.min(1, local)), borrowed: true };
+      });
+    const all = [...scoped, ...borrowed].filter((item) => item.source === "live-route");
     const previouslySuggested = all.filter((item) => takenKeys.has(item.key));
     const real = all
       .filter((item) => !used.has(item.key)
@@ -511,24 +518,17 @@ export default function TripTimeline({ phase, dealsByDay, eventsByDate, sheets, 
   };
   const explicitRouteForDay = (d, fallback = "") => hasExplicitRouteText(fallback || routeAreaForDay(d) || focusForDay(d));
   const effectiveRouteLabelForDay = (d, fallback = "") => routeLabelWithStart(startForDay(d), fallback || routeAreaForDay(d) || focusForDay(d));
-  const routeBoundaryAnchor = (progress, fallback, blockedName = "") => {
+  const routeBoundaryAnchor = (progress, fallback) => {
     if (progress <= 0) return tripRoutePath[0] || fallback;
     if (progress >= 1) return tripRoutePath.at(-1) || fallback;
-    const ideas = Object.values(defaultRouteIdeasByDay)
-      .flat()
-      .filter((item) => hasPoint(item) && !isGeneratedRoutePlaceholder(item) && cleanName(item.name) !== cleanName(blockedName));
-    const nearby = ideas
-      .map((item) => ({ ...item, boundaryDelta: Math.abs(Number(item.global_route_progress ?? item.route_progress ?? 0.5) - progress) }))
-      .filter((item) => item.boundaryDelta <= 0.18)
-      .sort((a, b) => a.boundaryDelta - b.boundaryDelta || (a.distance_to_route_m ?? 0) - (b.distance_to_route_m ?? 0))[0];
-    return nearby || fallback;
+    return fallback;
   };
   const routeSectionEndpointsForDay = (d) => {
     const segment = routeSegmentForDay(d);
     const startFallback = segment?.start || pointAlongRoute(tripRoutePath, (d - 1) / Math.max(1, nights));
     const start = routeBoundaryAnchor((d - 1) / Math.max(1, nights), startFallback);
     const endFallback = segment?.end || pointAlongRoute(tripRoutePath, d / Math.max(1, nights));
-    const end = routeBoundaryAnchor(d / Math.max(1, nights), endFallback, start?.name);
+    const end = routeBoundaryAnchor(d / Math.max(1, nights), endFallback);
     return { start, end };
   };
   const daySectionLabelForDay = (d) => {
@@ -772,7 +772,7 @@ export default function TripTimeline({ phase, dealsByDay, eventsByDate, sheets, 
         const routePlanText = dayRouteLabel;
         const routeStart = explicitRouteForDay(d, routeFocus) ? null : startForDay(d);
         const activeMapPath = withStart(routeStart, routeStops);
-        const dayStartName = routeBoundaryName(d - 1);
+        const dayStartName = routeBoundaryLabel(d - 1, `Day ${d} start`);
         const completedMapPath = d > 1 ? rawPathForDay(d - 1) : [];
         const plannedKeys = new Set(mapItems.map((x) => x.key));
         const routeIdeasForMap = [...(defaultRouteIdeasByDay[d] || []), ...(!routeFocus ? candidates : [])]
