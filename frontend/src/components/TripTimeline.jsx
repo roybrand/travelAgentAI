@@ -277,6 +277,7 @@ export default function TripTimeline({ phase, dealsByDay, eventsByDate, sheets, 
   const [defaultRouteIdeasByDay, setDefaultRouteIdeasByDay] = useState({});
   const [routeIdeasLoading, setRouteIdeasLoading] = useState(false);
   const [routeBoundaryNames, setRouteBoundaryNames] = useState({});
+  const [routeDefaultPointNames, setRouteDefaultPointNames] = useState({});
   const [routePlaceFixes, setRoutePlaceFixes] = useState({});
   const [routeCandidateFixes, setRouteCandidateFixes] = useState({});
   const [placeInfo, setPlaceInfo] = useState(null);
@@ -505,11 +506,12 @@ export default function TripTimeline({ phase, dealsByDay, eventsByDate, sheets, 
     const fallbackPoint = pointAlongRoute(dayPath, target) || basePointForDay(d);
     if (!hasPoint(fallbackPoint)) return null;
     const realPlaceName = cleanActivityPlaceName(realRoutePointName(fallbackPoint));
-    const placeName = realPlaceName || cleanActivityPlaceName(cityName(cityForDay(d))) || routeDisplayLabelForDay(d);
+    const namedPoint = cleanActivityPlaceName(routeDefaultPointNames[`${d}:${part}`]);
+    const placeName = realPlaceName || namedPoint || cleanActivityPlaceName(cityName(cityForDay(d))) || routeDisplayLabelForDay(d);
     const label = PART_LABEL[part];
     return {
       key: `default-slot:${d}:${part}`,
-      name: `${label} activity${placeName ? ` ${realPlaceName ? "near" : "in"} ${placeName}` : ""}`,
+      name: placeName,
       why: `Default ${label.toLowerCase()} stop on ${routeDisplayLabelForDay(d)}`,
       source: "custom",
       type: "route",
@@ -788,6 +790,46 @@ export default function TripTimeline({ phase, dealsByDay, eventsByDate, sheets, 
       active = false;
     };
   }, [trip.dayAreas, routeStopsByDay, currentPosition, nights, trip.staySegments, trip.dayLocations, req.destinations]);
+
+  useEffect(() => {
+    let active = true;
+    const points = [];
+    const keys = [];
+    Array.from({ length: nights }, (_, i) => i + 1).forEach((day) => {
+      const segment = routeSegmentForDay(day);
+      const base = basePointForDay(day);
+      const path = segment?.points?.length ? segment.points : [base, base].filter(Boolean);
+      PARTS.forEach((part) => {
+        const point = pointAlongRoute(path, PART_PROGRESS[part] ?? 0.5);
+        if (hasPoint(point) && isRouteInterpolation(point)) {
+          keys.push(`${day}:${part}`);
+          points.push({ index: points.length, lat: point.lat, lng: point.lng });
+        }
+      });
+    });
+    if (!points.length) {
+      setRouteDefaultPointNames({});
+      return () => {
+        active = false;
+      };
+    }
+    fetchRoutePointNames({ points })
+      .then((r) => {
+        if (!active) return;
+        const names = {};
+        (r.points || []).forEach((point) => {
+          const key = keys[Number(point.index)];
+          if (key && point.name) names[key] = point.name;
+        });
+        setRouteDefaultPointNames(names);
+      })
+      .catch(() => {
+        if (active) setRouteDefaultPointNames({});
+      });
+    return () => {
+      active = false;
+    };
+  }, [nights, req.destinations, it.route, trip.dayLocations, trip.staySegments]);
 
   useEffect(() => {
     let active = true;
