@@ -1,5 +1,5 @@
 export const PARTS = ["morning", "afternoon", "evening", "night"];
-export const PART_LABEL = { morning: "Morning", afternoon: "Afternoon", evening: "Evening", night: "Night" };
+export const PART_LABEL = { morning: "Morning", afternoon: "Noon", evening: "Evening", night: "Night" };
 export const PART_ICON = { morning: "🌅", afternoon: "☀️", evening: "🌆", night: "🌙" };
 
 const NIGHT_TAGS = ["nightlife", "rooftop-bar", "pub", "nightclub", "bar"];
