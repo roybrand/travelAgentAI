@@ -1314,7 +1314,7 @@ export default function TripTimeline({ phase, dealsByDay, eventsByDate, sheets, 
                       <div className="tl-content">
                         <div className="free-row">
                           <span className="free-label">{PART_LABEL[p]} <em>real place</em></span>
-                          <button type="button" className="idea-chip" onClick={() => sheets.addNow(idea.item, { day: d, part: p })} title={idea.item.why}>
+                          <button type="button" className="idea-chip" onClick={() => setPlaceInfo({ ...detailFor(idea.item, d), planned: false, suggestedSlot: { day: d, part: p } })} title={idea.item.why}>
                             <span className="idea-plus">✓</span>
                             <span className="idea-chip-text"><b>{idea.item.name}</b><small>{[routeDistanceText || contextTextForItem(idea.item, d), idea.why === "indoors" ? "indoors, for the rain" : idea.why === "your mood" ? `fits your ${MOOD[moods[d]].label.toLowerCase()} mood` : null, !routeFocus && !routeDistanceText && idea.away != null ? `${metres(idea.away)} from your stay` : null].filter(Boolean).join(" · ")}</small></span>
                           </button>
@@ -1421,7 +1421,11 @@ export default function TripTimeline({ phase, dealsByDay, eventsByDate, sheets, 
               <a className="btn primary grow" href={directionsUrl(placeInfo.item)} target="_blank" rel="noopener noreferrer">Navigate</a>
             )}
             {placeInfo.planned === false
-              ? <button type="button" className="btn ghost" onClick={() => { const raw = placeInfo.raw; setPlaceInfo(null); sheets.openWhen(raw, "add", placeInfo.day); }}>Add to plan</button>
+              ? (
+                placeInfo.suggestedSlot
+                  ? <button type="button" className="btn ghost" onClick={() => { const raw = placeInfo.raw; const slot = placeInfo.suggestedSlot; setPlaceInfo(null); sheets.addNow(raw, slot); }}>Add to {PART_LABEL[placeInfo.suggestedSlot.part]}</button>
+                  : <button type="button" className="btn ghost" onClick={() => { const raw = placeInfo.raw; setPlaceInfo(null); sheets.openWhen(raw, "add", placeInfo.day); }}>Add to plan</button>
+              )
               : <button type="button" className="btn ghost" onClick={() => { const raw = placeInfo.raw; setPlaceInfo(null); sheets.openWhen(raw, "move"); }}>Move / remove</button>}
           </div>
         )}
