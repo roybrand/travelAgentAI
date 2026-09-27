@@ -633,15 +633,15 @@ def route_attractions(label: str, country: str | None = None, types: list[str] |
                     "osm_url": f"https://www.openstreetmap.org/{it.get('osm_type')}/{it.get('osm_id')}" if it.get("osm_type") and it.get("osm_id") else None,
                     "source": "OpenStreetMap",
                 })
-    limit = max(8, per_stop * max(1, len(stops)))
-    bins: dict[int, list[dict]] = {i: [] for i in range(5)}
+    limit = max(48, per_stop * max(1, len(stops)) * 6)
+    bins: dict[int, list[dict]] = {i: [] for i in range(10)}
     for item in found_items:
-        bins[min(4, max(0, int(item.get("route_progress", 0) * 5)))].append(item)
+        bins[min(9, max(0, int(item.get("route_progress", 0) * 10)))].append(item)
     for bucket in bins.values():
         bucket.sort(key=lambda x: (x["distance_to_route_m"], x["distance_to_route_stop_m"]))
     spread = []
     while len(spread) < limit and any(bins.values()):
-        for i in range(5):
+        for i in range(10):
             if bins[i] and len(spread) < limit:
                 spread.append(bins[i].pop(0))
     return {"stops": stops, "places": spread}

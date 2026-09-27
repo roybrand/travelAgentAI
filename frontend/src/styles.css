@@ -1126,6 +1126,7 @@ li.done .tick::after { content: ""; width: 5px; height: 9px; border: solid #0329
 .free-label { font-size: 12.5px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--faint); min-width: 92px; }
 .free-label em { font-style: normal; font-weight: 500; text-transform: none; letter-spacing: 0; }
 .idea-chip { display: inline-flex; align-items: center; gap: 8px; max-width: 100%; padding: 5px 12px 5px 5px; border-radius: 999px; border: 1px dashed var(--line-2); background: rgba(45, 212, 191, 0.04); color: var(--text); cursor: pointer; text-align: left; transition: border-color 0.15s, background 0.15s; }
+.idea-chip.disabled { cursor: default; opacity: 0.8; }
 .tl-slot.suggested .idea-chip { border-style: solid; border-color: rgba(245, 199, 106, 0.35); background: rgba(245, 199, 106, 0.04); }
 .idea-chip:hover { border-color: var(--teal-2); background: rgba(45, 212, 191, 0.09); }
 .idea-plus { flex: none; width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; background: rgba(45, 212, 191, 0.18); color: #8ff3e4; font-weight: 800; }
