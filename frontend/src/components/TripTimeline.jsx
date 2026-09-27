@@ -507,7 +507,8 @@ export default function TripTimeline({ phase, dealsByDay, eventsByDate, sheets, 
     if (!hasPoint(fallbackPoint)) return null;
     const realPlaceName = cleanActivityPlaceName(realRoutePointName(fallbackPoint));
     const namedPoint = cleanActivityPlaceName(routeDefaultPointNames[`${d}:${part}`]);
-    const placeName = realPlaceName || namedPoint || cleanActivityPlaceName(cityName(cityForDay(d))) || routeDisplayLabelForDay(d);
+    const placeName = realPlaceName || namedPoint || (!isRouteInterpolation(fallbackPoint) ? cleanActivityPlaceName(cityName(cityForDay(d))) : "");
+    if (!placeName) return null;
     const label = PART_LABEL[part];
     return {
       key: `default-slot:${d}:${part}`,
@@ -796,9 +797,16 @@ export default function TripTimeline({ phase, dealsByDay, eventsByDate, sheets, 
     const points = [];
     const keys = [];
     Array.from({ length: nights }, (_, i) => i + 1).forEach((day) => {
+      const routeFocus = routeAreaForDay(day);
+      const routeIsManual = !!trip.dayAreas?.[day]?.label?.trim();
       const segment = routeSegmentForDay(day);
+      const sectionEndpoints = routeSectionEndpointsForDay(day);
+      const routeStops = routeIsManual
+        ? (routeStopsByDay[day] || [])
+        : dedupePath([sectionEndpoints.start, ...(segment?.points || []).slice(1, -1), sectionEndpoints.end]);
+      const routeStart = explicitRouteForDay(day, routeFocus) ? null : startForDay(day);
       const base = basePointForDay(day);
-      const path = segment?.points?.length ? segment.points : [base, base].filter(Boolean);
+      const path = withStart(routeStart || base, routeStops.length ? routeStops : [base, base].filter(Boolean));
       PARTS.forEach((part) => {
         const point = pointAlongRoute(path, PART_PROGRESS[part] ?? 0.5);
         if (hasPoint(point) && isRouteInterpolation(point)) {
@@ -829,7 +837,7 @@ export default function TripTimeline({ phase, dealsByDay, eventsByDate, sheets, 
     return () => {
       active = false;
     };
-  }, [nights, req.destinations, it.route, trip.dayLocations, trip.staySegments]);
+  }, [nights, req.destinations, it.route, trip.dayAreas, trip.dayLocations, trip.staySegments, routeStopsByDay, currentPosition]);
 
   useEffect(() => {
     let active = true;
