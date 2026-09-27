@@ -6,6 +6,7 @@ from pathlib import Path
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel, Field
 
 from . import config
 from .graph import build_trip_planning_graph
@@ -21,6 +22,16 @@ from .bookings import router as bookings_router
 from .account_sync import router as account_router
 from .suppliers import ticketmaster, travelpayouts
 from .schemas import BuildRequest, NearbyRequest, ParseRequest, TripRequest
+
+
+class RoutePointIn(BaseModel):
+    index: int = Field(ge=0, le=80)
+    lat: float = Field(ge=-90, le=90)
+    lng: float = Field(ge=-180, le=180)
+
+
+class RoutePointNamesIn(BaseModel):
+    points: list[RoutePointIn] = Field(default_factory=list, max_length=80)
 
 
 @asynccontextmanager
@@ -228,6 +239,25 @@ async def route_stops(label: str, country: str | None = None):
         return {"stops": await asyncio.wait_for(asyncio.to_thread(osm.route_waypoints, label, country), timeout=30)}
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"Could not map that route right now ({type(exc).__name__}).") from exc
+
+
+@app.get("/api/route-point-name")
+async def route_point_name(lat: float = Query(ge=-90, le=90), lng: float = Query(ge=-180, le=180)):
+    """Name a route-section boundary coordinate."""
+    try:
+        return await asyncio.wait_for(asyncio.to_thread(osm.route_point_name, lat, lng), timeout=30)
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Could not name that route point right now ({type(exc).__name__}).") from exc
+
+
+@app.post("/api/route-point-names")
+async def route_point_names(body: RoutePointNamesIn):
+    """Name all route-section boundary coordinates in one request."""
+    points = [p.model_dump() for p in body.points]
+    try:
+        return {"points": await asyncio.wait_for(asyncio.to_thread(osm.route_point_names, points), timeout=45)}
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Could not name route points right now ({type(exc).__name__}).") from exc
 
 
 @app.post("/api/plan-trip")

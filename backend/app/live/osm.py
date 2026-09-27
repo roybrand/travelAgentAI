@@ -414,7 +414,10 @@ def _geocode_stop(name: str, country: str | None) -> dict | None:
     def fetch():
         return _nominatim_global(q, 5)
 
-    rows = cached(f"osmgeo_v2_{q}", 30 * DAY, fetch)
+    try:
+        rows = cached(f"osmgeo_v2_{q}", 30 * DAY, fetch)
+    except Exception:
+        return None
     for it in sorted(rows, key=lambda row: _route_geocode_score(row, name, country), reverse=True):
         try:
             if it.get("lat") and it.get("lon") and it.get("name"):
@@ -428,6 +431,62 @@ def route_waypoints(label: str, country: str | None = None) -> list[dict]:
     """Geocoded route waypoints for maps, using the same parsing/search as route attractions."""
     stops = [_geocode_stop(name, country) for name in route_stop_names(label)]
     return [s for s in stops if s]
+
+
+def route_point_name(lat: float, lng: float) -> dict:
+    """Name a route-section boundary coordinate with the nearest useful OSM place name."""
+    return route_point_names([{"index": 0, "lat": lat, "lng": lng}])[0]
+
+
+def route_point_names(points: list[dict]) -> list[dict]:
+    """Name route-section boundary coordinates with nearby cities, towns or villages."""
+    clean_points = [
+        {"index": int(p.get("index", i)), "lat": float(p["lat"]), "lng": float(p["lng"])}
+        for i, p in enumerate(points)
+        if p.get("lat") is not None and p.get("lng") is not None
+    ]
+    if not clean_points:
+        return []
+
+    def fetch():
+        around = "".join(
+            f'nwr["place"~"^(city|town|village)$"]["name"](around:70000,{p["lat"]},{p["lng"]});'
+            for p in clean_points
+        )
+        q = f"[out:json][timeout:28];({around});out center tags 400;"
+        return _overpass(q).get("elements", [])
+
+    key = "osmroutepoints_v1_" + "_".join(f'{p["lat"]:.2f}_{p["lng"]:.2f}' for p in clean_points)
+    rows = cached(key, 30 * DAY, fetch)
+    candidates = []
+    for row in rows:
+        tags = row.get("tags") or {}
+        pt = _pt(row)
+        name = tags.get("name")
+        if name and pt:
+            candidates.append({
+                "name": name,
+                "lat": pt[0],
+                "lng": pt[1],
+                "kind": tags.get("place"),
+            })
+    out = []
+    for point in clean_points:
+        ranked = [
+            {**item, "distance_m": haversine_m(point["lat"], point["lng"], item["lat"], item["lng"])}
+            for item in candidates
+        ]
+        ranked.sort(key=lambda item: (item["distance_m"], {"city": 0, "town": 1, "village": 2}.get(item.get("kind"), 3)))
+        best = ranked[0] if ranked else {}
+        out.append({
+            "index": point["index"],
+            "name": best.get("name") or "",
+            "lat": best.get("lat", point["lat"]),
+            "lng": best.get("lng", point["lng"]),
+            "distance_m": best.get("distance_m"),
+            "kind": best.get("kind"),
+        })
+    return out
 
 
 def _nominatim_around(lat: float, lng: float, query: str, radius_km: float = 35, limit: int = 20) -> list[dict]:
@@ -489,16 +548,29 @@ def _route_anchors(stops: list[dict]) -> list[dict]:
     """Search anchors spaced along the route so suggestions do not all cluster at the endpoints."""
     if len(stops) < 2:
         return stops
-    fractions = [0, 0.25, 0.5, 0.75, 1]
+    lengths = [haversine_m(a["lat"], a["lng"], b["lat"], b["lng"]) for a, b in zip(stops, stops[1:])]
+    total = sum(lengths) or 1
+
+    def at_progress(progress: float) -> dict:
+        left = max(0, min(1, progress)) * total
+        for idx, length in enumerate(lengths):
+            if left <= length or idx == len(lengths) - 1:
+                a, b = stops[idx], stops[idx + 1]
+                t = left / length if length else 0
+                near = a if t < 0.08 else b if t > 0.92 else None
+                return {
+                    "name": near["name"] if near else f"{a['name']} to {b['name']}",
+                    "lat": a["lat"] + (b["lat"] - a["lat"]) * t,
+                    "lng": a["lng"] + (b["lng"] - a["lng"]) * t,
+                    "progress": progress,
+                }
+            left -= length
+        return {**stops[-1], "progress": 1}
+
+    fractions = [i / 16 for i in range(17)]
     out = []
-    a, b = stops[0], stops[-1]
     for f in fractions:
-        out.append({
-            "name": a["name"] if f == 0 else b["name"] if f == 1 else f"{a['name']} to {b['name']}",
-            "lat": a["lat"] + (b["lat"] - a["lat"]) * f,
-            "lng": a["lng"] + (b["lng"] - a["lng"]) * f,
-            "progress": f,
-        })
+        out.append(at_progress(f))
     return out
 
 

@@ -62,7 +62,7 @@ export function scheduledItems(candidates, schedule) {
   const byKey = new Map(candidates.map((i) => [i.key, i]));
   return Object.entries(schedule)
     .map(([key, slot]) => {
-      const item = byKey.get(key) || slot.item;
+      const item = slot.item || byKey.get(key);
       return item ? { ...item, ...slot, item: undefined } : null;
     })
     .filter(Boolean)
