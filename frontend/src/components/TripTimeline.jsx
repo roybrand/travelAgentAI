@@ -300,6 +300,12 @@ export default function TripTimeline({ phase, dealsByDay, eventsByDate, sheets, 
   const bookedDealIds = new Set(booked.map((b) => b.deal.id));
   const [mapDay, setMapDay] = useState(null);
   const { it, req, hotel, chosenItems, candidates } = trip;
+  const planningRules = it.planning_rules || {};
+  const ruleSourceTitle = (planningRules.retrieved || [])
+    .map((rule) => rule.source)
+    .filter(Boolean)
+    .filter((source, index, all) => all.indexOf(source) === index)
+    .join(", ");
   const candidatePool = candidates.map((item) => (routeCandidateFixes[item.key] ? { ...item, ...routeCandidateFixes[item.key], key: item.key, name: item.name } : item));
   const route = req.destinations?.length ? req.destinations : [req.destination];
   const tripRoutePath = ((it.route?.length ? it.route : route.map((code) => routeCity(code)).filter(Boolean)) || [])
@@ -1135,6 +1141,7 @@ export default function TripTimeline({ phase, dealsByDay, eventsByDate, sheets, 
         const routeFocus = routeAreaForDay(d);
         const routePrefsForDay = routePrefs(trip.dayAreas?.[d], routeFocus);
         const routeIsManual = !!trip.dayAreas?.[d]?.label?.trim();
+        const canonicalRouteDay = it.route_days?.[d - 1] || null;
         const routeSegment = routeSegmentForDay(d);
         const dayRouteLabel = daySectionLabelForDay(d);
         const sectionEndpoints = routeSectionEndpointsForDay(d);
@@ -1142,7 +1149,7 @@ export default function TripTimeline({ phase, dealsByDay, eventsByDate, sheets, 
           ? (routeStopsByDay[d] || [])
           : dedupePath([sectionEndpoints.start, ...(routeSegment?.points || []).slice(1, -1), sectionEndpoints.end]);
         const routePlanText = dayRouteLabel;
-        const completedMapPath = d > 1 ? cumulativePlannedPathUntil(d - 1) : [];
+        const completedMapPath = canonicalRouteDay?.completed_path?.length ? canonicalRouteDay.completed_path : d > 1 ? cumulativePlannedPathUntil(d - 1) : [];
         const completedEnd = endOf(completedMapPath);
         const routeStart = completedEnd || (explicitRouteForDay(d, routeFocus) ? null : startForDay(d));
         const baseDayPoint = basePointForDay(d);
@@ -1217,11 +1224,26 @@ export default function TripTimeline({ phase, dealsByDay, eventsByDate, sheets, 
         const suggestedMapItems = dayRows
           .filter((row) => row.kind === "idea" && row.idea?.item?.lat != null && row.idea?.item?.lng != null)
           .map((row) => ({ ...row.idea.item, suggested: true }));
-        const visualMapItems = routeFocus ? mapItems.map((item) => routeVisualPoint(item, d, preliminaryMapPath)) : mapItems;
-        const visualSuggestedMapItems = routeFocus ? suggestedMapItems.map((item) => routeVisualPoint(item, d, preliminaryMapPath)) : suggestedMapItems;
+        const canonicalSlots = new Map((canonicalRouteDay?.slots || []).map((slot) => [slot.key, slot]));
+        const withCanonicalPoint = (item) => {
+          const slot = canonicalSlots.get(item.key);
+          if (slot?.point?.lat == null || slot?.point?.lng == null) return null;
+          return {
+            ...item,
+            actual_lat: item.actual_lat ?? item.lat,
+            actual_lng: item.actual_lng ?? item.lng,
+            lat: slot.point.lat,
+            lng: slot.point.lng,
+            distance_from_start_m: slot.distance_from_day_start_m,
+            distance_from_previous_stop_m: slot.distance_from_previous_stop_m,
+            visual_route_point: true,
+          };
+        };
+        const visualMapItems = routeFocus ? mapItems.map((item) => withCanonicalPoint(item) || routeVisualPoint(item, d, preliminaryMapPath)) : mapItems;
+        const visualSuggestedMapItems = routeFocus ? suggestedMapItems.map((item) => withCanonicalPoint(item) || routeVisualPoint(item, d, preliminaryMapPath)) : suggestedMapItems;
         const routeActivityStops = [...visualMapItems, ...visualSuggestedMapItems];
         const dayStopPath = orderedActivityStops(routeActivityStops);
-        const activeMapPath = dedupePath([routeStart, ...dayStopPath].filter(Boolean));
+        const activeMapPath = canonicalRouteDay?.active_path?.length ? canonicalRouteDay.active_path : dedupePath([routeStart, ...dayStopPath].filter(Boolean));
         const routeStopPins = routeStopPinsForPath(activeMapPath);
         const mapPath = activeMapPath.length > 1 ? activeMapPath : [];
         const mapPaths = [
@@ -1327,6 +1349,14 @@ export default function TripTimeline({ phase, dealsByDay, eventsByDate, sheets, 
                 <button type="button" className="chip" aria-pressed={mapDay === d} onClick={() => setMapDay(mapDay === d ? null : d)}>
                   🗺️ {mapDay === d ? "Hide map" : "Map"}
                 </button>
+              )}
+              {canonicalRouteDay && (
+                <span
+                  className={`src-badge ${canonicalRouteDay.violations?.length || planningRules.valid === false ? "warn" : "ok"}`}
+                  title={ruleSourceTitle ? `Route rules: ${ruleSourceTitle}` : "Route rules generated by the backend"}
+                >
+                  {canonicalRouteDay.violations?.length || planningRules.valid === false ? "Rules check" : "Rules OK"}
+                </span>
               )}
               </div>
             </header>

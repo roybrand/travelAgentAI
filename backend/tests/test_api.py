@@ -2,7 +2,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.main import app
-from app import showcase_routes
+from app import product_rules, route_rules, showcase_routes
 
 VALID_REQUEST = {
     "origin": "LON",
@@ -87,7 +87,8 @@ def test_plan_trip_accepts_day_route_areas(client):
     day_areas = [{"day": 2, "country": "Australia", "label": "Adelaide to Coober Pedy to Alice Springs"}]
     res = client.post("/api/plan-trip", json={**VALID_REQUEST, "destination": "ADL", "destinations": ["ADL"], "day_areas": day_areas})
     assert res.status_code == 200
-    assert res.json()["request"]["day_areas"] == day_areas
+    returned = res.json()["request"]["day_areas"]
+    assert returned[0] == {**day_areas[0], "radius_m": 5000, "types": []}
 
 
 def test_showcase_route_seed_obeys_route_day_progression():
@@ -104,6 +105,68 @@ def test_showcase_route_seed_obeys_route_day_progression():
         assert progresses[-1] >= 0.8
     globals_ = [item["global_route_progress"] for item in ideas]
     assert globals_ == sorted(globals_)
+
+
+def test_showcase_itinerary_returns_canonical_route_days(client):
+    res = client.post("/api/plan-trip", json={**VALID_REQUEST, "destination": "PAR", "destinations": ["PAR", "ROM", "ATH"]})
+    assert res.status_code == 200
+    route_days = res.json()["itinerary"]["route_days"]
+    planning_rules = res.json()["itinerary"]["planning_rules"]
+    assert planning_rules["valid"] is True
+    assert planning_rules["retrieved"]
+    assert any(r["source"] == "docs/ROUTE_DAY_BUSINESS_RULES.md" for r in planning_rules["retrieved"])
+    assert len(route_days) == 10
+    assert route_days[0]["completed_path"] == []
+    assert route_days[1]["completed_path"]
+    for day in route_days:
+        assert not day["violations"]
+        assert [slot["part"] for slot in day["slots"]] == ["morning", "afternoon", "evening", "night"]
+        assert len(day["active_path"]) >= 5
+        progresses = [slot["route_progress"] for slot in day["slots"]]
+        assert progresses == sorted(progresses)
+        assert day["slots"][0]["distance_from_day_start_m"] is not None
+        assert day["slots"][-1]["distance_from_previous_stop_m"] is not None
+
+
+def test_product_rule_retrieval_finds_route_day_rules():
+    found = product_rules.retrieve("route day previous gray morning night distance")
+    assert found
+    assert found[0]["source"] == "docs/ROUTE_DAY_BUSINESS_RULES.md"
+
+
+def test_route_day_overrides_are_deterministically_validated():
+    itinerary = {
+        "route": [
+            {"city": "Start", "lat": 0, "lng": 0},
+            {"city": "End", "lat": 0, "lng": 1},
+        ],
+        "guide": {
+            "by_type": {
+                "route": {
+                    "places": [
+                        {"key": "a", "name": "A", "day": 1, "default_part": "morning", "route_progress": 0.95},
+                        {"key": "b", "name": "B", "day": 1, "default_part": "night", "route_progress": 0.05},
+                        {"key": "c", "name": "C", "day": 1, "default_part": "evening", "route_progress": 0.6},
+                        {"key": "d", "name": "D", "day": 1, "default_part": "afternoon", "route_progress": 0.35},
+                    ]
+                }
+            }
+        },
+    }
+    broken = route_rules.build_route_days(itinerary, {}, 1)[0]
+    assert "morning_outside_route_band" in broken["violations"]
+    assert "night_outside_route_band" in broken["violations"]
+    fixed = route_rules.build_route_days({
+        **itinerary,
+        "route_day_overrides": {
+            "a": {"part": "morning", "route_progress": 0.05},
+            "b": {"part": "afternoon", "route_progress": 0.35},
+            "c": {"part": "evening", "route_progress": 0.6},
+            "d": {"part": "night", "route_progress": 0.95},
+        },
+    }, {}, 1)[0]
+    assert fixed["violations"] == []
+    assert [slot["key"] for slot in fixed["slots"]] == ["a", "b", "c", "d"]
 
 
 def test_plan_trip_missing_required_fields_returns_422(client):

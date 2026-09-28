@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field
 
 from . import config
 from . import showcase_routes
-from .graph import build_trip_planning_graph
+from .graph import build_parse_request_graph, build_trip_planning_graph, build_trip_request_graph
 from .live import catalog, forecast, llm, nearby, nightlife, osm
 from .mcp_tools.client import MCPToolClient
 from .partners.routes import router as partner_router
@@ -42,6 +42,8 @@ async def lifespan(app: FastAPI):
     await client.start()
     app.state.mcp_client = client
     app.state.graph = build_trip_planning_graph(client)
+    app.state.parse_request_graph = build_parse_request_graph()
+    app.state.build_trip_graph = build_trip_request_graph()
     try:  # keep the demo pools fresh; each does nothing if its demo data was never seeded
         if demo_people.exists():
             await asyncio.to_thread(demo_people.refresh_pool, True)
@@ -154,7 +156,8 @@ async def parse_request(body: ParseRequest):
     if not llm.enabled():
         raise HTTPException(status_code=503, detail="Plain-English requests need an OpenAI key. Add OPENAI_API_KEY to backend/.env.")
     try:
-        return await asyncio.wait_for(asyncio.to_thread(llm.parse_trip_request, body.text, date.today()), timeout=45)
+        result = await asyncio.wait_for(app.state.parse_request_graph.ainvoke({"text": body.text, "today": date.today()}), timeout=45)
+        return result["parsed"]
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"Could not understand that request ({type(exc).__name__}). Try the form instead.") from exc
 
@@ -169,7 +172,8 @@ async def build_trip(body: BuildRequest):
     if len(body.text.strip()) < 3 and not body.image:
         raise HTTPException(status_code=422, detail="Write a few words about the trip, or add a photo.")
     try:
-        return await asyncio.wait_for(asyncio.to_thread(llm.build_trip, body.text, body.image, date.today()), timeout=60)
+        result = await asyncio.wait_for(app.state.build_trip_graph.ainvoke({"text": body.text, "image": body.image, "today": date.today()}), timeout=60)
+        return result["built"]
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"Could not build a trip from that ({type(exc).__name__}). Try the form instead.") from exc
 

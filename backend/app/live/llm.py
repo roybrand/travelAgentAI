@@ -321,3 +321,32 @@ def summarize(facts: dict) -> str | None:
             "anything you are unsure about in words instead of digits."
         )
     return None  # discard anything that could contain an invented number
+
+
+def repair_route_day_slots(facts: dict) -> dict:
+    """Ask the model for candidate route-slot repairs.
+
+    The caller must re-run deterministic validation before accepting anything
+    this returns. We keep only updates to existing stop keys and bounded values.
+    """
+    keys = {str(slot.get("key")) for day in facts.get("route_days", []) for slot in day.get("slots", []) if slot.get("key")}
+    system = (
+        "You repair route-day slot metadata. Reply as JSON: "
+        "{\"updates\": [{\"key\": \"existing stop key\", \"part\": \"morning|afternoon|evening|night\", "
+        "\"route_progress\": 0.0}]}. Use only keys already present in the input. "
+        "Do not invent stops, coordinates, dates, prices, or names. Keep each day moving forward along the route."
+    )
+    raw = _chat(system, json.dumps(facts, ensure_ascii=False), 700)
+    updates = []
+    for item in _as_list(raw.get("updates")):
+        if not isinstance(item, dict):
+            continue
+        key = str(item.get("key") or "")
+        part = item.get("part")
+        try:
+            progress = float(item.get("route_progress"))
+        except (TypeError, ValueError):
+            continue
+        if key in keys and part in ("morning", "afternoon", "evening", "night") and 0 <= progress <= 1:
+            updates.append({"key": key, "part": part, "route_progress": progress})
+    return {"updates": updates}

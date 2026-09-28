@@ -13,3 +13,19 @@ class TripState(TypedDict, total=False):
     hotels_source: dict
     ranking: dict
     itinerary: dict
+    planning_rules: dict
+    route_repair_attempted: bool
+    route_repair: dict
+
+
+class ParseRequestState(TypedDict, total=False):
+    text: str
+    today: Any
+    parsed: dict[str, Any]
+
+
+class BuildTripState(TypedDict, total=False):
+    text: str
+    image: str | None
+    today: Any
+    built: dict[str, Any]

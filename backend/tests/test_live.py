@@ -340,6 +340,23 @@ def test_summary_retries_once_telling_the_model_which_numbers_are_allowed(monkey
     assert llm.summarize({"total": 800}) is None  # still invented after the retry, so nothing is shown
 
 
+def test_route_repair_keeps_only_existing_slots_and_bounded_values(monkeypatch):
+    facts = {
+        "route_days": [
+            {"slots": [{"key": "keep"}, {"key": "also-keep"}]},
+        ],
+    }
+    monkeypatch.setattr(llm, "_chat", lambda *a, **k: {
+        "updates": [
+            {"key": "keep", "part": "morning", "route_progress": 0.1},
+            {"key": "missing", "part": "night", "route_progress": 0.9},
+            {"key": "also-keep", "part": "brunch", "route_progress": 0.4},
+            {"key": "also-keep", "part": "night", "route_progress": 4},
+        ],
+    })
+    assert llm.repair_route_day_slots(facts) == {"updates": [{"key": "keep", "part": "morning", "route_progress": 0.1}]}
+
+
 def test_number_matching_ignores_formatting_differences():
     facts = {"dates": "2 December 2026 to 5 December 2026", "budget": 900.0, "iso": "2026-12-05"}
     assert llm.is_grounded("Arrive on 5 December with a budget of £900.", facts)

@@ -5,17 +5,30 @@ from datetime import date, timedelta
 from . import config
 from .live import catalog, llm, osm
 from .partners import deals as partner_deals
-from . import showcase_routes
+from . import product_rules, showcase_routes
+from . import route_rules
 from .mcp_tools.client import MCPToolClient
 from .ranking.combine import rank_and_combine
 from .ranking.score import score_flights, score_hotels
-from .state import TripState
+from .state import BuildTripState, ParseRequestState, TripState
 
 logger = logging.getLogger(__name__)
 
 # Each node calls a tool by name through the MCP client rather than importing the
 # provider function directly — "the AI simply calls tools, no hardcoding," per the
 # requirements.
+
+
+async def parse_trip_request_node(state: ParseRequestState) -> dict:
+    today = state.get("today") or date.today()
+    parsed = await asyncio.to_thread(llm.parse_trip_request, state["text"], today)
+    return {"parsed": parsed}
+
+
+async def build_trip_request_node(state: BuildTripState) -> dict:
+    today = state.get("today") or date.today()
+    built = await asyncio.to_thread(llm.build_trip, state["text"], state.get("image"), today)
+    return {"built": built}
 
 
 def make_search_flights_node(client: MCPToolClient):
@@ -170,8 +183,78 @@ async def build_itinerary_node(state: TripState) -> dict:
     itinerary["packages"] = _packages(ranking["combos"], chosen)
     itinerary["flight_options"] = _flight_options(state["flights"])
     itinerary["partner_deals"] = _partner_deals(state["request"])
+    return {"itinerary": itinerary}
+
+
+async def summarize_itinerary_node(state: TripState) -> dict:
+    itinerary = dict(state["itinerary"])
     itinerary["ai"] = await _ai_summary(itinerary, state)
     return {"itinerary": itinerary}
+
+
+async def apply_route_rules_node(state: TripState) -> dict:
+    itinerary = dict(state["itinerary"])
+    retrieved = product_rules.retrieve("route day map previous completed gray morning noon evening night distances validation")
+    route_days = route_rules.build_route_days(itinerary, state["request"], state["nights"])
+    violations = [v for day in route_days for v in day.get("violations", [])]
+    itinerary["route_days"] = route_days
+    itinerary["planning_rules"] = {
+        "engine": "deterministic-route-rules",
+        "retrieved": retrieved,
+        "route_day_violations": violations,
+        "valid": not violations,
+    }
+    if state.get("route_repair"):
+        itinerary["planning_rules"]["repair"] = state["route_repair"]
+    return {"itinerary": itinerary, "planning_rules": itinerary["planning_rules"]}
+
+
+async def repair_route_rules_node(state: TripState) -> dict:
+    itinerary = dict(state["itinerary"])
+    route_days = itinerary.get("route_days") or []
+    violations = [v for day in route_days for v in day.get("violations", [])]
+    repair = {"attempted": False, "accepted_updates": 0, "reason": "not_needed"}
+    if not violations:
+        return {"route_repair_attempted": True, "route_repair": repair}
+    if not llm.enabled():
+        repair["reason"] = "openai_disabled"
+        return {"route_repair_attempted": True, "route_repair": repair}
+
+    facts = {
+        "violations": violations,
+        "rules": itinerary.get("planning_rules", {}).get("retrieved", []),
+        "route_days": [
+            {
+                "day": day.get("day"),
+                "violations": day.get("violations", []),
+                "slots": [
+                    {
+                        "key": slot.get("key"),
+                        "name": slot.get("name"),
+                        "part": slot.get("part"),
+                        "route_progress": slot.get("route_progress"),
+                    }
+                    for slot in day.get("slots", [])
+                ],
+            }
+            for day in route_days
+        ],
+    }
+    repair["attempted"] = True
+    repair["reason"] = "llm_candidate"
+    try:
+        result = await asyncio.wait_for(asyncio.to_thread(llm.repair_route_day_slots, facts), timeout=30)
+    except Exception:
+        logger.exception("AI route repair failed; continuing with deterministic violations")
+        repair["reason"] = "llm_failed"
+        return {"route_repair_attempted": True, "route_repair": repair}
+
+    overrides = dict(itinerary.get("route_day_overrides") or {})
+    for update in result.get("updates", []):
+        overrides[update["key"]] = {"part": update["part"], "route_progress": update["route_progress"]}
+    repair["accepted_updates"] = len(result.get("updates", []))
+    itinerary["route_day_overrides"] = overrides
+    return {"itinerary": itinerary, "route_repair_attempted": True, "route_repair": repair}
 
 
 def _partner_deals(req: dict) -> list[dict]:
