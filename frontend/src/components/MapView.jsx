@@ -82,8 +82,8 @@ export default function MapView({ center, pins, path = [], paths = null, selecte
       const icon = L.divIcon({
         html: pinElement(pin, pin.id === selectedRef.current),
         className: "pin-wrap",
-        iconSize: small ? [16, 16] : pin.kind === "hotel" ? [64, 30] : pin.kind === "you" ? [22, 22] : [34, 34],
-        iconAnchor: small ? [8, 8] : pin.kind === "hotel" ? [32, 15] : pin.kind === "you" ? [11, 11] : [17, 17],
+        iconSize: small ? [16, 16] : pin.kind === "hotel" ? [64, 30] : pin.kind === "route" ? [110, 26] : pin.kind === "you" ? [22, 22] : [34, 34],
+        iconAnchor: small ? [8, 8] : pin.kind === "hotel" ? [32, 15] : pin.kind === "route" ? [55, 13] : pin.kind === "you" ? [11, 11] : [17, 17],
       });
       const m = L.marker([markerLat, markerLng], { icon, title: pin.title, zIndexOffset: offset });
       if (pin.title) m.bindTooltip(pin.title, { direction: "top", offset: [0, -10], opacity: 0.95 });

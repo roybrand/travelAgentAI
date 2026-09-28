@@ -320,10 +320,73 @@ def _m3_account_docs(conn, dialect):
     conn.execute("CREATE INDEX IF NOT EXISTS idx_account_docs_seq ON account_docs (user_id, seq)")
 
 
+def _m4_place_reviews(conn, dialect):
+    """Wayfinder-owned place profiles, reviews and photos.
+
+    External sources still provide facts and imagery; these tables keep our app's stable place ids and user
+    contributions. Reviews/photos start pending unless automated moderation explicitly approves them.
+    """
+    id_type = "SERIAL PRIMARY KEY" if dialect == "postgres" else "INTEGER PRIMARY KEY AUTOINCREMENT"
+    conn.execute(
+        f"CREATE TABLE IF NOT EXISTS places ("
+        f" id {id_type},"
+        " place_key TEXT NOT NULL UNIQUE,"
+        " name TEXT NOT NULL,"
+        " type TEXT,"
+        " type_label TEXT,"
+        " city TEXT,"
+        " country TEXT,"
+        " lat DOUBLE PRECISION,"
+        " lng DOUBLE PRECISION,"
+        " osm_url TEXT,"
+        " wikidata TEXT,"
+        " wikipedia TEXT,"
+        " website TEXT,"
+        " source TEXT,"
+        " description TEXT NOT NULL DEFAULT '',"
+        " photo_url TEXT,"
+        " photo_credit TEXT,"
+        " created_at TEXT NOT NULL,"
+        " updated_at TEXT NOT NULL"
+        ")"
+    )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_places_key ON places (place_key)")
+    conn.execute(
+        f"CREATE TABLE IF NOT EXISTS place_reviews ("
+        f" id {id_type},"
+        " place_id INTEGER NOT NULL REFERENCES places(id) ON DELETE CASCADE,"
+        " user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,"
+        " rating INTEGER NOT NULL,"
+        " body TEXT NOT NULL,"
+        " visit_date TEXT,"
+        " helpful_count INTEGER NOT NULL DEFAULT 0,"
+        " status TEXT NOT NULL DEFAULT 'pending',"
+        " created_at TEXT NOT NULL,"
+        " updated_at TEXT NOT NULL"
+        ")"
+    )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_place_reviews_place ON place_reviews (place_id, status, created_at)")
+    conn.execute(
+        f"CREATE TABLE IF NOT EXISTS place_photos ("
+        f" id {id_type},"
+        " place_id INTEGER NOT NULL REFERENCES places(id) ON DELETE CASCADE,"
+        " user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,"
+        " file_name TEXT,"
+        " photo_url TEXT,"
+        " credit TEXT,"
+        " caption TEXT NOT NULL DEFAULT '',"
+        " status TEXT NOT NULL DEFAULT 'pending',"
+        " created_at TEXT NOT NULL"
+        ")"
+    )
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_place_photos_place ON place_photos (place_id, status, created_at)")
+
+
 MIGRATIONS = [
     (1, "columns added after the first release", _m1_columns_after_first_release),
     (2, "index on deal booking vouchers", _m2_voucher_index),
     (3, "trips and deal bookings kept with the account", _m3_account_docs),
+    (4, "places, reviews and photos", _m4_place_reviews),
 ]
 
 

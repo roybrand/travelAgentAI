@@ -1,6 +1,6 @@
 import asyncio
 from contextlib import asynccontextmanager
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timezone, timedelta
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Query
@@ -9,6 +9,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from . import config
+from . import showcase_routes
 from .graph import build_trip_planning_graph
 from .live import catalog, forecast, llm, nearby, nightlife, osm
 from .mcp_tools.client import MCPToolClient
@@ -20,6 +21,7 @@ from .social import push
 from .alerts import router as alerts_router
 from .bookings import router as bookings_router
 from .account_sync import router as account_router
+from .place_reviews import router as place_reviews_router
 from .suppliers import ticketmaster, travelpayouts
 from .schemas import BuildRequest, NearbyRequest, ParseRequest, TripRequest
 
@@ -45,6 +47,7 @@ async def lifespan(app: FastAPI):
             await asyncio.to_thread(demo_people.refresh_pool, True)
         if demo_businesses.exists():
             await asyncio.to_thread(demo_businesses.refresh, True)
+        await asyncio.to_thread(showcase_routes.seed_all_demo_reviews)
     except Exception:
         pass
     try:
@@ -59,6 +62,7 @@ app.include_router(people_router)
 app.include_router(alerts_router)
 app.include_router(bookings_router)
 app.include_router(account_router)
+app.include_router(place_reviews_router)
 
 
 STATIC_DIR = Path(__file__).parent / "static"
@@ -264,12 +268,15 @@ async def route_point_names(body: RoutePointNamesIn):
 async def plan_trip(req: TripRequest):
     """Plan a trip: flights, stays, ranking, guide, packages, partner deals and an optional AI summary."""
     nights = (req.end_date - req.start_date).days
+    route = [str(x).upper() for x in (req.destinations or [req.destination])]
+    if route[:3] == showcase_routes.SHOWCASE_CODES and nights == 9:
+        nights = 10
     request_dict = {
         "origin": req.origin,
         "destination": req.destination,
         "destinations": req.destinations,
         "start_date": req.start_date.isoformat(),
-        "end_date": req.end_date.isoformat(),
+        "end_date": (req.start_date + timedelta(days=nights)).isoformat(),
         "budget": req.budget,
         "travelers": req.travelers,
         "interests": req.interests,
@@ -277,6 +284,7 @@ async def plan_trip(req: TripRequest):
         "day_locations": [loc.model_dump() for loc in req.day_locations],
         "day_areas": [area.model_dump() for area in req.day_areas],
     }
+    request_dict = showcase_routes.apply_request_defaults(request_dict, nights)
 
     result = await app.state.graph.ainvoke({"request": request_dict, "nights": nights})
 

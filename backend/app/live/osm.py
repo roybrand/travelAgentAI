@@ -91,6 +91,29 @@ def _nominatim_global(query: str, limit: int = 5) -> list[dict]:
         return r.json()
 
 
+def _nominatim_reverse_name(lat: float, lng: float) -> dict:
+    with client(30) as c:
+        r = c.get("https://nominatim.openstreetmap.org/reverse", params={
+            "lat": lat, "lon": lng, "format": "jsonv2", "zoom": 14, "addressdetails": 1,
+        })
+        r.raise_for_status()
+        time.sleep(1.1)
+        data = r.json()
+    address = data.get("address") or {}
+    name = (
+        address.get("city") or address.get("town") or address.get("village") or address.get("hamlet")
+        or address.get("suburb") or address.get("municipality") or address.get("county")
+        or data.get("name") or (data.get("display_name", "").split(",")[0].strip())
+    )
+    return {
+        "name": name or "",
+        "lat": lat,
+        "lng": lng,
+        "distance_m": 0,
+        "kind": data.get("category") or data.get("type"),
+    }
+
+
 def _fetch_nominatim(dest: dict) -> dict:
     """Fallback when Overpass is down: fewer results, and no bar/beach signals."""
     hotels, restaurants = [], []
@@ -478,6 +501,11 @@ def route_point_names(points: list[dict]) -> list[dict]:
         ]
         ranked.sort(key=lambda item: (item["distance_m"], {"city": 0, "town": 1, "village": 2}.get(item.get("kind"), 3)))
         best = ranked[0] if ranked else {}
+        if not best.get("name"):
+            try:
+                best = _nominatim_reverse_name(point["lat"], point["lng"])
+            except Exception:
+                best = {}
         out.append({
             "index": point["index"],
             "name": best.get("name") or "",

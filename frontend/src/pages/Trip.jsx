@@ -62,6 +62,10 @@ const endpointNameFromRouteLabel = (label) => {
   if (parts.length < 2) return "";
   return parts.at(-1).split(/\s+\bvia\b\s+|\s+[–-]\s+|\s*,\s*/i)[0].trim();
 };
+const cleanRouteAreaLabel = (value) => {
+  const text = String(value || "").trim();
+  return /^Route section \d+\/\d+$/i.test(text) ? "" : text;
+};
 
 /** One line per part of the trip, split by whether the person's words gave it or the form did. */
 function readbackLines(said, req, cityName, routeName, fromWords) {
@@ -133,7 +137,8 @@ export default function Trip() {
   const sheets = usePlanSheets({ onShowDay: scrollToDay, dayContext: (d) => {
     const destination = dayDestination(d);
     const inferred = inferredRouteFocus(d);
-    const routeArea = trip?.dayAreas?.[d]?.label?.trim() || inferred?.label || "";
+    const explicitRouteArea = cleanRouteAreaLabel(trip?.dayAreas?.[d]?.label);
+    const routeArea = explicitRouteArea || inferred?.label || (trip?.it?.route?.length > 1 && d <= (trip?.it?.nights || 0) ? `Day ${d} route` : "");
     const country = trip?.dayAreas?.[d]?.country || inferred?.country || destinations.find((x) => x.code === destination)?.country || "";
     return { day: d, destination, country, routeArea, ...routePrefs(trip?.dayAreas?.[d], routeArea), label: `${routeArea || cityName(destination)} · ${shortDate(dayDate(trip.req.start_date, d))}`, mood: moods[d], wet: wetOn(d) };
   } });
@@ -206,7 +211,11 @@ export default function Trip() {
     { name: "Stay", value: stayCost, color: C.stay },
     ...(expCost > 0 ? [{ name: "Experiences (est.)", value: expCost, color: C.exp }] : []),
   ];
-  const months = g ? g.months.map((score, i) => ({ month: MONTHS[i], score, trip: g.timing.trip_months.includes(i + 1) })) : [];
+  const timing = g?.timing || {};
+  const tripMonths = timing.trip_months || [];
+  const months = Array.isArray(g?.months)
+    ? g.months.map((score, i) => ({ month: MONTHS[i], score, trip: tripMonths.includes(i + 1) }))
+    : [];
   const counts = chosenItems.reduce((m, i) => ({ ...m, [i.day]: (m[i.day] || 0) + 1 }), {});
   const routeDealCount = Object.values(dealsByDay).reduce((n, list) => n + list.length, 0);
   const routePath = (it.route || []).filter((s) => s.lat != null && s.lng != null);
@@ -425,24 +434,26 @@ export default function Trip() {
         </Fold>
 
         {g && (
-          <Fold title="Best time to go" hint={`Your dates: ${g.timing.verdict}`}>
+          <Fold title="Best time to go" hint={timing.verdict ? `Your dates: ${timing.verdict}` : "Season notes"}>
             <div className="season-grid">
-              <div>
-                <ResponsiveContainer width="100%" height={180}>
-                  <BarChart data={months} margin={{ top: 8, right: 0, left: 0, bottom: 0 }}>
-                    <XAxis dataKey="month" tickLine={false} axisLine={false} tick={{ fill: "#8ea2b9", fontSize: 12 }} />
-                    <Tooltip cursor={{ fill: "rgba(255,255,255,.04)" }} formatter={(v) => [`${v} of 5`, "Suitability"]} contentStyle={{ background: "#0d1826", border: "1px solid #24364d", borderRadius: 10 }} itemStyle={{ color: "#e8eef6" }} />
-                    <Bar dataKey="score" radius={[7, 7, 0, 0]}>
-                      {months.map((m) => <Cell key={m.month} fill={m.trip ? "#f5c76a" : "#2dd4bf"} fillOpacity={m.trip ? 1 : 0.28 + m.score * 0.14} />)}
-                    </Bar>
-                  </BarChart>
-                </ResponsiveContainer>
-                <div className="scale"><i className="gold" /> Your trip <i className="teal" /> Other months, taller means better</div>
-              </div>
+              {months.length > 0 && (
+                <div>
+                  <ResponsiveContainer width="100%" height={180}>
+                    <BarChart data={months} margin={{ top: 8, right: 0, left: 0, bottom: 0 }}>
+                      <XAxis dataKey="month" tickLine={false} axisLine={false} tick={{ fill: "#8ea2b9", fontSize: 12 }} />
+                      <Tooltip cursor={{ fill: "rgba(255,255,255,.04)" }} formatter={(v) => [`${v} of 5`, "Suitability"]} contentStyle={{ background: "#0d1826", border: "1px solid #24364d", borderRadius: 10 }} itemStyle={{ color: "#e8eef6" }} />
+                      <Bar dataKey="score" radius={[7, 7, 0, 0]}>
+                        {months.map((m) => <Cell key={m.month} fill={m.trip ? "#f5c76a" : "#2dd4bf"} fillOpacity={m.trip ? 1 : 0.28 + m.score * 0.14} />)}
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                  <div className="scale"><i className="gold" /> Your trip <i className="teal" /> Other months, taller means better</div>
+                </div>
+              )}
               <div className="season-facts">
-                <div className="fact"><span>Ultimate time to go</span><b>{g.timing.best_windows}</b></div>
-                <div className="fact"><span>Best avoided</span><b>{g.timing.avoid_windows || "None"}</b></div>
-                {g.timing.suggestion && <div className="callout"><b>Tip:</b> {g.timing.suggestion}</div>}
+                {timing.best_windows && <div className="fact"><span>Ultimate time to go</span><b>{timing.best_windows}</b></div>}
+                <div className="fact"><span>Best avoided</span><b>{timing.avoid_windows || "None"}</b></div>
+                {timing.suggestion && <div className="callout"><b>Tip:</b> {timing.suggestion}</div>}
                 <p className="fine">{g.season_note}</p>
               </div>
             </div>

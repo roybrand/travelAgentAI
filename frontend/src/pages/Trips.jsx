@@ -8,13 +8,15 @@ import Photo from "../components/Photo.jsx";
 import SaveTripBar from "../components/SaveTripBar.jsx";
 import AccountPanel from "../components/AccountPanel.jsx";
 
+const numericCost = (value) => (typeof value === "number" && Number.isFinite(value) ? value : 0);
+
 /** The numbers a saved trip card shows, worked out the same way as the open trip's total. */
 function summarize(t) {
   const it = t.result.itinerary;
   const req = t.result.request;
   const hotel = it.hotel_options?.find((h) => h.id === t.hotelId) || it.hotel;
   const planned = scheduledItems(candidateItems(it.guide), t.schedule || {});
-  const total = pickFlight(it, t.flightId).total_price + hotel.price_per_night * it.nights + planned.reduce((s, i) => s + (i.cost || 0) * req.travelers, 0);
+  const total = pickFlight(it, t.flightId).total_price + hotel.price_per_night * it.nights + planned.reduce((s, i) => s + numericCost(i.cost) * req.travelers, 0);
   return { it, req, hotel, planned: planned.length, total };
 }
 

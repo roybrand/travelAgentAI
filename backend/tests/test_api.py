@@ -2,6 +2,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.main import app
+from app import showcase_routes
 
 VALID_REQUEST = {
     "origin": "LON",
@@ -87,6 +88,22 @@ def test_plan_trip_accepts_day_route_areas(client):
     res = client.post("/api/plan-trip", json={**VALID_REQUEST, "destination": "ADL", "destinations": ["ADL"], "day_areas": day_areas})
     assert res.status_code == 200
     assert res.json()["request"]["day_areas"] == day_areas
+
+
+def test_showcase_route_seed_obeys_route_day_progression():
+    req = {"destination": "PAR", "destinations": ["PAR", "ROM", "ATH"]}
+    ideas = showcase_routes.route_ideas(req, 10)
+    assert len(ideas) == 40
+    expected_parts = ["morning", "afternoon", "evening", "night"]
+    for day in range(1, 11):
+        day_items = [item for item in ideas if item["fixed_day"] == day]
+        assert [item["default_part"] for item in day_items] == expected_parts
+        progresses = [item["route_progress"] for item in day_items]
+        assert progresses == sorted(progresses)
+        assert progresses[0] <= 0.2
+        assert progresses[-1] >= 0.8
+    globals_ = [item["global_route_progress"] for item in ideas]
+    assert globals_ == sorted(globals_)
 
 
 def test_plan_trip_missing_required_fields_returns_422(client):

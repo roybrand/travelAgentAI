@@ -137,6 +137,11 @@ export const fetchTonight = (params) => request(`/api/tonight?${qs(params)}`);
 export const fetchRouteIdeas = (params) => request(`/api/route-ideas?${qs(params)}`);
 export const fetchRouteStops = (params) => request(`/api/route-stops?${qs(params)}`);
 export const fetchRoutePointNames = (body) => request("/api/route-point-names", { method: "POST", body });
+export const places = {
+  detail: (place) => request("/api/places/detail", { method: "POST", body: { place } }),
+  review: (token, place, body) => request("/api/places/reviews", { method: "POST", token, body: { place, ...body } }),
+  photo: (token, place, body) => request("/api/places/photos", { method: "POST", token, body: { place, ...body } }),
+};
 
 // ---------------------------------------------------------------- People (accounts, places, finding people, chat)
 

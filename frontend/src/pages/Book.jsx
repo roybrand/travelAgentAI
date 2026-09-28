@@ -13,6 +13,7 @@ import TicketsSheet from "../components/TicketsSheet.jsx";
 
 const STEPS = [["review", "Review"], ["travelers", "Travelers"], ["pay", "Payment"], ["done", "Confirmed"]];
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+const numericCost = (value) => (typeof value === "number" && Number.isFinite(value) ? value : 0);
 
 function Stepper({ step }) {
   const at = STEPS.findIndex(([k]) => k === step);
@@ -74,8 +75,8 @@ export default function Book() {
   const backFrom = cityName(finalStop);
   const nights = it.nights;
   const stops = flight.stops === 0 ? "Direct" : `${flight.stops} stop${flight.stops > 1 ? "s" : ""}`;
-  const paid = chosenItems.filter((i) => i.cost);
-  const free = chosenItems.filter((i) => !i.cost);
+  const paid = chosenItems.filter((i) => numericCost(i.cost) > 0);
+  const free = chosenItems.filter((i) => numericCost(i.cost) <= 0);
   const others = Array.from({ length: Math.max(0, req.travelers - 1) }, (_, i) => who.others[i] || "");
   const live = booking && booking.status !== "cancelled";
 
@@ -95,7 +96,7 @@ export default function Book() {
       origin: req.origin, destination: req.destination, start_date: req.start_date, end_date: req.end_date, travelers: req.travelers,
       flight: { airline: flight.airline || "", depart_time: flight.depart_time || null, stops: flight.stops || 0, total_price: flightCost, price_source: flight.price_source || "demo" },
       stay: { name: hotel.name, price_per_night: hotel.price_per_night, price_source: hotel.price_source || "demo" },
-      activities: chosenItems.map((i) => ({ name: i.name.slice(0, 160), day: i.day, part: i.part, cost: i.cost ?? null })),
+      activities: chosenItems.map((i) => ({ name: i.name.slice(0, 160), day: i.day, part: i.part, cost: numericCost(i.cost) || null })),
       demo_acknowledged: ack,
     };
     try {

@@ -19,7 +19,7 @@ export function guessPart(item) {
 export function candidateItems(guide) {
   if (!guide) return [];
   const withKey = (item, source) => {
-    return { ...item, fixed_day: item.day || null, key: `${source}:${item.destination || ""}:${item.name}`, source, why: item.city && item.why ? `${item.city} · ${item.why}` : item.why || item.city || "" };
+    return { ...item, fixed_day: item.day || null, key: item.key || `${source}:${item.destination || ""}:${item.name}`, source, why: item.city && item.why ? `${item.city} · ${item.why}` : item.why || item.city || "" };
   };
   const places = (guide.places || []).map((p) => withKey(p, "sight"));
   const adventures = (guide.adventures || []).map((a) => withKey(a, "adventure"));

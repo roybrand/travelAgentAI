@@ -5,6 +5,7 @@ from datetime import date, timedelta
 from . import config
 from .live import catalog, llm, osm
 from .partners import deals as partner_deals
+from . import showcase_routes
 from .mcp_tools.client import MCPToolClient
 from .ranking.combine import rank_and_combine
 from .ranking.score import score_flights, score_hotels
@@ -35,7 +36,8 @@ def make_search_flights_node(client: MCPToolClient):
 
 def make_search_hotels_node(client: MCPToolClient):
     async def node(state: TripState) -> dict:
-        req = state["request"]
+        req = showcase_routes.apply_request_defaults(state["request"], state["nights"])
+        state["request"] = req
         route = req.get("destinations") or [req["destination"]]
         segments = _day_location_segments(req, state["nights"]) or _segments(route, req["start_date"], state["nights"])
         found = []
@@ -58,7 +60,11 @@ def make_search_hotels_node(client: MCPToolClient):
 
 def make_destination_guide_node(client: MCPToolClient):
     async def node(state: TripState) -> dict:
-        req = state["request"]
+        req = showcase_routes.apply_request_defaults(state["request"], state["nights"])
+        state["request"] = req
+        if showcase_routes.is_paris_rome_athens(req, state["nights"]):
+            guide = showcase_routes.inject_guide(_empty_route_guide(req), req, state["nights"])
+            return {"guide": guide, "guide_segments": []}
         route = req.get("destinations") or [req["destination"]]
         guides = []
         for seg in _day_location_segments(req, state["nights"]) or _segments(route, req["start_date"], state["nights"]):
@@ -76,7 +82,13 @@ def make_destination_guide_node(client: MCPToolClient):
             if guide.get("found"):
                 guides.append({**seg, "guide": guide})
         guide = _combined_guide(guides) if guides else None
-        return {"guide": _with_route_ideas(guide, req) if guide else None, "guide_segments": guides}
+        if not guide and showcase_routes.is_paris_rome_athens(req, state["nights"]):
+            guide = _empty_route_guide(req)
+        if guide:
+            if not showcase_routes.is_paris_rome_athens(req, state["nights"]):
+                guide = _with_route_ideas(guide, req)
+            guide = showcase_routes.inject_guide(guide, req, state["nights"])
+        return {"guide": guide if guide else None, "guide_segments": guides}
 
     return node
 
@@ -235,6 +247,29 @@ def _combined_guide(parts: list[dict]) -> dict:
             bucket["places"].extend({**p, "destination": code, "city": city, "segment": part["index"]} for p in group.get("places", []))
         sources[code] = "; ".join(v for v in (guide.get("sources") or {}).values() if v) or guide.get("source", "")
     return {**first, "route_guides": parts, "places": places, "adventures": adventures, "by_type": by_type, "sources": sources}
+
+
+def _empty_route_guide(req: dict) -> dict:
+    route = req.get("destinations") or [req["destination"]]
+    points = _route(route)
+    center_points = [p for p in points if p.get("lat") is not None and p.get("lng") is not None]
+    center = [
+        sum(p["lat"] for p in center_points) / len(center_points),
+        sum(p["lng"] for p in center_points) / len(center_points),
+    ] if center_points else None
+    return {
+        "found": True,
+        "name": "Paris to Rome to Athens",
+        "source": "showcase",
+        "center": center,
+        "hero": None,
+        "hero_url": None,
+        "places": [],
+        "adventures": [],
+        "by_type": {},
+        "sources": {},
+        "timing": {"verdict": "Curated 10-day showcase route for testing.", "best_windows": []},
+    }
 
 
 def _stay_segments(state: TripState, chosen: dict) -> list[dict]:

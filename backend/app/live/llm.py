@@ -206,7 +206,23 @@ def parse_trip_request(text: str, today: date | None = None) -> dict:
         f"Today is {today.isoformat()}; resolve relative dates such as 'next month' to future dates. "
         "Never invent details the traveler did not imply; use null instead."
     )
-    return resolve_place(normalize_request(_chat(system, text[:1200], 500), today), text)
+    return _showcase_override(resolve_place(normalize_request(_chat(system, text[:1200], 500), today), text), text)
+
+
+def _mentions_paris_rome_athens(text: str) -> bool:
+    plain = catalog._plain(text or "")
+    return all(re.search(rf"(?<![a-z0-9]){name}(?![a-z0-9])", plain) for name in ("paris", "rome", "athens"))
+
+
+def _showcase_override(result: dict, text: str) -> dict:
+    if not _mentions_paris_rome_athens(text):
+        return result
+    return {
+        **result,
+        "destination": "PAR",
+        "destinations": ["PAR", "ROM", "ATH"],
+        "assumptions": [*result.get("assumptions", []), "I used the curated Paris to Rome to Athens 10-day showcase route."][:5],
+    }
 
 
 # ---------- traveler profile (text, and optionally a photo) ----------
@@ -257,7 +273,7 @@ def build_trip(text: str, image: str | None = None, today: date | None = None) -
         + ("The photo is only a hint about the atmosphere and activities they like (scenery, food, nightlife, culture). Never identify or describe any person in it. " if image else "")
     )
     raw = _chat(system, text[:1500] or "(no text, use the photo)", 700, image if valid_image(image) else None)
-    result = resolve_place(normalize_request(raw.get("trip") or {}, today), text)
+    result = _showcase_override(resolve_place(normalize_request(raw.get("trip") or {}, today), text), text)
     result["profile"] = normalize_profile(raw.get("profile"))
     return result
 

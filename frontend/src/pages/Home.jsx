@@ -25,6 +25,8 @@ const EXAMPLES = [
   "10 days across Paris, Rome and Athens for two, food, ruins and a little beach time",
   "A week in Sydney in December, beaches, hikes and good coffee",
 ];
+const SHOWCASE_CODES = ["PAR", "ROM", "ATH"];
+const mentionsShowcase = (text) => /\bparis\b/i.test(text) && /\brome\b/i.test(text) && /\bathens\b/i.test(text);
 
 export default function Home() {
   const { form, setForm, plan, loading, error, setError, config, destinations, profile, setProfile, forgetProfile, trip, setReadback } = useTrip();
@@ -123,6 +125,11 @@ export default function Home() {
   async function planFromPrompt(built, prof) {
     const base = tripDefaults();
     const { _originPicked, ...builtFields } = built;
+    const showcasePrompt = /\bparis\b/i.test(freeText) && /\brome\b/i.test(freeText) && /\bathens\b/i.test(freeText);
+    if (showcasePrompt) {
+      builtFields.destination = "PAR";
+      builtFields.destinations = ["PAR", "ROM", "ATH"];
+    }
     const payload = {
       ...base,
       ...builtFields,
@@ -151,6 +158,43 @@ export default function Home() {
     if (await plan(payload, { readback: rb })) navigate("/trip");
   }
 
+  function cityMentionedInPrompt(exclude = []) {
+    const plain = freeText.toLowerCase();
+    return destinations.find((d) => !exclude.includes(d.code) && plain.includes(d.city.toLowerCase()))?.code || "";
+  }
+
+  async function buildShowcaseFromPrompt() {
+    const base = tripDefaults();
+    const origin = cityMentionedInPrompt(SHOWCASE_CODES);
+    const start = base.start_date;
+    const end = isoDate(new Date(new Date(start + "T00:00:00").getTime() + 10 * 86400000));
+    const built = {
+      ...base,
+      origin,
+      destination: "PAR",
+      destinations: SHOWCASE_CODES,
+      start_date: start,
+      end_date: end,
+      travelers: /\b(one|1)\b/i.test(freeText) ? 1 : /\b(three|3)\b/i.test(freeText) ? 3 : /\b(four|4)\b/i.test(freeText) ? 4 : 2,
+      interests: ["food-scene", "nightlife", "old-town"],
+      budget: null,
+      place_types: [],
+    };
+    const prof = {
+      summary: "You want a full 10-day Paris to Rome to Athens showcase route.",
+      keywords: ["food", "history", "nightlife"],
+      interests: built.interests,
+      place_types: [],
+    };
+    if (!origin) {
+      setOriginPick("");
+      setAsk({ kind: "origin", prof, built });
+      return;
+    }
+    setAssumptions(["I used the curated Paris to Rome to Athens 10-day showcase route."]);
+    await planFromPrompt(built, prof);
+  }
+
   /** Prompt (and optional photo) -> trip fields + a traveler profile -> plan the whole trip. */
   async function build() {
     setParsing(true);
@@ -160,6 +204,10 @@ export default function Home() {
     setAsk(null);
     setActive("prompt");
     try {
+      if (mentionsShowcase(freeText)) {
+        await buildShowcaseFromPrompt();
+        return;
+      }
       const { assumptions: notes = [], profile: prof, destination_choices: choices = [], place_mentioned: mentioned, unsupported_places: unsupported = [], ...built } = await buildTrip(freeText, image);
       const gotSomething = Object.keys(built).length || choices.length || unsupported.length || prof?.place_types?.length || prof?.interests?.length;
       if (!gotSomething) throw new Error("I could not find any trip details in that. Try adding a place, or a photo of somewhere you like.");

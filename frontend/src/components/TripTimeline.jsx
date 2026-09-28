@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTrip } from "../state/TripContext.jsx";
-import { fetchRouteIdeas, fetchRoutePointNames, fetchRouteStops, trackDealClick } from "../api";
+import { fetchRouteIdeas, fetchRoutePointNames, fetchRouteStops, places as placeApi, trackDealClick } from "../api";
+import { usePeople } from "../state/PeopleContext.jsx";
 import { PARTS, PART_ICON, PART_LABEL } from "../lib/dayplan";
 import { distanceM, duration, metres, money } from "../lib/format";
 import { qualityLabel } from "../lib/stay";
@@ -27,8 +28,14 @@ const ROUTE_TYPE_OPTIONS = [
 const ROUTE_TYPE_LABELS = Object.fromEntries(ROUTE_TYPE_OPTIONS);
 const DEFAULT_ROUTE_RADIUS_M = 5000;
 const DEFAULT_ROUTE_TYPES = ["attraction", "viewpoint", "historic", "museum", "park"];
-const PART_PROGRESS = Object.fromEntries(PARTS.map((part, index) => [part, (index + 0.5) / PARTS.length]));
-const PART_PROGRESS_BANDS = Object.fromEntries(PARTS.map((part, index) => [part, [index / PARTS.length, (index + 1) / PARTS.length]]));
+const ROUTE_PART_RULES = {
+  morning: { target: 0.08, band: [0, 0.28] },
+  afternoon: { target: 0.36, band: [0.18, 0.54] },
+  evening: { target: 0.66, band: [0.46, 0.82] },
+  night: { target: 0.94, band: [0.74, 1] },
+};
+const PART_PROGRESS = Object.fromEntries(PARTS.map((part, index) => [part, ROUTE_PART_RULES[part]?.target ?? (index + 0.5) / PARTS.length]));
+const PART_PROGRESS_BANDS = Object.fromEntries(PARTS.map((part, index) => [part, ROUTE_PART_RULES[part]?.band ?? [index / PARTS.length, (index + 1) / PARTS.length]]));
 const ROUTE_SUGGESTION_MIN_SEPARATION_M = 2500;
 const isGeneratedRoutePlaceholder = (item) => String(item?.name || "").startsWith("Find a real stop near ")
   || String(item?.name || "").startsWith("Find lunch or a sight near ")
@@ -265,6 +272,7 @@ function Anchor({ icon, title, sub, action }) {
  * and a map of its stops. This is the page the traveler lives in, before and during the trip. */
 export default function TripTimeline({ phase, dealsByDay, eventsByDate, sheets, onChangeFlight, weather }) {
   const { trip, cityName, tripId, moods, setMood, destinations, readback, applyDayFocus } = useTrip();
+  const people = usePeople();
   const [moodDay, setMoodDay] = useState(null);
   const [locationsOpen, setLocationsOpen] = useState(false);
   const [locationFocusDay, setLocationFocusDay] = useState(null);
@@ -281,6 +289,11 @@ export default function TripTimeline({ phase, dealsByDay, eventsByDate, sheets, 
   const [routePlaceFixes, setRoutePlaceFixes] = useState({});
   const [routeCandidateFixes, setRouteCandidateFixes] = useState({});
   const [placeInfo, setPlaceInfo] = useState(null);
+  const [placeCommunity, setPlaceCommunity] = useState(null);
+  const [placeCommunityErr, setPlaceCommunityErr] = useState("");
+  const [reviewDraft, setReviewDraft] = useState({ rating: 5, body: "", visit_date: "" });
+  const [photoDraft, setPhotoDraft] = useState({ image: "", caption: "", credit: "" });
+  const [placeSaving, setPlaceSaving] = useState("");
   const wx = (d) => weather?.days?.[dayDate(trip.req.start_date, d)] || null;
   const dealBooking = useDealBooking();
   const booked = dealBooking.forTrip(tripId);
@@ -361,6 +374,25 @@ export default function TripTimeline({ phase, dealsByDay, eventsByDate, sheets, 
   const live = phase.phase === "during";
   const next = live && phase.day <= nights ? nextUp(chosenItems, phase.day, phase.part) : null;
   const currentPosition = useCurrentPosition(live);
+  const routeVisualPoint = (item, day, dayPath = []) => {
+    if (!item || !routeAreaForDay(day)) return item;
+    const global = Number(item.global_route_progress);
+    const local = Number(item.route_progress ?? PART_PROGRESS[item.part || item.default_part]);
+    const point = Number.isFinite(global) && tripRoutePath.length > 1
+      ? pointAlongRoute(tripRoutePath, global)
+      : Number.isFinite(local) && dayPath.length > 1
+        ? pointAlongRoute(dayPath, local)
+        : null;
+    if (!hasPoint(point)) return item;
+    return {
+      ...item,
+      actual_lat: item.actual_lat ?? item.lat,
+      actual_lng: item.actual_lng ?? item.lng,
+      lat: point.lat,
+      lng: point.lng,
+      visual_route_point: true,
+    };
+  };
   const routeSegmentForDay = (d) => {
     if (d < 1 || d > nights || tripRoutePath.length < 2) return null;
     const startProgress = (d - 1) / Math.max(1, nights);
@@ -395,7 +427,7 @@ export default function TripTimeline({ phase, dealsByDay, eventsByDate, sheets, 
     const area = routeAreaForDay(d) || focusForDay(d);
     const target = PART_PROGRESS[part] ?? 0.5;
     const [bandStart, bandEnd] = PART_PROGRESS_BANDS[part] || [0, 1];
-    const bandPad = 0.08;
+    const bandPad = 0.04;
     const used = new Set(chosenItems.filter((item) => item.day === d).map((item) => item.key));
     const dayStart = (d - 1) / Math.max(1, nights);
     const dayEnd = d / Math.max(1, nights);
@@ -456,13 +488,27 @@ export default function TripTimeline({ phase, dealsByDay, eventsByDate, sheets, 
     const routePool = dedupeRouteIdeas([...scoped, ...borrowed].filter(onRoute));
     const all = routePool.length ? routePool : dedupeRouteIdeas(fallbackCandidates.map(withProjectedProgress).filter(onRoute));
     const previouslySuggested = all.filter((item) => takenKeys.has(item.key));
-    const takenMaxProgress = previouslySuggested.reduce((max, item) => {
+    const plannedBeforeThisPart = chosenItems
+      .filter((item) => item.day === d && PARTS.indexOf(item.part || item.default_part) < PARTS.indexOf(part))
+      .map((item) => Number(item.route_progress))
+      .filter(Number.isFinite);
+    const takenMaxProgress = [...previouslySuggested.map((item) => Number(item.route_progress)), ...plannedBeforeThisPart]
+      .reduce((max, progress) => (Number.isFinite(progress) ? Math.max(max, progress) : max), -1);
+    const takenMinProgress = previouslySuggested.reduce((min, item) => {
       const progress = Number(item.route_progress);
-      return Number.isFinite(progress) ? Math.max(max, progress) : max;
-    }, -1);
+      return Number.isFinite(progress) ? Math.min(min, progress) : min;
+    }, 2);
     const enoughSpread = all.filter((item) => !used.has(item.key) && !takenKeys.has(item.key)).length >= 4;
-    const routeSeparationProgress = enoughSpread ? 0.16 : 0.08;
+    const routeSeparationProgress = enoughSpread ? 0.18 : 0.1;
     const progressGap = (a, b) => Math.abs(Number(a.route_progress ?? target) - Number(b.route_progress ?? target));
+    const directionFloor = Math.max(0, takenMaxProgress - 0.015);
+    const endCoverageBonus = (item) => {
+      const progress = Number(item.route_progress ?? target);
+      if (!Number.isFinite(progress)) return 0;
+      if (part === "morning") return progress * 10;
+      if (part === "night") return (1 - progress) * 10;
+      return 0;
+    };
     const separationPenalty = (item) => previouslySuggested.reduce((sum, picked) => {
       const gap = progressGap(item, picked);
       return sum + Math.max(0, routeSeparationProgress - gap) * 8;
@@ -473,19 +519,21 @@ export default function TripTimeline({ phase, dealsByDay, eventsByDate, sheets, 
         && item.route_progress != null
         && Number(item.route_progress) >= Math.max(0, bandStart - bandPad)
         && Number(item.route_progress) <= Math.min(1, bandEnd + bandPad)
-        && Number(item.route_progress) >= takenMaxProgress - 0.03
+        && Number(item.route_progress) >= directionFloor
         && !previouslySuggested.some((picked) => sameRouteSuggestion(picked, item)));
     const relaxedEligible = all
       .filter((item) => !used.has(item.key)
         && !takenKeys.has(item.key)
         && item.route_progress != null
-        && Number(item.route_progress) >= takenMaxProgress - 0.03
+        && Number(item.route_progress) >= directionFloor
         && !previouslySuggested.some((picked) => sameRouteSuggestion(picked, item)));
     const spreadEligible = baseEligible.filter((item) => !enoughSpread || previouslySuggested.every((picked) => progressGap(item, picked) >= routeSeparationProgress * 0.55));
     const relaxedSpreadEligible = relaxedEligible.filter((item) => !enoughSpread || previouslySuggested.every((picked) => progressGap(item, picked) >= routeSeparationProgress * 0.55));
     const real = (spreadEligible.length ? spreadEligible : baseEligible.length ? baseEligible : relaxedSpreadEligible.length ? relaxedSpreadEligible : relaxedEligible)
       .sort((a, b) => (
         separationPenalty(a) - separationPenalty(b)
+        || endCoverageBonus(a) - endCoverageBonus(b)
+        || (takenMinProgress < 2 && PARTS.indexOf(part) > 0 ? Math.max(0, routeSeparationProgress - (Number(a.route_progress ?? target) - takenMinProgress)) - Math.max(0, routeSeparationProgress - (Number(b.route_progress ?? target) - takenMinProgress)) : 0)
         || Math.abs((a.route_progress ?? target) - target) - Math.abs((b.route_progress ?? target) - target)
         || slotScore(b, part, { mood: moods[d], wet: !!wx(d)?.wet }) - slotScore(a, part, { mood: moods[d], wet: !!wx(d)?.wet })
         || (a.distance_to_day_route_m ?? a.distance_to_route_m ?? 0) - (b.distance_to_day_route_m ?? b.distance_to_route_m ?? 0)
@@ -505,9 +553,19 @@ export default function TripTimeline({ phase, dealsByDay, eventsByDate, sheets, 
     }
     const fallbackPoint = pointAlongRoute(dayPath, target) || basePointForDay(d);
     if (!hasPoint(fallbackPoint)) return null;
-    const realPlaceName = cleanActivityPlaceName(realRoutePointName(fallbackPoint));
-    const namedPoint = cleanActivityPlaceName(routeDefaultPointNames[`${d}:${part}`]);
-    const placeName = realPlaceName || namedPoint || (!isRouteInterpolation(fallbackPoint) ? cleanActivityPlaceName(cityName(cityForDay(d))) : "");
+    const routeEndpointNames = new Set([
+      ...tripRoutePath.map((p) => cleanName(p.name)),
+      ...route.map((code) => cleanName(cityName(code))),
+      cleanName(cityName(cityForDay(d))),
+    ].filter(Boolean));
+    const cleanRouteActivityName = (value) => {
+      const text = cleanActivityPlaceName(value);
+      if (!text || routeEndpointNames.has(cleanName(text))) return "";
+      return text;
+    };
+    const realPlaceName = cleanRouteActivityName(realRoutePointName(fallbackPoint));
+    const namedPoint = cleanRouteActivityName(routeDefaultPointNames[`${d}:${part}`]);
+    const placeName = realPlaceName || namedPoint;
     if (!placeName) return null;
     const label = PART_LABEL[part];
     return {
@@ -563,6 +621,93 @@ export default function TripTimeline({ phase, dealsByDay, eventsByDate, sheets, 
     cost: null,
     duration: null,
   });
+  const placePayload = (item) => ({
+    key: item.key || item.id,
+    id: item.id == null ? null : String(item.id),
+    name: item.name,
+    type: item.type,
+    typeLabel: item.typeLabel,
+    city: item.city,
+    country: item.country,
+    area: item.area,
+    route_stop: item.route_stop,
+    lat: item.lat,
+    lng: item.lng,
+    osm_url: item.osm_url,
+    wikidata: item.wikidata,
+    wikipedia: item.wikipedia,
+    website: item.website,
+    url: item.url,
+    source: item.source,
+    why: item.why,
+    photo_url: item.photo_url,
+    photo_credit: item.photo_credit,
+  });
+  useEffect(() => {
+    let active = true;
+    if (!placeInfo?.item?.name) {
+      setPlaceCommunity(null);
+      return () => {
+        active = false;
+      };
+    }
+    setPlaceCommunity(null);
+    setPlaceCommunityErr("");
+    setReviewDraft({ rating: 5, body: "", visit_date: "" });
+    setPhotoDraft({ image: "", caption: "", credit: "" });
+    const fallback = window.setTimeout(() => {
+      if (active) setPlaceCommunity((current) => current || { summary: { count: 0, average: null }, reviews: [], photos: [] });
+    }, 3500);
+    placeApi.detail(placePayload(placeInfo.item))
+      .then((data) => {
+        window.clearTimeout(fallback);
+        if (active) setPlaceCommunity(data);
+      })
+      .catch((e) => {
+        window.clearTimeout(fallback);
+        if (!active) return;
+        setPlaceCommunity({ summary: { count: 0, average: null }, reviews: [], photos: [] });
+        setPlaceCommunityErr(e.message || "Could not load reviews.");
+      });
+    return () => {
+      active = false;
+      window.clearTimeout(fallback);
+    };
+  }, [placeInfo?.item?.key, placeInfo?.item?.name, placeInfo?.item?.lat, placeInfo?.item?.lng]);
+  const submitReview = async () => {
+    if (!people.token || !placeInfo?.item) return;
+    setPlaceSaving("review");
+    setPlaceCommunityErr("");
+    try {
+      const data = await placeApi.review(people.token, placePayload(placeInfo.item), {
+        rating: Number(reviewDraft.rating),
+        body: reviewDraft.body,
+        visit_date: reviewDraft.visit_date || null,
+      });
+      setPlaceCommunity(data);
+      setReviewDraft({ rating: 5, body: "", visit_date: "" });
+      sheets.say(data.submitted_status === "approved" ? "Review added." : "Review submitted for moderation.");
+    } catch (e) {
+      setPlaceCommunityErr(e.message || "Could not submit review.");
+    } finally {
+      setPlaceSaving("");
+    }
+  };
+  const submitPhoto = async () => {
+    if (!people.token || !placeInfo?.item || !photoDraft.image) return;
+    setPlaceSaving("photo");
+    setPlaceCommunityErr("");
+    try {
+      const data = await placeApi.photo(people.token, placePayload(placeInfo.item), photoDraft);
+      setPlaceCommunity(data);
+      setPhotoDraft({ image: "", caption: "", credit: "" });
+      sheets.say(data.submitted_status === "approved" ? "Photo added." : "Photo submitted for moderation.");
+    } catch (e) {
+      setPlaceCommunityErr(e.message || "Could not submit photo.");
+    } finally {
+      setPlaceSaving("");
+    }
+  };
   const splitWholeRouteIdeas = (places, areas) => {
     const byDay = Object.fromEntries(areas.map((area) => [area.day, []]));
     (places || []).forEach((place, i) => {
@@ -920,6 +1065,16 @@ export default function TripTimeline({ phase, dealsByDay, eventsByDate, sheets, 
       .filter(hasPoint)
       .sort((a, b) => (a.order || 0) - (b.order || 0)));
 
+  const orderedStopsForDay = (day) => orderedActivityStops(chosenItems
+    .filter((item) => item.day === day && !isGeneratedRoutePlaceholder(item))
+    .map((item) => {
+      const fixed = routePlaceFixes[item.key] ? { ...item, ...routePlaceFixes[item.key], key: item.key, name: item.name } : item;
+      return routeVisualPoint(fixed, day);
+    }));
+
+  const cumulativePlannedPathUntil = (day) => dedupePath(Array.from({ length: Math.max(0, day) }, (_, i) => i + 1)
+    .flatMap((partDay) => orderedStopsForDay(partDay)));
+
   const completeDayPath = (basePath, activityStops) => {
     const cleanBase = (basePath || []).filter(hasPoint);
     const start = cleanBase[0] || null;
@@ -987,7 +1142,9 @@ export default function TripTimeline({ phase, dealsByDay, eventsByDate, sheets, 
           ? (routeStopsByDay[d] || [])
           : dedupePath([sectionEndpoints.start, ...(routeSegment?.points || []).slice(1, -1), sectionEndpoints.end]);
         const routePlanText = dayRouteLabel;
-        const routeStart = explicitRouteForDay(d, routeFocus) ? null : startForDay(d);
+        const completedMapPath = d > 1 ? cumulativePlannedPathUntil(d - 1) : [];
+        const completedEnd = endOf(completedMapPath);
+        const routeStart = completedEnd || (explicitRouteForDay(d, routeFocus) ? null : startForDay(d));
         const baseDayPoint = basePointForDay(d);
         const preliminaryMapPath = withStart(routeStart || baseDayPoint, routeStops.length ? routeStops : [baseDayPoint, baseDayPoint].filter(Boolean));
         const routeDistanceAnchor = preliminaryMapPath[0] || routeBoundaryNamedPoint(d - 1) || basePointForDay(d);
@@ -996,13 +1153,14 @@ export default function TripTimeline({ phase, dealsByDay, eventsByDate, sheets, 
         const startPlaceName = dayStartName && dayStartName !== routeDisplayLabelForDay(d) && !/^Route point$/i.test(dayStartName) ? dayStartName : fallbackStartName;
         const distanceFromDayStartText = (item) => {
           if (!routeFocus) return null;
+          const distanceItem = routeVisualPoint(item, d, activeMapPath);
           const distance = item.distance_from_start_m
-            ?? routeDistanceAlongPath(activeMapPath, item.route_progress)
-            ?? (hasPoint(routeDistanceAnchor) && hasPoint(item) ? Math.round(distanceM(routeDistanceAnchor, item)) : null);
+            ?? routeDistanceToPoint(activeMapPath, distanceItem)
+            ?? routeDistanceAlongPath(activeMapPath, distanceItem.route_progress)
+            ?? (hasPoint(routeDistanceAnchor) && hasPoint(distanceItem) ? Math.round(distanceM(routeDistanceAnchor, distanceItem)) : null);
           if (distance == null || !startPlaceName) return null;
           return `${metres(distance)} from ${startPlaceName}`;
         };
-        const completedMapPath = d > 1 ? rawPathForDay(d - 1) : [];
         const plannedKeys = new Set(mapItems.map((x) => x.key));
         const routeIdeasForMap = [...(defaultRouteIdeasByDay[d] || []), ...(!routeFocus ? candidatePool : [])]
           .map((x) => ({ ...x, distance_to_day_route_m: progressAlongPathForPoint(preliminaryMapPath, x)?.distance_m ?? x.distance_to_route_m }))
@@ -1027,10 +1185,10 @@ export default function TripTimeline({ phase, dealsByDay, eventsByDate, sheets, 
           const boundaryIndex = first ? d - 1 : last ? d : null;
           const boundaryName = boundaryIndex != null ? routeBoundaryName(boundaryIndex) : "";
           const stopName = boundaryName || realRoutePointName(s);
-          const endpointFallback = first ? routeBoundaryFallbackName(d - 1) || cityName(cityForDay(d)) : "";
+          const endpointFallback = first ? s.name || routeBoundaryFallbackName(d - 1) || cityName(cityForDay(d)) : "";
           const label = stopName || endpointFallback;
           if (!samePoint(s, currentPosition) && !label) return null;
-          const prefix = first ? "Start" : last ? "End" : "";
+          const prefix = first ? "Start" : last && !s.key ? "End" : "";
           const title = label ? mapTitle(prefix ? `${prefix}: ${label}` : label, path[0], s) : "";
           return {
             id: `route-stop-${d}-${n}`,
@@ -1046,7 +1204,7 @@ export default function TripTimeline({ phase, dealsByDay, eventsByDate, sheets, 
           };
         }).filter(Boolean);
         const completedPins = completedMapPath.length && mapDay === d
-          ? completedMapPath.map((s, n) => ({ id: `done-route-${d}-${n}`, kind: "venue", label: "", title: `Completed: ${s.name}`, lat: s.lat, lng: s.lng, color: "#94a3b8", zIndexOffset: 50 }))
+          ? completedMapPath.map((s, n) => ({ id: `done-route-${d}-${n}`, kind: "venue", label: n === completedMapPath.length - 1 ? "Prev" : "", title: `Completed: ${s.name}${n > 0 ? ` · ${metres(Math.round(distanceM(completedMapPath[n - 1], s)))} from previous stop` : ""}`, lat: s.lat, lng: s.lng, color: "#94a3b8", zIndexOffset: 50 }))
           : [];
         const dayCentre = dayCentreFor(d);
         const mapCentre = dayCentre?.lat != null ? [dayCentre.lat, dayCentre.lng] : it.guide?.center || (dayHotel.lat != null ? [dayHotel.lat, dayHotel.lng] : null);
@@ -1059,24 +1217,28 @@ export default function TripTimeline({ phase, dealsByDay, eventsByDate, sheets, 
         const suggestedMapItems = dayRows
           .filter((row) => row.kind === "idea" && row.idea?.item?.lat != null && row.idea?.item?.lng != null)
           .map((row) => ({ ...row.idea.item, suggested: true }));
-        const routeActivityStops = [...mapItems, ...suggestedMapItems];
-        const activeMapPath = completeDayPath(preliminaryMapPath, routeActivityStops);
+        const visualMapItems = routeFocus ? mapItems.map((item) => routeVisualPoint(item, d, preliminaryMapPath)) : mapItems;
+        const visualSuggestedMapItems = routeFocus ? suggestedMapItems.map((item) => routeVisualPoint(item, d, preliminaryMapPath)) : suggestedMapItems;
+        const routeActivityStops = [...visualMapItems, ...visualSuggestedMapItems];
+        const dayStopPath = orderedActivityStops(routeActivityStops);
+        const activeMapPath = dedupePath([routeStart, ...dayStopPath].filter(Boolean));
         const routeStopPins = routeStopPinsForPath(activeMapPath);
         const mapPath = activeMapPath.length > 1 ? activeMapPath : [];
         const mapPaths = [
-          ...(completedMapPath.length > 1 ? [{ points: completedMapPath, color: "#94a3b8", weight: 3, opacity: 0.65, dashArray: "2 9" }] : []),
-          ...(mapPath.length > 1 ? [{ points: mapPath, color: "#f5c76a", weight: 4, opacity: 0.95, dashArray: "8 8" }] : []),
+          ...(completedMapPath.length > 1 ? [{ points: completedMapPath, color: "#94a3b8", weight: 4, opacity: 0.7, dashArray: null }] : []),
+          ...(completedEnd && mapPath[0] && !samePoint(completedEnd, mapPath[0]) ? [{ points: [completedEnd, mapPath[0]], color: "#94a3b8", weight: 3, opacity: 0.55, dashArray: "4 8" }] : []),
+          ...(mapPath.length > 1 ? [{ points: mapPath, color: "#f5c76a", weight: 4, opacity: 0.95, dashArray: null }] : []),
         ];
         const routeSpan = mapPath.length > 1
           ? Math.max(...mapPath.map((p) => p.lat)) - Math.min(...mapPath.map((p) => p.lat))
             + Math.max(...mapPath.map((p) => p.lng)) - Math.min(...mapPath.map((p) => p.lng))
           : baseRouteSpan;
         const mapHeight = routeSpan > 1.2 ? 380 : 260;
-        const plannedForPins = [...mapItems, ...suggestedMapItems].map((x, n) => {
+        const plannedForPins = [...visualMapItems, ...visualSuggestedMapItems].map((x, n) => {
           if (x.lat != null && x.lng != null) {
             return {
               ...x,
-              distance_from_start_m: x.distance_from_start_m ?? routeDistanceAlongPath(activeMapPath, x.route_progress),
+              distance_from_start_m: x.distance_from_start_m ?? routeDistanceToPoint(activeMapPath, x),
               mapLat: x.lat,
               mapLng: x.lng,
               approximate: false,
@@ -1098,11 +1260,13 @@ export default function TripTimeline({ phase, dealsByDay, eventsByDate, sheets, 
         const plannedPins = plannedForPins.map((x, n) => {
           const spread = !x.approximate && plannedForPins.length > 1;
           const angle = (-90 + (360 / plannedForPins.length) * n) * (Math.PI / 180);
+          const previousStop = n > 0 ? plannedForPins[n - 1] : completedEnd;
+          const legText = previousStop && hasPoint(previousStop) && hasPoint(x) ? `${metres(Math.round(distanceM(previousStop, x)))} from previous stop` : null;
           return {
             id: x.key,
             kind: "sight",
             label: String((x.plannedIndex ?? n) + 1),
-            title: x.approximate ? `${x.name} · approximate area` : mapTitle(x.name, activeMapPath[0], x),
+            title: x.approximate ? `${x.name} · approximate area` : [mapTitle(x.name, activeMapPath[0], x), legText].filter(Boolean).join(" · "),
             lat: x.mapLat,
             lng: x.mapLng,
             displayLat: spread ? x.mapLat + Math.sin(angle) * spreadRadius : x.mapLat,
@@ -1114,7 +1278,7 @@ export default function TripTimeline({ phase, dealsByDay, eventsByDate, sheets, 
         const pins = [
           ...completedPins,
           ...routeStopPins,
-          ...(dayHotel.lat != null ? [{ id: "hotel", kind: "hotel", label: "Stay", title: mapTitle(dayHotel.name, activeMapPath[0], dayHotel), lat: dayHotel.lat, lng: dayHotel.lng, color: "#2dd4bf", zIndexOffset: 250 }] : []),
+          ...(!routeFocus && dayHotel.lat != null ? [{ id: "hotel", kind: "hotel", label: "Stay", title: mapTitle(dayHotel.name, activeMapPath[0], dayHotel), lat: dayHotel.lat, lng: dayHotel.lng, color: "#2dd4bf", zIndexOffset: 250 }] : []),
           ...plannedPins,
           ...routeIdeaPins,
           ...deals.map((x) => ({ id: `deal-${x.id}`, kind: "venue", title: mapTitle(x.title, activeMapPath[0], x), lat: x.lat, lng: x.lng, color: "#f5c76a" })),
@@ -1260,7 +1424,7 @@ export default function TripTimeline({ phase, dealsByDay, eventsByDate, sheets, 
                   else if (suggested) setPlaceInfo({ ...detailFor(suggested, d), planned: false });
                   else if (routeIdea) setPlaceInfo({ ...detailFor(routeIdea, d), planned: false });
                 }} />
-                <p className="fine">{routeFocus && dayRouteLabel ? `Showing ${dayRouteLabel}. ` : ""}{completedMapPath.length > 1 ? "Grey is the completed route from the previous day. " : ""}Letters are route stops. Numbers are your planned places. Small gold dots are other route ideas.</p>
+                <p className="fine">{routeFocus && dayRouteLabel ? `Showing ${dayRouteLabel}. ` : ""}{completedMapPath.length > 1 ? "Grey is the completed route from the beginning of the trip. " : ""}Numbers are your planned places. Small gold dots are other route ideas. Distances are measured from the day's start and from the previous stop.</p>
               </div>
             )}
 
@@ -1447,9 +1611,78 @@ export default function TripTimeline({ phase, dealsByDay, eventsByDate, sheets, 
               {placeInfo.item.duration && <div><span>Duration</span><b>{placeInfo.item.duration}</b></div>}
             </div>
             {placeInfo.item.why && <p className="muted">{placeInfo.item.why}</p>}
+            <div className="place-community">
+              <div className="place-community-head">
+                <b>Traveler reviews</b>
+                <span>
+                  {placeCommunity
+                    ? placeCommunity.summary.count
+                      ? `${placeCommunity.summary.average}/5 · ${placeCommunity.summary.count} review${placeCommunity.summary.count === 1 ? "" : "s"}`
+                      : "No reviews yet"
+                    : "Loading..."}
+                </span>
+              </div>
+              {placeCommunityErr && <p className="err">{placeCommunityErr}</p>}
+              {placeCommunity?.place?.description && <p className="muted">{placeCommunity.place.description}</p>}
+              {!!placeCommunity?.photos?.length && (
+                <div className="place-photo-strip">
+                  {placeCommunity.photos.slice(0, 4).map((p, i) => (
+                    <a key={`${p.url}-${i}`} href={p.url} target="_blank" rel="noreferrer">
+                      <img src={p.url} alt={p.caption || placeInfo.item.name} />
+                    </a>
+                  ))}
+                </div>
+              )}
+              {!!placeCommunity?.reviews?.length && (
+                <div className="place-review-list">
+                  {placeCommunity.reviews.slice(0, 3).map((r) => (
+                    <article key={r.id} className="place-review">
+                      <b>{"★".repeat(r.rating)}{"☆".repeat(5 - r.rating)} <span>{r.user}</span></b>
+                      <p>{r.body}</p>
+                    </article>
+                  ))}
+                </div>
+              )}
+              {people.token ? (
+                <div className="place-contribute">
+                  <label className="field">
+                    <span>Your rating</span>
+                    <select value={reviewDraft.rating} onChange={(e) => setReviewDraft((r) => ({ ...r, rating: e.target.value }))}>
+                      {[5, 4, 3, 2, 1].map((n) => <option key={n} value={n}>{n} stars</option>)}
+                    </select>
+                  </label>
+                  <label className="field wide">
+                    <span>Short review</span>
+                    <textarea value={reviewDraft.body} rows={3} maxLength={1200} placeholder="What was worth knowing before going?" onChange={(e) => setReviewDraft((r) => ({ ...r, body: e.target.value }))} />
+                  </label>
+                  <button type="button" className="btn ghost sm" onClick={submitReview} disabled={placeSaving === "review" || reviewDraft.body.trim().length < 12}>
+                    {placeSaving === "review" ? "Submitting..." : "Submit review"}
+                  </button>
+                  <label className="field wide">
+                    <span>Add a photo</span>
+                    <input type="file" accept="image/jpeg,image/png,image/webp" onChange={async (e) => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      const image = await fileToDataUrl(file);
+                      setPhotoDraft((p) => ({ ...p, image }));
+                    }} />
+                  </label>
+                  <label className="field wide">
+                    <span>Photo caption</span>
+                    <input value={photoDraft.caption} maxLength={240} placeholder="Optional caption" onChange={(e) => setPhotoDraft((p) => ({ ...p, caption: e.target.value }))} />
+                  </label>
+                  <button type="button" className="btn ghost sm" onClick={submitPhoto} disabled={placeSaving === "photo" || !photoDraft.image}>
+                    {placeSaving === "photo" ? "Submitting..." : "Submit photo"}
+                  </button>
+                  <p className="fine">Reviews and photos may be held for moderation before other travelers see them.</p>
+                </div>
+              ) : (
+                <p className="fine">Sign in on the People page to add your own review or photo.</p>
+              )}
+            </div>
             {!!(placeInfo.item.matches?.length || placeInfo.item.tags?.length) && (
               <div className="facts-row">
-                {[...(placeInfo.item.matches || []), ...(placeInfo.item.tags || [])].slice(0, 6).map((t) => <span key={t} className="tag hit">{t}</span>)}
+                {[...new Set([...(placeInfo.item.matches || []), ...(placeInfo.item.tags || [])])].slice(0, 6).map((t) => <span key={t} className="tag hit">{t}</span>)}
               </div>
             )}
             <div className="place-links">
@@ -1504,7 +1737,7 @@ const cleanRouteAreaLabel = (value) => {
 };
 const cleanActivityPlaceName = (value) => {
   const text = String(value || "").trim().replace(/\s+\bto\b\s*$/i, "");
-  if (!text || /^Route point$/i.test(text) || /^Day \d+ route$/i.test(text)) return "";
+  if (!text || /^(to|from|via|near|route|route point|route stop)(\s+.+)?$/i.test(text) || /^Day \d+ route$/i.test(text)) return "";
   return text;
 };
 const isRouteCandidate = (item) => item?.source === "route" || item?.source === "live-route" || item?.route_stop || item?.area;
@@ -1569,6 +1802,17 @@ const routeDistanceAlongPath = (points, progress) => {
   const { total } = routeLengths(clean);
   return Math.round(Math.max(0, Math.min(1, Number(progress))) * total);
 };
+
+function routeDistanceToPoint(points, point) {
+  const clean = (points || []).filter(hasPoint);
+  if (!hasPoint(point) || clean.length < 2) return null;
+  let total = 0;
+  for (let i = 1; i < clean.length; i += 1) {
+    total += Math.round(distanceM(clean[i - 1], clean[i]));
+    if (samePoint(clean[i], point)) return total;
+  }
+  return null;
+}
 
 const progressAlongPathForPoint = (points, point) => {
   const clean = (points || []).filter(hasPoint);
@@ -1657,6 +1901,13 @@ const dedupePath = (points) => {
   });
   return out;
 };
+
+const fileToDataUrl = (file) => new Promise((resolve, reject) => {
+  const reader = new FileReader();
+  reader.onload = () => resolve(reader.result);
+  reader.onerror = () => reject(reader.error);
+  reader.readAsDataURL(file);
+});
 
 function useCurrentPosition(active) {
   const [position, setPosition] = useState(null);

@@ -21,6 +21,8 @@ import Partners from "./pages/Partners.jsx";
 import Admin from "./pages/Admin.jsx";
 import MoreMenu, { useMoreItems } from "./components/MoreMenu.jsx";
 import { useAlerts } from "./state/AlertsContext.jsx";
+import { usePeople } from "./state/PeopleContext.jsx";
+import { AccountSheet } from "./components/AccountPanel.jsx";
 
 function Header() {
   const { trip, resetSearch, savedTrips } = useTrip();
@@ -151,6 +153,20 @@ function Toasts() {
   );
 }
 
+function StartupAccountPrompt() {
+  const { token } = usePeople();
+  const [open, setOpen] = useState(false);
+  const [dismissed, setDismissed] = useState(false);
+  useEffect(() => {
+    if (!token && !dismissed) setOpen(true);
+    if (token) {
+      setOpen(false);
+      setDismissed(false);
+    }
+  }, [token, dismissed]);
+  return <AccountSheet open={open} onClose={() => { setOpen(false); setDismissed(true); }} />;
+}
+
 function Footer() {
   return (
     <footer className="footer">
@@ -204,6 +220,7 @@ export default function App() {
       </main>
       <Toasts />
       <AlertToasts />
+      <StartupAccountPrompt />
       <Footer />
       <BottomNav />
     </div>

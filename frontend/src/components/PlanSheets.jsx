@@ -15,7 +15,11 @@ const label = (t) => TAG_LABEL[t] || PLACE_TYPE_LABEL[t] || t;
 const itemPhoto = (i) => ({ k: i.photo, src: i.photo_url, info: i.photo_credit });
 const PART_HINT = { morning: "Good in the morning", afternoon: "Good in the afternoon", evening: "Good in the evening", night: "Good at night" };
 export const slotName = (d, p) => `Day ${d} · ${PART_LABEL[p]}`;
-export const costText = (i) => (i.cost == null ? null : i.cost ? `≈ ${money(i.cost)} pp` : "Free");
+export const costText = (i) => {
+  if (i.cost == null || i.cost === "") return null;
+  if (typeof i.cost === "number" && Number.isFinite(i.cost)) return i.cost ? `≈ ${money(i.cost)} pp` : "Free";
+  return String(i.cost);
+};
 export const whereText = (i) => i.area || i.route_stop || i.city || i.destination || null;
 export const placeDetailText = (i, fallback = null) => [
   i.typeLabel && i.typeLabel !== "Along your route" ? i.typeLabel : null,
