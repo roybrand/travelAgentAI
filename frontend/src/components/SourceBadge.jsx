@@ -4,7 +4,7 @@ import { SOURCE_MODE } from "../lib/constants";
 export default function SourceBadge({ mode, label, title }) {
   const m = SOURCE_MODE[mode] || SOURCE_MODE.demo;
   return (
-    <span className={`src-badge ${m.tone}`} title={title}>
+    <span className={`src-badge ${m.tone}`} title={title || m.title}>
       {label || m.label}
     </span>
   );

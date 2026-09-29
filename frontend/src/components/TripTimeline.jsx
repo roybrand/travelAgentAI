@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { Link } from "react-router-dom";
 import { useTrip } from "../state/TripContext.jsx";
 import { fetchRouteIdeas, fetchRoutePointNames, fetchRouteStops, places as placeApi, trackDealClick } from "../api";
 import { usePeople } from "../state/PeopleContext.jsx";
@@ -7,6 +8,7 @@ import { distanceM, duration, metres, money } from "../lib/format";
 import { qualityLabel } from "../lib/stay";
 import { dayDate, directionsUrl, nextUp, slotScore, slotSuggestion } from "../lib/tripday";
 import { PlannedRow, costText, placeDetailText, whereText } from "./PlanSheets.jsx";
+import { Avatar } from "./PersonCard.jsx";
 import { connectionText } from "./FlightPicker.jsx";
 import { CATEGORY_ICON, PartnerBadge } from "./DealCard.jsx";
 import MapView from "./MapView.jsx";
@@ -249,6 +251,42 @@ function RouteDeal({ deal, booked, onBook }) {
       <PartnerBadge />
     </a>
     {booked ? <span className="flight-mine">✓ Booked</span> : <button type="button" className="btn primary sm" onClick={() => onBook(deal)}>Book</button>}
+    </div>
+  );
+}
+
+function SocialDayCard({ day, date, social, deals, events, signedIn }) {
+  if (!social) return null;
+  const first = social.prompts?.[0];
+  const link = first ? `/people?tab=find&city=${encodeURIComponent(first.destination || social.destination)}&prompt=${encodeURIComponent(first.text)}` : "/people?tab=find";
+  const companions = social.companions || [];
+  return (
+    <div className="social-day-card">
+      <div className="social-day-main">
+        <span className="tag-strong">People on your route</span>
+        <b>{social.headline}</b>
+        <p>{social.summary} Radar notifies you when someone matches; open their profile, say hi, then chat once they accept.</p>
+        {companions.length > 0 && (
+          <div className="route-companions">
+            {companions.slice(0, 3).map((p) => (
+              <Link key={p.id} to={`/people?person=${p.id}`} className="route-companion">
+                <Avatar person={p} size={36} />
+                <span><b>{p.display_name}</b><small>{p.request}</small></span>
+              </Link>
+            ))}
+          </div>
+        )}
+        <div className="social-day-facts">
+          <span>{companions.length} same-route traveler{companions.length === 1 ? "" : "s"}</span>
+          <span>{social.prompts?.length || 1} company prompt{social.prompts?.length === 1 ? "" : "s"}</span>
+          <span>{deals.length} partner place{deals.length === 1 ? "" : "s"} nearby</span>
+          <span>{events.length} event{events.length === 1 ? "" : "s"} that night</span>
+        </div>
+      </div>
+      <div className="social-day-actions">
+        <Link className="btn primary sm" to={link}>{signedIn ? "Find people" : "Sign in to meet people"}</Link>
+        {first && <small>{first.title} · {new Date(date + "T00:00:00").toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" })}</small>}
+      </div>
     </div>
   );
 }
@@ -1135,6 +1173,7 @@ export default function TripTimeline({ phase, dealsByDay, eventsByDate, sheets, 
         const mapItems = items.map((x) => routePlaceFixes[x.key] ? { ...x, ...routePlaceFixes[x.key], key: x.key, name: x.name } : x);
         const deals = dealsByDay[d] || [];
         const events = eventsByDate[date] || [];
+        const socialDayFromPayload = (it.social?.days || []).find((x) => x.day === d);
         const lastDay = d === nights + 1;
         const staySeg = stayForDay(d);
         const dayHotel = staySeg?.hotel || hotel;
@@ -1144,6 +1183,21 @@ export default function TripTimeline({ phase, dealsByDay, eventsByDate, sheets, 
         const canonicalRouteDay = it.route_days?.[d - 1] || null;
         const routeSegment = routeSegmentForDay(d);
         const dayRouteLabel = daySectionLabelForDay(d);
+        const fallbackSocialDay = !lastDay ? {
+          day: d,
+          destination: cityForDay(d),
+          city: cityName(cityForDay(d)),
+          headline: `Meet travelers around ${dayRouteLabel || cityName(cityForDay(d))}`,
+          summary: "Use this day plan as context to find people with overlapping route, timing and interests.",
+          prompts: [{
+            id: `fallback:${d}`,
+            destination: cityForDay(d),
+            title: `Find people for Day ${d}`,
+            text: `Coffee, sightseeing or dinner on Day ${d} of my ${route.map(cityName).join(" to ")} route near ${dayRouteLabel || cityName(cityForDay(d))}. Someone friendly with overlapping travel plans.`,
+          }],
+          companions: [],
+        } : null;
+        const socialDay = socialDayFromPayload || fallbackSocialDay;
         const sectionEndpoints = routeSectionEndpointsForDay(d);
         const routeStops = routeIsManual
           ? (routeStopsByDay[d] || [])
@@ -1371,6 +1425,9 @@ export default function TripTimeline({ phase, dealsByDay, eventsByDate, sheets, 
                 <b>{routeIsManual ? "Route plan" : "Default route plan"}</b>
                 <span>{routePlanText} · {routePrefsText(routePrefsForDay)}</span>
               </p>
+            )}
+            {!lastDay && (
+              <SocialDayCard day={d} date={date} social={socialDay} deals={deals} events={events} signedIn={!!people.token} />
             )}
 
             {routeEditDay === d && (

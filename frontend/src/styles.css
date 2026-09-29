@@ -657,6 +657,9 @@ li.done .tick::after { content: ""; width: 5px; height: 9px; border: solid #0329
 .check { display: flex; gap: 10px; align-items: flex-start; color: var(--muted); font-size: 14px; }
 .check input { margin-top: 3px; }
 .find { display: grid; gap: 14px; margin-bottom: 18px; }
+.social-prompts { display: grid; gap: 8px; padding: 10px 12px; border-radius: 12px; border: 1px solid rgba(45, 212, 191, 0.24); background: rgba(45, 212, 191, 0.05); }
+.social-prompts .chips { gap: 7px; }
+.social-prompts .chip { text-align: left; }
 .find-results { display: grid; gap: 14px; }
 .understood { display: grid; gap: 8px; }
 .plain-list { display: grid; gap: 4px; }
@@ -998,11 +1001,26 @@ li.done .tick::after { content: ""; width: 5px; height: 9px; border: solid #0329
 }
 @keyframes sheetup { from { transform: translateY(100%); } to { transform: none; } }
 
-/* ============ booking (demo) ============ */
+/* ============ booking and trusted handoff ============ */
 .book-cta { display: flex; align-items: center; justify-content: space-between; gap: 12px 18px; flex-wrap: wrap; padding: 14px 18px; border-radius: 16px; margin: 16px 0; border-color: rgba(45, 212, 191, 0.35); }
 .book-cta > div { display: grid; gap: 2px; }
 .book-cta.booked { border-color: rgba(52, 211, 153, 0.5); background: rgba(52, 211, 153, 0.06); }
 .book-page { padding-bottom: 40px; }
+.handoff-hero { display: grid; gap: 8px; margin-bottom: 16px; }
+.handoff-hero .h2 { margin: 0; }
+.handoff-list { display: grid; gap: 12px; margin: 14px 0; }
+.handoff-card { display: grid; grid-template-columns: 1fr minmax(160px, auto); gap: 18px; padding: 16px; border-radius: 14px; background: var(--surface); border: 1px solid var(--line); }
+.handoff-card.local { border-color: rgba(45, 212, 191, 0.28); background: linear-gradient(180deg, rgba(45, 212, 191, 0.06), rgba(255, 255, 255, 0.02)), var(--surface); }
+.handoff-card-top { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 8px; }
+.handoff-card h2 { margin: 0 0 6px; font-size: 20px; line-height: 1.2; }
+.handoff-card p { margin: 0; }
+.handoff-side { display: grid; justify-items: end; align-content: start; gap: 8px; text-align: right; }
+.handoff-side b { font-size: 24px; }
+.handoff-side .btn { white-space: nowrap; }
+.handoff-total { display: grid; gap: 2px; }
+.handoff-total span, .handoff-total em { color: var(--muted); font-style: normal; font-size: 13px; }
+.handoff-total b { font-size: 30px; line-height: 1; }
+.handoff-actions { display: grid; gap: 10px; margin-top: 14px; }
 .demo-flag { padding: 10px 14px; border-radius: 12px; margin-bottom: 16px; background: rgba(245, 199, 106, 0.08); border: 1px solid rgba(245, 199, 106, 0.35); color: #e6d3a3; font-size: 13.5px; }
 .bk-steps { list-style: none; display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin: 0 0 20px; padding: 0; }
 .bk-steps li { display: grid; justify-items: center; gap: 6px; position: relative; color: var(--faint); font-size: 12.5px; font-weight: 600; }
@@ -1061,6 +1079,8 @@ li.done .tick::after { content: ""; width: 5px; height: 9px; border: solid #0329
 .bk-mini summary { cursor: pointer; }
 .bk-mini .bk-summary { border: 0; padding: 0; background: none; margin-bottom: 0; }
 @media (max-width: 560px) {
+  .handoff-card { grid-template-columns: 1fr; }
+  .handoff-side { justify-items: stretch; text-align: left; }
   .bk-steps-label { font-size: 11px; }
   .bk-act { grid-template-columns: 1fr auto; }
   .bk-act span { grid-column: 1 / -1; }
@@ -1174,6 +1194,8 @@ li.done .tick::after { content: ""; width: 5px; height: 9px; border: solid #0329
   .route-stop { grid-template-columns: 26px minmax(0, 1fr); }
   .route-stop .linkbtn { grid-column: 2; justify-self: start; }
   .tday { scroll-margin-top: calc(var(--topbar-h) + 118px); }
+  .social-day-card { grid-template-columns: 1fr; }
+  .social-day-actions { justify-items: stretch; text-align: left; }
   .costs { grid-template-columns: 1fr; }
   .free-label { min-width: 0; width: 100%; }
   .care-next { grid-template-columns: 48px 1fr; }
@@ -1246,6 +1268,19 @@ li.done .tick::after { content: ""; width: 5px; height: 9px; border: solid #0329
 .route-day-banner { margin: -4px 0 12px; padding: 8px 12px; border-radius: 12px; font-size: 13.5px; color: #c7d2fe; background: rgba(129, 140, 248, 0.08); border: 1px solid rgba(129, 140, 248, 0.32); }
 .route-defaults { display: flex; flex-wrap: wrap; gap: 8px; align-items: baseline; margin: -4px 0 12px; padding: 8px 12px; border-radius: 12px; font-size: 13.5px; color: #b8c7d9; background: rgba(6, 12, 20, 0.42); border: 1px dashed var(--line-2); }
 .route-defaults b { color: var(--teal); }
+.social-day-card { display: grid; grid-template-columns: 1fr auto; gap: 14px; align-items: center; margin: 0 0 14px; padding: 14px; border-radius: 15px; border: 1px solid rgba(129, 140, 248, 0.36); background: linear-gradient(135deg, rgba(129, 140, 248, 0.12), rgba(45, 212, 191, 0.08)); }
+.social-day-main { display: grid; gap: 5px; min-width: 0; }
+.social-day-main b { font-size: 17px; }
+.social-day-main p { margin: 0; color: var(--muted); font-size: 13.5px; }
+.route-companions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
+.route-companion { display: flex; align-items: center; gap: 8px; min-width: min(240px, 100%); max-width: 320px; padding: 7px 9px; border-radius: 12px; border: 1px solid rgba(255, 255, 255, 0.08); background: rgba(6, 12, 20, 0.36); text-decoration: none !important; color: var(--text); }
+.route-companion span { display: grid; gap: 1px; min-width: 0; }
+.route-companion b { font-size: 13.5px; }
+.route-companion small { color: var(--muted); font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.social-day-facts { display: flex; flex-wrap: wrap; gap: 6px; }
+.social-day-facts span { padding: 3px 8px; border-radius: 999px; background: rgba(6, 12, 20, 0.42); border: 1px solid var(--line); color: #c7d2fe; font-size: 12px; }
+.social-day-actions { display: grid; justify-items: end; gap: 6px; text-align: right; }
+.social-day-actions small { max-width: 220px; color: var(--muted); font-size: 12px; }
 .route-inline-editor { display: grid; gap: 10px; margin: 0 0 14px; padding: 14px; border: 1px solid var(--teal-2); border-radius: 14px; background: rgba(45, 212, 191, 0.07); }
 .route-inline-editor textarea { min-height: 180px; }
 .route-inline-actions { display: flex; gap: 8px; flex-wrap: wrap; }

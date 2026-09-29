@@ -321,6 +321,33 @@ def test_itinerary_offers_priced_packages_to_compare(client):
     assert any("Best match" in p["labels"] for p in it["packages"])
 
 
+def test_itinerary_exposes_trusted_handoff_boundaries(client):
+    it = client.post("/api/plan-trip", json=VALID_REQUEST).json()["itinerary"]
+    handoff = it["handoff"]
+    assert handoff["model"] == "planner_handoff"
+    assert handoff["flight"]["kind"] == "external_checkout"
+    assert handoff["flight"]["owned_by_wayfinder"] is False
+    assert handoff["stay"]["kind"] == "external_checkout"
+    assert handoff["stay"]["owned_by_wayfinder"] is False
+    assert handoff["local_marketplace"]["kind"] == "wayfinder_partner_vouchers"
+    assert handoff["local_marketplace"]["owned_by_wayfinder"] is True
+
+
+def test_itinerary_exposes_trip_aware_social_prompts(client):
+    it = client.post("/api/plan-trip", json=VALID_REQUEST).json()["itinerary"]
+    social = it["social"]
+    assert social["positioning"].startswith("Use the itinerary")
+    assert social["prompts"]
+    first = social["prompts"][0]
+    assert {"id", "title", "text", "activity_tag", "destination", "day", "part", "source"} <= set(first)
+    assert any(p["activity_tag"] in {"nightlife", "food", "beach", "sightseeing"} for p in social["prompts"])
+    assert len(social["days"]) == it["nights"]
+    assert all(d["headline"].startswith("Light up Day") and d["prompts"] for d in social["days"])
+    assert any(d["companions"] for d in social["days"])
+    companion = next(d["companions"][0] for d in social["days"] if d["companions"])
+    assert companion["demo"] is True and companion["request"] and companion["distance"] == "on your route"
+
+
 def test_itinerary_lists_every_flight_option_labelled_and_includes_the_chosen_one(client):
     it = client.post("/api/plan-trip", json={"origin": "LON", "destination": "LIS", "start_date": "2026-11-10", "end_date": "2026-11-15", "travelers": 2}).json()["itinerary"]
     opts = it["flight_options"]

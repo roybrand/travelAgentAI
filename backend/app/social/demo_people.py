@@ -291,6 +291,82 @@ def refresh_pool(force: bool = False) -> int:
     return made
 
 
+# ---------------------------------------------------------------- route-aware demo companions
+
+ROUTE_COMPANION_NAMES = [
+    ("Maya R.", "woman", 1998, "coffee", "Easygoing traveler. Loves coffee, city walks and meeting people for low-pressure plans."),
+    ("Jonas K.", "man", 1994, "nightlife", "Solo traveler into live music, rooftops and finding a good group for the evening."),
+    ("Noa S.", "woman", 1996, "food", "Food markets, street food and small local places. Usually up for dinner with new people."),
+    ("Alex T.", "non-binary", 1999, "sightseeing", "Museum person, photo walks and old streets. Here to explore without rushing."),
+    ("Luca M.", "man", 1991, "beach", "Beach days, swimming and spontaneous plans. Friendly, social and outdoorsy."),
+    ("Priya N.", "woman", 1993, "live-music", "Live music, casual bars and language exchange. Likes making travel friends."),
+]
+
+
+def seed_route_companions(days: list[dict], start_iso: str) -> dict[int, list[dict]]:
+    """Create clearly-labelled demo travelers on the exact planned route.
+
+    These are real People rows and open intents, so the normal app flow works:
+    alerts can surface them, their profile opens, and saying hi starts the existing demo chat.
+    """
+    if not days:
+        return {}
+    out: dict[int, list[dict]] = {}
+    shared_hash = security.hash_password("route-demo-profile-not-a-real-login")
+    now = datetime.now(timezone.utc).isoformat()
+    start = date.fromisoformat(start_iso)
+    with db.tx() as c:
+        for day in days[:10]:
+            day_num = int(day.get("day") or 1)
+            trip_day = start + timedelta(days=day_num - 1)
+            code = str(day.get("destination") or "").upper()
+            city = catalog.resolve(code)
+            if not city:
+                continue
+            prompts = day.get("prompts") or []
+            cards = []
+            for idx, prompt in enumerate(prompts[:2]):
+                tag = prompt.get("activity_tag") or "coffee"
+                base = ROUTE_COMPANION_NAMES[(day_num + idx) % len(ROUTE_COMPANION_NAMES)]
+                name, gender, birth_year, fallback_tag, bio = base
+                tag = tag if tag in vocab.ACTIVITIES else fallback_tag
+                email = f"demo-route-{code.lower()}-{start_iso}-{day_num}-{idx}@{EMAIL_DOMAIN}"
+                interests = list(dict.fromkeys([tag, fallback_tag, "coffee", "sightseeing"]))[:4]
+                c.execute(
+                    "INSERT OR IGNORE INTO users (email, display_name, password_hash, birth_year, bio, interests, languages, home_city, photo_status, visible, "
+                    "gender, show_age, demo, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'approved', 1, ?, 1, 1, ?)",
+                    (email, name, shared_hash, birth_year, f"{bio} Same-route demo companion in {city['city']}.", json.dumps(interests),
+                     json.dumps(["English"]), city["country"], gender, now))
+                row = c.execute("SELECT * FROM users WHERE email = ?", (email,)).fetchone()
+                if not row:
+                    continue
+                existing = c.execute("SELECT 1 FROM intents WHERE user_id = ? AND day = ? AND status = 'open' LIMIT 1",
+                                     (row["id"], trip_day.isoformat())).fetchone()
+                if not existing:
+                    rng = random.Random(f"route-{email}")
+                    text = prompt.get("text") or f"Looking for company for {vocab.ACTIVITIES[tag][0].lower()} in {city['city']}"
+                    c.execute(
+                        "INSERT INTO intents (user_id, text, tags, languages, vibes, want_genders, want_ages, summary, day, part, lat, lng, radius_m, created_at) "
+                        "VALUES (?, ?, ?, ?, ?, '[]', '[]', ?, ?, ?, ?, ?, ?, ?)",
+                        (
+                            row["id"], text, json.dumps([tag]), json.dumps(["English"]), json.dumps(["social"]), text[:140],
+                            trip_day.isoformat(), prompt.get("part") if prompt.get("part") in vocab.PARTS else "any",
+                            intents.coarse(city["lat"] + rng.uniform(-0.01, 0.01)),
+                            intents.coarse(city["lng"] + rng.uniform(-0.01, 0.01)), 8000, now,
+                        ),
+                    )
+                card = users.card(row, [tag])
+                card.update({
+                    "request": (prompt.get("title") or f"Company in {city['city']}")[:140],
+                    "distance": "on your route",
+                    "why": [f"Same route in {city['city']}", f"Also into {vocab.ACTIVITIES[tag][0].lower()}"],
+                })
+                cards.append(card)
+            if cards:
+                out[day_num] = cards
+    return out
+
+
 # ---------------------------------------------------------------- dynamic matching for a real person
 
 def attune(viewer_id: int, intent) -> int:

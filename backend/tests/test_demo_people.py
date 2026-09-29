@@ -82,6 +82,51 @@ def test_daily_refresh_gives_new_requests_only_to_people_without_one():
     assert demo_people.refresh_pool() == 0                              # rate limited to once an hour
 
 
+def test_route_companions_are_real_profile_cards_with_open_requests():
+    days = [
+        {
+            "day": 1,
+            "destination": "BCN",
+            "city": "Barcelona",
+            "prompts": [
+                {
+                    "activity_tag": "food",
+                    "part": "evening",
+                    "title": "Find travelers for dinner in Barcelona",
+                    "text": "Dinner in Barcelona with someone friendly.",
+                }
+            ],
+        },
+        {
+            "day": 2,
+            "destination": "PAR",
+            "city": "Paris",
+            "prompts": [
+                {
+                    "activity_tag": "sightseeing",
+                    "part": "afternoon",
+                    "title": "Find travelers for a photo walk in Paris",
+                    "text": "Photo walk in Paris with someone curious.",
+                }
+            ],
+        },
+    ]
+    cards = demo_people.seed_route_companions(days, "2026-10-10")
+    assert set(cards) == {1, 2}
+    assert cards[1][0]["demo"] is True
+    assert cards[1][0]["photo_url"] == f"/api/people/demo-avatar/{cards[1][0]['id']}"
+    assert cards[1][0]["request"] == "Find travelers for dinner in Barcelona"
+    assert cards[1][0]["distance"] == "on your route"
+    assert "Same route in Barcelona" in cards[1][0]["why"]
+
+    with db.tx() as c:
+        bcn = c.execute("SELECT * FROM users WHERE id = ?", (cards[1][0]["id"],)).fetchone()
+        par_intent = c.execute("SELECT * FROM intents WHERE user_id = ? AND day = ? AND status = 'open'",
+                               (cards[2][0]["id"], "2026-10-11")).fetchone()
+    assert bcn["email"].startswith("demo-route-bcn-2026-10-10-1-")
+    assert par_intent["summary"] == "Photo walk in Paris with someone curious."
+
+
 # ---------------------------------------------------------------- avatars
 
 def test_avatars_are_deterministic_varied_safe_drawings():

@@ -36,10 +36,10 @@ export const KIND_META = {
 
 // How each data source is labelled in the UI
 export const SOURCE_MODE = {
-  live: { label: "Live", tone: "ok" },
-  amadeus: { label: "Live offers", tone: "ok" },
-  travelpayouts: { label: "Recent fares", tone: "ok" },
-  estimate: { label: "Estimate", tone: "warn" },
-  demo: { label: "Demo", tone: "muted" },
-  none: { label: "Unavailable", tone: "muted" },
+  live: { label: "Live", tone: "ok", title: "Current data from a live source." },
+  amadeus: { label: "Live offers", tone: "ok", title: "Live provider offers. Confirm final terms with the seller before payment." },
+  travelpayouts: { label: "Recent fares", tone: "ok", title: "Recent traveler fare data, useful for planning but not a checkout quote." },
+  estimate: { label: "Estimate", tone: "warn", title: "Modelled from free data such as distance, season and star class. Not a quote." },
+  demo: { label: "Demo", tone: "muted", title: "Simulated demo data for product testing." },
+  none: { label: "Unavailable", tone: "muted", title: "No source is available for this part yet." },
 };

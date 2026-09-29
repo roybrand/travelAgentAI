@@ -245,7 +245,7 @@ export default function Trip() {
             </div>
           )}
           <div className="trip-top-chips">
-            <Link to="/book" className={`tag ${booked ? "booked" : ""}`}>{booked ? `✓ Booked · ${booking.reference}` : "Not booked yet"}</Link>
+            <Link to="/book" className={`tag ${booked ? "booked" : ""}`}>{booked ? `✓ Local booking · ${booking.reference}` : "Ready for provider handoff"}</Link>
             <span className="tag">{money(total)} · {money(perPerson)} pp</span>
             {budget != null && <span className={`tag ${over ? "" : "hit"}`}>{over ? `${money(total - budget)} over budget` : `${money(budget - total)} under budget`}</span>}
             <button type="button" className="tag tag-btn" onClick={() => setLikesOpen(true)} title="What the trip, ideas and deals are tuned to">

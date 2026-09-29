@@ -1,6 +1,7 @@
 import asyncio
 import logging
 from datetime import date, timedelta
+from urllib.parse import urlencode
 
 from . import config
 from .live import catalog, llm, osm
@@ -8,6 +9,7 @@ from .partners import deals as partner_deals
 from . import product_rules, showcase_routes, trip_rules
 from . import route_rules
 from .mcp_tools.client import MCPToolClient
+from .social import demo_people
 from .ranking.combine import rank_and_combine
 from .ranking.score import score_flights, score_hotels
 from .state import BuildTripState, ParseRequestState, TripState
@@ -183,6 +185,8 @@ async def build_itinerary_node(state: TripState) -> dict:
     itinerary["packages"] = _packages(ranking["combos"], chosen)
     itinerary["flight_options"] = _flight_options(state["flights"])
     itinerary["partner_deals"] = _partner_deals(state["request"])
+    itinerary["handoff"] = _handoff(state["request"], itinerary)
+    itinerary["social"] = _social_layer(state["request"], itinerary)
     return {"itinerary": itinerary}
 
 
@@ -452,6 +456,173 @@ def _packages(combos: list[dict], chosen: dict) -> list[dict]:
             "price_sources": {"flight": c["flight"].get("price_source", "demo"), "hotel": c["hotel"].get("price_source", "demo")},
         }
     return list(merged.values())
+
+
+def _search_url(query: str) -> str:
+    return "https://www.google.com/search?" + urlencode({"q": query})
+
+
+def _handoff(req: dict, itinerary: dict) -> dict:
+    """Trusted external booking actions. Wayfinder plans and explains; airlines, hotels and partners own checkout."""
+    route = req.get("destinations") or [req["destination"]]
+    first = route[0]
+    final = route[-1]
+    flight = itinerary["flight"]
+    hotel = itinerary["hotel"]
+    first_city = catalog.resolve(first)["city"] if catalog.resolve(first) else first
+    final_city = catalog.resolve(final)["city"] if catalog.resolve(final) else final
+    origin_city = catalog.resolve(req["origin"])["city"] if catalog.resolve(req["origin"]) else req["origin"]
+    flight_query = f"{origin_city} to {first_city} return flights {req['start_date']} {req['end_date']} {req['travelers']} travelers"
+    stay_query = f"{hotel['name']} {first_city} hotel {req['start_date']} {req['end_date']} {req['travelers']} guests"
+    return {
+        "model": "planner_handoff",
+        "principle": "Wayfinder plans, validates and monitors the trip. Flight and stay checkout stays with trusted external sellers.",
+        "flight": {
+            "kind": "external_checkout",
+            "title": f"{origin_city} to {first_city}{'' if final == first else f', return from {final_city}'}",
+            "provider": "Airline or flight marketplace",
+            "url": _search_url(flight_query),
+            "owned_by_wayfinder": False,
+            "affiliate_ready": True,
+            "price_scope": "Shown for all travelers, return trip. Confirm baggage, fare class, refund rules and schedule changes before paying.",
+            "source": flight.get("price_source", itinerary.get("data_sources", [{}])[0].get("mode", "demo")),
+        },
+        "stay": {
+            "kind": "external_checkout",
+            "title": hotel["name"],
+            "provider": "Hotel site or lodging marketplace",
+            "url": hotel.get("website") or _search_url(stay_query),
+            "owned_by_wayfinder": False,
+            "affiliate_ready": True,
+            "price_scope": f"Shown as nightly rate x {itinerary['nights']} night{'' if itinerary['nights'] == 1 else 's'}. Confirm taxes, fees, cancellation and room type before paying.",
+            "source": hotel.get("price_source", itinerary.get("data_sources", [{}, {}])[1].get("mode", "demo")),
+        },
+        "local_marketplace": {
+            "kind": "wayfinder_partner_vouchers",
+            "title": "Local deals, activities and transfers",
+            "owned_by_wayfinder": True,
+            "phase": "partner_deals_first",
+            "price_scope": "Only reviewed partner deals can be reserved in Wayfinder. Flights and stays are handoff-only.",
+        },
+    }
+
+
+SOCIAL_ACTIVITY_MAP = {
+    "nightlife": ("nightlife", "evening", "Find travelers for drinks or nightlife near {place}"),
+    "live-music": ("live-music", "night", "Find travelers for live music near {place}"),
+    "food-scene": ("food", "evening", "Find travelers for dinner or street food near {place}"),
+    "michelin-nearby": ("food", "evening", "Find travelers for a special dinner near {place}"),
+    "old-town": ("sightseeing", "afternoon", "Find travelers to explore {place}"),
+    "beachfront": ("beach", "afternoon", "Find travelers for the beach near {place}"),
+    "spa": ("yoga", "morning", "Find travelers for wellness or a spa morning near {place}"),
+    "quiet": ("coffee", "morning", "Find travelers for coffee and an easy walk near {place}"),
+}
+
+
+def _social_layer(req: dict, itinerary: dict) -> dict:
+    """Trip-aware social hooks. People matching stays its own product surface, but the graph now emits
+    ready-to-use prompts so the itinerary can become the social onboarding engine."""
+    route = req.get("destinations") or [req["destination"]]
+    city = catalog.resolve(route[0])
+    city_name = city["city"] if city else route[0]
+    prompts, seen = [], set()
+    interests = req.get("interests") or []
+    for interest in interests:
+        mapped = SOCIAL_ACTIVITY_MAP.get(interest)
+        if not mapped:
+            continue
+        tag, part, template = mapped
+        if tag in seen:
+            continue
+        seen.add(tag)
+        prompts.append({
+            "id": f"interest:{tag}",
+            "source": "trip_interest",
+            "day": 1,
+            "part": part,
+            "destination": route[0],
+            "activity_tag": tag,
+            "title": template.format(place=city_name),
+            "text": f"{template.format(place=city_name)} during my trip. Someone friendly with shared travel interests.",
+        })
+    guide = itinerary.get("guide") or {}
+    for item in (guide.get("places") or [])[:8]:
+        tags = set(item.get("tags") or [])
+        tag = "sightseeing"
+        if {"food-scene", "restaurant", "dining"} & tags:
+            tag = "food"
+        elif {"nightlife", "bar"} & tags:
+            tag = "nightlife"
+        elif {"beachfront", "beach"} & tags:
+            tag = "beach"
+        if tag in seen:
+            continue
+        seen.add(tag)
+        name = item.get("name") or city_name
+        prompts.append({
+            "id": f"place:{item.get('key') or name}",
+            "source": "itinerary_place",
+            "day": item.get("fixed_day") or 1,
+            "part": item.get("default_part") or ("evening" if tag in {"food", "nightlife"} else "afternoon"),
+            "destination": item.get("destination") or route[0],
+            "activity_tag": tag,
+            "title": f"Find travelers for {name}",
+            "text": f"Find travelers who want to visit {name} with me. Keep it public, easy and friendly.",
+        })
+        if len(prompts) >= 5:
+            break
+    if not prompts:
+        prompts.append({
+            "id": "default:coffee",
+            "source": "trip_default",
+            "day": 1,
+            "part": "evening",
+            "destination": route[0],
+            "activity_tag": "coffee",
+            "title": f"Find travelers in {city_name}",
+            "text": f"Coffee or a relaxed walk in {city_name}, someone friendly who wants to explore.",
+        })
+    stay_segments = itinerary.get("stay_segments") or []
+    days = []
+    for day in range(1, itinerary.get("nights", 0) + 1):
+        segment = next((s for s in stay_segments if s.get("start_day", 1) <= day <= s.get("end_day", 1)), None)
+        code = (segment or {}).get("destination") or route[min(day - 1, len(route) - 1)]
+        dest = catalog.resolve(code)
+        label = dest["city"] if dest else code
+        day_prompts = [{**p, "day": day, "destination": code} for p in prompts if p.get("destination") in {code, route[0]}][:3]
+        if not day_prompts:
+            day_prompts = [{
+                "id": f"day:{day}:coffee",
+                "source": "trip_day_default",
+                "day": day,
+                "part": "evening",
+                "destination": code,
+                "activity_tag": "coffee",
+                "title": f"Find travelers in {label}",
+                "text": f"Coffee, food or an easy walk in {label} on day {day}, someone friendly with shared hobbies.",
+            }]
+        days.append({
+            "day": day,
+            "destination": code,
+            "city": label,
+            "headline": f"Light up Day {day} in {label}",
+            "summary": "Find people on your route who want similar company, hobbies and plans.",
+            "prompts": day_prompts,
+        })
+    try:
+        companions = demo_people.seed_route_companions(days, req["start_date"])
+        for day in days:
+            day["companions"] = companions.get(day["day"], [])
+    except Exception:
+        logger.exception("route companion demo seeding failed; continuing without route people")
+        for day in days:
+            day["companions"] = []
+    return {
+        "positioning": "Use the itinerary as social context: who overlaps with this place, date, activity and vibe?",
+        "prompts": prompts[:5],
+        "days": days,
+        "density_goal": "Show a small set of relevant people or plans fast; if density is low, suggest place check-ins and local group activities.",
+    }
 
 
 def _human_date(iso: str) -> str:

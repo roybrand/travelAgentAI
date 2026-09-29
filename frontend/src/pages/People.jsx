@@ -126,6 +126,7 @@ function useLocation(fallbackCity, destinations) {
 function Find() {
   const { token, options, requests, refresh } = usePeople();
   const { destinations, form, trip } = useTrip();
+  const [params] = useSearchParams();
   const [city, setCity] = useState(trip?.req.destination || form.destination);
   const loc = useLocation(city, destinations);
   const [text, setText] = useState("");
@@ -136,6 +137,7 @@ function Find() {
   // null = read gender and age from the words; once the person picks any chip, their choice is used instead.
   const [want, setWant] = useState(null);
   const label = (k) => options?.activities.find((a) => a.key === k)?.label || k;
+  const tripPrompts = trip?.it?.social?.prompts || [];
   const pick = (kind, v) => setWant((w) => {
     const cur = w || { genders: [], ages: [] };
     const list = cur[kind].includes(v) ? cur[kind].filter((x) => x !== v) : [...cur[kind], v];
@@ -178,10 +180,45 @@ function Find() {
     refresh();
   };
 
+  useEffect(() => {
+    const prompt = params.get("prompt");
+    const dest = params.get("city");
+    if (prompt) setText(prompt.slice(0, 600));
+    if (dest) {
+      setCity(dest);
+      loc.clear();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   return (
     <>
       <form className="card pad find" onSubmit={submit}>
         <h2 className="card-title">Tell the AI what you want to do</h2>
+        {tripPrompts.length > 0 && (
+          <div className="social-prompts">
+            <span className="muted">From your trip plan</span>
+            <div className="chips">
+              {tripPrompts.map((p) => (
+                <button
+                  type="button"
+                  key={p.id}
+                  className="chip"
+                  onClick={() => {
+                    setText(p.text);
+                    if (p.destination) {
+                      setCity(p.destination);
+                      loc.clear();
+                    }
+                  }}
+                >
+                  {p.title}
+                </button>
+              ))}
+            </div>
+            <small className="hint">These come from your itinerary interests and places, then the People search matches by activity, time and distance.</small>
+          </div>
+        )}
         <Field label="What activity, and who would you like to do it with?" hint="For example: “Live music tonight, someone relaxed who speaks Spanish” or “Coffee and a walk tomorrow morning”. I match on the activity, language and vibe only.">
           <textarea rows={3} required minLength={4} maxLength={600} value={text} onChange={(e) => setText(e.target.value)} placeholder="Live music tonight in the old town, someone relaxed who speaks English or Spanish" />
         </Field>
