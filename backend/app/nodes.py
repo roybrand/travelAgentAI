@@ -5,7 +5,7 @@ from datetime import date, timedelta
 from . import config
 from .live import catalog, llm, osm
 from .partners import deals as partner_deals
-from . import product_rules, showcase_routes
+from . import product_rules, showcase_routes, trip_rules
 from . import route_rules
 from .mcp_tools.client import MCPToolClient
 from .ranking.combine import rank_and_combine
@@ -255,6 +255,13 @@ async def repair_route_rules_node(state: TripState) -> dict:
     repair["accepted_updates"] = len(result.get("updates", []))
     itinerary["route_day_overrides"] = overrides
     return {"itinerary": itinerary, "route_repair_attempted": True, "route_repair": repair}
+
+
+async def validate_itinerary_node(state: TripState) -> dict:
+    itinerary = dict(state["itinerary"])
+    validation = trip_rules.validate_itinerary(itinerary, state["request"], state["nights"])
+    itinerary["validation"] = validation
+    return {"itinerary": itinerary, "itinerary_validation": validation}
 
 
 def _partner_deals(req: dict) -> list[dict]:

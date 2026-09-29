@@ -12,6 +12,7 @@ from .nodes import (
     rank_and_combine_node,
     repair_route_rules_node,
     summarize_itinerary_node,
+    validate_itinerary_node,
 )
 from .state import BuildTripState, ParseRequestState, TripState
 
@@ -36,6 +37,7 @@ def build_trip_planning_graph(client: MCPToolClient):
     graph.add_node("summarize_itinerary", summarize_itinerary_node)
     graph.add_node("apply_route_rules", apply_route_rules_node)
     graph.add_node("repair_route_rules", repair_route_rules_node)
+    graph.add_node("validate_itinerary", validate_itinerary_node)
 
     for node in ("search_flights", "search_hotels", "destination_guide"):
         graph.add_edge(START, node)
@@ -43,8 +45,9 @@ def build_trip_planning_graph(client: MCPToolClient):
     graph.add_edge("rank_and_combine", "build_itinerary")
     graph.add_edge("build_itinerary", "summarize_itinerary")
     graph.add_edge("summarize_itinerary", "apply_route_rules")
-    graph.add_conditional_edges("apply_route_rules", route_rule_next_step, {"repair": "repair_route_rules", "done": END})
+    graph.add_conditional_edges("apply_route_rules", route_rule_next_step, {"repair": "repair_route_rules", "done": "validate_itinerary"})
     graph.add_edge("repair_route_rules", "apply_route_rules")
+    graph.add_edge("validate_itinerary", END)
 
     return graph.compile()
 

@@ -2,7 +2,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.main import app
-from app import product_rules, route_rules, showcase_routes
+from app import product_rules, route_rules, showcase_routes, trip_rules
 
 VALID_REQUEST = {
     "origin": "LON",
@@ -112,8 +112,12 @@ def test_showcase_itinerary_returns_canonical_route_days(client):
     assert res.status_code == 200
     route_days = res.json()["itinerary"]["route_days"]
     planning_rules = res.json()["itinerary"]["planning_rules"]
+    validation = res.json()["itinerary"]["validation"]
     assert planning_rules["valid"] is True
     assert planning_rules["retrieved"]
+    assert validation["valid"] is True
+    assert validation["source_quality"]["flights"] == "demo"
+    assert "flights_source_quality:demo" in validation["warnings"]
     assert any(r["source"] == "docs/ROUTE_DAY_BUSINESS_RULES.md" for r in planning_rules["retrieved"])
     assert len(route_days) == 10
     assert route_days[0]["completed_path"] == []
@@ -167,6 +171,39 @@ def test_route_day_overrides_are_deterministically_validated():
     }, {}, 1)[0]
     assert fixed["violations"] == []
     assert [slot["key"] for slot in fixed["slots"]] == ["a", "b", "c", "d"]
+
+
+def test_itinerary_validation_catches_cost_and_stay_contracts():
+    req = {"start_date": "2026-01-01", "end_date": "2026-01-04", "budget": 500}
+    itinerary = {
+        "destination": "PAR",
+        "destinations": ["PAR"],
+        "flight": {"destination": "PAR", "total_price": 200},
+        "stay_total_cost": 250,
+        "total_cost": 999,
+        "planning_rules": {"valid": True},
+        "data_sources": [{"key": "flights", "mode": "amadeus"}, {"key": "stays", "mode": "estimate"}],
+        "stay_segments": [
+            {
+                "destination": "PAR",
+                "start_day": 1,
+                "end_day": 2,
+                "nights": 2,
+                "check_in": "2026-01-01",
+                "check_out": "2026-01-03",
+                "hotel": {"id": "h1", "name": "Hotel", "price_source": "estimate"},
+            }
+        ],
+        "partner_deals": [
+            {"id": 7, "dest": "ROM", "category": "restaurant", "valid_from": "2026-01-01", "valid_to": "2026-01-04", "lat": 1, "lng": 1}
+        ],
+    }
+    validation = trip_rules.validate_itinerary(itinerary, req, nights=3)
+    assert validation["valid"] is False
+    assert "total_cost_must_equal_flight_plus_stay" in validation["violations"]
+    assert "stay:stay_segments_must_cover_trip_nights" in validation["violations"]
+    assert "deal:deal_outside_trip_route:7" in validation["violations"]
+    assert "stays_source_quality:estimate" in validation["warnings"]
 
 
 def test_plan_trip_missing_required_fields_returns_422(client):

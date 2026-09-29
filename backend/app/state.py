@@ -16,6 +16,7 @@ class TripState(TypedDict, total=False):
     planning_rules: dict
     route_repair_attempted: bool
     route_repair: dict
+    itinerary_validation: dict
 
 
 class ParseRequestState(TypedDict, total=False):
